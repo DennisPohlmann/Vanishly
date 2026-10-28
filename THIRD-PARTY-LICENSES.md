@@ -10,7 +10,7 @@ texts ship with each package in `node_modules/<package>/LICENSE`.
 |---|---|---|---|
 | [Express](https://expressjs.com) | 5.3.0 | MIT | HTTP server and routing |
 | [node-redis](https://github.com/redis/node-redis) | 6.3.0 | MIT | Redis client |
-| [Scalar API Reference](https://github.com/scalar/scalar) (@scalar/api-reference) | 1.76.0 | MIT | API documentation page `/api/docs`; its browser bundle is shipped as `vendor/scalar.js` |
+| [Scalar API Reference](https://github.com/scalar/scalar) (@scalar/api-reference) | 1.76.2 | MIT | API documentation page `/api/docs`; its browser bundle is shipped as `vendor/scalar.js` |
 | [openid-client](https://github.com/panva/openid-client) | 6.8.8 | MIT | sign-in with OpenID Connect (optional, `AUTH_PROVIDER`) |
 | [jose](https://github.com/panva/jose) | 6.2.13 | MIT | checks API bearer tokens (optional, `AUTH_API_AUDIENCE`) |
 | [mock-oauth2-server](https://github.com/navikt/mock-oauth2-server) (docker-compose.auth-test.yml, separate container) | 6.1.3 | MIT | test login server, only for trying the sign-in locally; not part of the image |

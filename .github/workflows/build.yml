@@ -64,7 +64,7 @@ jobs:
         env:
           REDIS_URL: redis://localhost:6379
       - name: OpenAPI document
-        run: npx --yes @redocly/cli@2.62.1 lint --extends=minimal openapi/openapi.json
+        run: npx --yes @redocly/cli@2.72.0 lint --extends=minimal openapi/openapi.json
       # WCAG 2.2 AA (axe-core) of every page and state, all built-in
       # templates, light and dark, desktop and 320 px phone.
       - name: accessibility
