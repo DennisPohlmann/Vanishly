@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { duration } from '../src/app.js';
 import { loadConfig, parseDurations } from '../src/config.js';
@@ -172,4 +175,23 @@ test('sign-in settings: off by default, checked when on', () => {
   assert.throws(() => loadConfig({ AUTH_PROVIDER: 'oidc', BASE_URL: 'https://a.example.com', OIDC_ISSUER: 'https://x.example.com', OIDC_CLIENT_ID: 'v', OIDC_CLIENT_SECRET: 's', AUTH_SECRET: 'z'.repeat(32), ENTRA_GRAPH: 'true' }), /does not apply/);
   assert.throws(() => loadConfig({ AUTH_PROVIDER: 'oidc', BASE_URL: 'https://a.example.com', OIDC_ISSUER: 'https://x.example.com', OIDC_CLIENT_ID: 'v', OIDC_CLIENT_SECRET: 's', AUTH_SECRET: 'z'.repeat(32), RECIPIENT_USER_GROUP: 'ops' }), /needs AUTH_PROVIDER=entra/);
   assert.throws(() => loadConfig({ AUTH_PROVIDER: 'okta' }), /none, entra or oidc/);
+});
+
+test('external Redis: REDIS_URL_FILE and REDIS_TLS_CA_FILE', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vanishly-redis-'));
+  const urlFile = join(dir, 'url');
+  writeFileSync(urlFile, 'rediss://app:change-me@redis.example.com:6380/2\n');
+  assert.equal(loadConfig({ REDIS_URL_FILE: urlFile }).redisUrl, 'rediss://app:change-me@redis.example.com:6380/2');
+  assert.equal(loadConfig({ REDIS_URL: 'redis://user:change-me@10.0.0.5:6379/1' }).redisUrl, 'redis://user:change-me@10.0.0.5:6379/1');
+  assert.throws(() => loadConfig({ REDIS_URL: 'redis://a:6379', REDIS_URL_FILE: urlFile }), /REDIS_URL and REDIS_URL_FILE are both set/);
+  assert.throws(() => loadConfig({ REDIS_URL_FILE: join(dir, 'missing') }), /REDIS_URL_FILE: cannot read/);
+  writeFileSync(join(dir, 'bad'), 'localhost:6379');
+  assert.throws(() => loadConfig({ REDIS_URL_FILE: join(dir, 'bad') }), /REDIS_URL: must look like/);
+  const ca = join(dir, 'ca.pem');
+  writeFileSync(ca, '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n');
+  assert.match(loadConfig({ REDIS_URL: 'rediss://redis.example.com:6380', REDIS_TLS_CA_FILE: ca }).redisTlsCa, /BEGIN CERTIFICATE/);
+  assert.equal(loadConfig({}).redisTlsCa, '');
+  assert.throws(() => loadConfig({ REDIS_URL: 'redis://redis.example.com:6379', REDIS_TLS_CA_FILE: ca }), /REDIS_TLS_CA_FILE needs a rediss:\/\//);
+  assert.throws(() => loadConfig({ REDIS_URL: 'rediss://r:6380', REDIS_TLS_CA_FILE: join(dir, 'nope.pem') }), /REDIS_TLS_CA_FILE: cannot read/);
+  assert.throws(() => loadConfig({ REDIS_URL: 'rediss://r:6380', REDIS_TLS_CA_FILE: urlFile }), /no PEM certificate/);
 });

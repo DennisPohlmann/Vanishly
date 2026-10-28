@@ -77,9 +77,10 @@ export class Store {
     this.viewLog = this.receipts && config.features?.viewLog !== false;
   }
 
-  /** @param {string} url @param {ConstructorParameters<typeof Store>[1]} config */
+  /** @param {string} url @param {ConstructorParameters<typeof Store>[1] & { redisTlsCa?: string }} config */
   static async connect(url, config) {
-    const redis = createClient({ url });
+    // rediss:// is TLS with certificate checks; REDIS_TLS_CA_FILE adds an own CA.
+    const redis = createClient({ url, ...(config.redisTlsCa ? { socket: { tls: true, ca: config.redisTlsCa } } : {}) });
     // The client retries about every second while Redis is away: log the
     // outage and the recovery once each instead of one line per retry.
     let down = false;

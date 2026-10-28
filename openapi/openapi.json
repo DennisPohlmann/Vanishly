@@ -45,7 +45,7 @@
         ],
         "operationId": "apiIndex",
         "summary": "API index",
-        "description": "Name, version and the endpoints switched on. A browser (Accept: text/html) is sent to /api/docs when the docs are on.",
+        "description": "Name, version and the endpoints switched on. A browser (Accept: text/html) is sent to /api/docs when the docs are on. ENABLE_API_INDEX=false: 404.",
         "responses": {
           "200": {
             "description": "The index",
@@ -70,7 +70,7 @@
         ],
         "operationId": "apiIndexV1",
         "summary": "API index",
-        "description": "Name, version and the endpoints switched on. A browser (Accept: text/html) is sent to /api/docs when the docs are on.",
+        "description": "Name, version and the endpoints switched on. A browser (Accept: text/html) is sent to /api/docs when the docs are on. ENABLE_API_INDEX=false: 404.",
         "responses": {
           "200": {
             "description": "The index",
@@ -186,7 +186,8 @@
               }
             }
           }
-        }
+        },
+        "description": "ENABLE_CREATE_API=false: only this server's form may call it (404 for scripts)."
       }
     },
     "/v1/share": {
@@ -391,7 +392,7 @@
         ],
         "operationId": "revealSecret",
         "summary": "Take one view: returns the ciphertext",
-        "description": "Counts one view. When no views are left the secret is deleted. With a passphrase the verifier is checked first; a wrong one does not use a view, and after PASSPHRASE_ATTEMPTS wrong ones the secret is destroyed.",
+        "description": "Counts one view. When no views are left the secret is deleted. With a passphrase the verifier is checked first; a wrong one does not use a view, and after PASSPHRASE_ATTEMPTS wrong ones the secret is destroyed. ENABLE_REVEAL_API=false: only this server's reveal page may call it (404 for scripts).",
         "parameters": [
           {
             "name": "id",
@@ -563,7 +564,8 @@
               }
             }
           }
-        }
+        },
+        "description": "ENABLE_RECEIPT_API=false: only this server's status page may call it (404 for scripts)."
       }
     },
     "/v1/receipts/{id}/burn": {
@@ -639,7 +641,8 @@
               }
             }
           }
-        }
+        },
+        "description": "ENABLE_RECEIPT_API=false: only this server's status page may call it (404 for scripts)."
       }
     },
     "/v1/open": {
@@ -1038,8 +1041,10 @@
           "error": {
             "type": "string",
             "examples": [
-              "not_found"
-            ]
+              "not_found",
+              "endpoint_disabled"
+            ],
+            "description": "Machine-readable code. 404 `endpoint_disabled`: the endpoint exists but is switched off on this server; 404 `not_found`: no such path, or the secret/receipt is gone."
           },
           "message": {
             "type": "string"
@@ -1476,7 +1481,11 @@
               "openApi",
               "secretMetaApi",
               "configApi",
-              "meApi"
+              "meApi",
+              "createApi",
+              "revealApi",
+              "receiptApi",
+              "apiIndex"
             ],
             "properties": {
               "passphrase": {
@@ -1525,6 +1534,18 @@
                 "type": "boolean"
               },
               "meApi": {
+                "type": "boolean"
+              },
+              "createApi": {
+                "type": "boolean"
+              },
+              "revealApi": {
+                "type": "boolean"
+              },
+              "receiptApi": {
+                "type": "boolean"
+              },
+              "apiIndex": {
                 "type": "boolean"
               }
             }

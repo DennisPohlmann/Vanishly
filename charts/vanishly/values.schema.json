@@ -186,6 +186,14 @@
             }
           ]
         },
+        "REDIS_TLS_CA_FILE": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^/\\S*$"
+            }
+          ]
+        },
         "TEMPLATE": {
           "anyOf": [
             {
@@ -521,6 +529,50 @@
           ]
         },
         "ENABLE_ME_API": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "ENABLE_CREATE_API": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "ENABLE_REVEAL_API": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "ENABLE_RECEIPT_API": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "ENABLE_API_INDEX": {
           "anyOf": [
             {
               "type": "boolean"

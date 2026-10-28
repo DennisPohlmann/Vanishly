@@ -90,7 +90,7 @@ function classes(v) {
 // Every setting this app reads. A name one or two letters off one of these
 // is a typo (ENABLE_VEIWS) and stops the start, like any invalid value.
 export const SETTINGS = [
-  'PORT', 'HOST', 'BASE_URL', 'REDIS_URL', 'REDIS_PREFIX', 'TRUST_PROXY', 'HSTS',
+  'PORT', 'HOST', 'BASE_URL', 'REDIS_URL', 'REDIS_URL_FILE', 'REDIS_TLS_CA_FILE', 'REDIS_PREFIX', 'TRUST_PROXY', 'HSTS',
   'TEMPLATE', 'TEMPLATES_DIR', 'TRANSLATIONS_DIR', 'LANGUAGES', 'DEFAULT_LANG', 'DEFAULT_MODE',
   'TTL_OPTIONS', 'DEFAULT_TTL', 'MAX_TTL', 'MAX_VIEWS', 'MAX_SECRET_CHARS', 'MIN_SECRET_CHARS',
   'MIN_PASSPHRASE_LENGTH', 'PASSPHRASE_COMPLEXITY', 'REQUIRE_PASSPHRASE', 'PASSPHRASE_ATTEMPTS',
@@ -100,6 +100,7 @@ export const SETTINGS = [
   'API_DOCS', 'ACCESS_LOG',
   'ENABLE_API', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SHARE_API', 'ENABLE_OPEN_API',
   'ENABLE_SECRET_META_API', 'ENABLE_CONFIG_API', 'ENABLE_ME_API',
+  'ENABLE_CREATE_API', 'ENABLE_REVEAL_API', 'ENABLE_RECEIPT_API', 'ENABLE_API_INDEX',
   'ENABLE_PASSPHRASE', 'ENABLE_VIEWS', 'ENABLE_RECEIPTS', 'ENABLE_BURN', 'ENABLE_VIEW_LOG',
   'ENABLE_RECEIPT_SHARE_LINK', 'ENABLE_GENERATOR', 'ENABLE_LANG_SWITCH', 'ENABLE_THEME_TOGGLE',
   'ENABLE_GITHUB_LINK', 'VANISHLY_VERSION',
@@ -332,7 +333,25 @@ export function loadConfig(env = process.env) {
   const config = {
     port: num('PORT', 3000, 1, 65535),
     host: str('HOST', /^[\w.:-]+$/, '0.0.0.0', 'an IP address or host name'),
-    redisUrl: str('REDIS_URL', /^rediss?:\/\/\S+$/, 'redis://localhost:6379', 'must look like redis://host:6379 or rediss://...'),
+    // REDIS_URL or, with a password in it, REDIS_URL_FILE (Docker secret).
+    redisUrl: named('REDIS_URL', () => {
+      const url = secretValue(env, 'REDIS_URL') || 'redis://localhost:6379';
+      if (!/^rediss?:\/\/\S+$/.test(url)) throw new Error('must look like redis://host:6379 or rediss://...');
+      return url;
+    }),
+    // rediss:// with an own CA: the PEM file (the system CAs otherwise).
+    redisTlsCa: named('REDIS_TLS_CA_FILE', () => {
+      const file = env.REDIS_TLS_CA_FILE;
+      if (!file) return '';
+      let pem = '';
+      try {
+        pem = readFileSync(file, 'utf8');
+      } catch (err) {
+        throw new Error(`cannot read ${file} (${/** @type {NodeJS.ErrnoException} */ (err).code || 'error'})`);
+      }
+      if (!pem.includes('-----BEGIN CERTIFICATE-----')) throw new Error(`${file} holds no PEM certificate`);
+      return pem;
+    }),
     redisPrefix: str('REDIS_PREFIX', /^[\w:.-]{1,64}$/, 'vanishly:', 'letters, digits and _ : . -, at most 64'),
     baseUrl,
     trustProxy: named('TRUST_PROXY', () => trustProxy(env.TRUST_PROXY)),
@@ -391,6 +410,11 @@ export function loadConfig(env = process.env) {
       secretMetaApi: sw('ENABLE_SECRET_META_API', true),
       configApi: sw('ENABLE_CONFIG_API', true),
       meApi: sw('ENABLE_ME_API', true),
+      // Endpoints the pages need: off, only this server's own pages may call them.
+      createApi: sw('ENABLE_CREATE_API', true),
+      revealApi: sw('ENABLE_REVEAL_API', true),
+      receiptApi: sw('ENABLE_RECEIPT_API', true),
+      apiIndex: sw('ENABLE_API_INDEX', true),
       langSwitch: sw('ENABLE_LANG_SWITCH', true),
       themeToggle: sw('ENABLE_THEME_TOGGLE', true),
       apiLink: sw('ENABLE_API_LINK', true),
@@ -400,6 +424,7 @@ export function loadConfig(env = process.env) {
     auth: authConfig(env, baseUrl),
   };
   if (config.minSecretChars > maxSecretChars) throw new Error('MIN_SECRET_CHARS is above MAX_SECRET_CHARS');
+  if (config.redisTlsCa && !config.redisUrl.startsWith('rediss://')) throw new Error('REDIS_TLS_CA_FILE needs a rediss:// REDIS_URL (TLS)');
   /** REQUIRE_PASSPHRASE=true: every secret needs one. */
   const requirePassphrase = config.passphraseRule === 'always';
   if (!config.features.passphrase) {

@@ -5,7 +5,7 @@
 {{- if and .Values.redis.enabled (or .Values.redis.external.url .Values.redis.external.existingSecret) -}}
 {{- fail "vanishly: redis.external.* is set while redis.enabled is true; set redis.enabled=false to use the external Redis" -}}
 {{- end -}}
-{{- if .Values.config.REDIS_URL -}}
+{{- if or .Values.config.REDIS_URL .Values.config.REDIS_URL_FILE -}}
 {{- fail "vanishly: set the Redis address with redis.external.url (or redis.external.existingSecret), not config.REDIS_URL" -}}
 {{- end -}}
 {{- range $k := list "ENTRA_CLIENT_SECRET" "OIDC_CLIENT_SECRET" "AUTH_SECRET" -}}

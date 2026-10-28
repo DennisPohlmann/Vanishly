@@ -38,6 +38,9 @@ services:
       ACCESS_LOG: ${ACCESS_LOG:-true}             # one line per request, ids replaced by :id
       # --- Redis
       REDIS_URL: ${REDIS_URL:-redis://redis:6379} # with password: redis://:change-me@redis:6379
+      # External Redis: set REDIS_URL (e.g. rediss://app:change-me@redis.example.com:6380)
+      # and remove the redis service and depends_on below (docs/CONFIG.md#redis).
+      REDIS_TLS_CA_FILE: ${REDIS_TLS_CA_FILE:-}  # own CA (PEM) for rediss://
       REDIS_PREFIX: ${REDIS_PREFIX:-vanishly:}    # prefix of all keys
       # --- Design and language
       TEMPLATE: ${TEMPLATE:-default}              # default, aurora, example-brand or your own
@@ -79,6 +82,10 @@ services:
       ENABLE_SECRET_META_API: ${ENABLE_SECRET_META_API:-true}  # GET /api/v1/secrets/{id} (state without a view)
       ENABLE_CONFIG_API: ${ENABLE_CONFIG_API:-true}            # GET /api/v1/config (limits and options)
       ENABLE_ME_API: ${ENABLE_ME_API:-true}                    # GET /api/v1/me (who is signed in)
+      ENABLE_CREATE_API: ${ENABLE_CREATE_API:-true}            # POST /api/v1/secrets (false: only the form)
+      ENABLE_REVEAL_API: ${ENABLE_REVEAL_API:-true}            # POST /api/v1/secrets/{id}/reveal (false: only the reveal page)
+      ENABLE_RECEIPT_API: ${ENABLE_RECEIPT_API:-true}          # GET /api/v1/receipts/{id}, .../burn (false: only the status page)
+      ENABLE_API_INDEX: ${ENABLE_API_INDEX:-true}              # GET /api, /api/v1 (index)
       ENABLE_OPEN_API: ${ENABLE_OPEN_API:-true}   # POST /api/v1/open (open a link with its passphrase from scripts)
       # --- Features (true = on)
       ENABLE_PASSPHRASE: ${ENABLE_PASSPHRASE:-true}            # passphrase field

@@ -50,6 +50,51 @@ class ApiError extends Error {
 }
 
 /**
+ * The OpenAPI document as this server serves it: its version, the index
+ * paths and only the endpoints switched on; schemas and tags no remaining
+ * operation uses are left out. openapi/openapi.json itself stays complete.
+ * @param {any} spec
+ * @param {[string, string][]} on [method, path] pairs
+ * @param {string} version
+ * @param {boolean} [index] GET /api and /api/v1 (ENABLE_API_INDEX)
+ */
+export function servedSpec(spec, on, version, index = true) {
+  const out = structuredClone(spec);
+  out.info.version = version;
+  const keep = new Set(on.map(([m, p]) => `${m.toLowerCase()} ${p}`));
+  /** @type {Record<string, any>} */
+  const paths = {};
+  for (const [p, item] of Object.entries(out.paths)) {
+    const ops = Object.fromEntries(Object.entries(item).filter(([m]) => ((p === '/' || p === '/v1') && index) || keep.has(`${m} ${p}`)));
+    if (Object.keys(ops).length) paths[p] = ops;
+  }
+  out.paths = paths;
+  // Components still referenced from the remaining paths (also through each other).
+  const used = new Set();
+  /** @param {any} v */
+  const walk = (v) => {
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (!v || typeof v !== 'object') return;
+    for (const [k, x] of Object.entries(v)) {
+      if (k === '$ref' && typeof x === 'string' && x.startsWith('#/components/') && !used.has(x)) {
+        used.add(x);
+        const [, , kind, name] = x.split('/');
+        walk(out.components?.[kind]?.[name]);
+      } else walk(x);
+    }
+  };
+  walk(out.paths);
+  for (const kind of ['schemas', 'responses', 'parameters', 'requestBodies', 'examples']) {
+    const all = out.components?.[kind];
+    if (!all) continue;
+    for (const name of Object.keys(all)) if (!used.has(`#/components/${kind}/${name}`)) delete all[name];
+  }
+  const tags = new Set(Object.values(paths).flatMap((item) => Object.values(item).flatMap((op) => op.tags || [])));
+  if (Array.isArray(out.tags)) out.tags = out.tags.filter((/** @type {any} */ t) => tags.has(t.name));
+  return out;
+}
+
+/**
  * @param {{ config: import('./config.js').Config, store: import('./store.js').Store,
  *   theme: import('./theme.js').Theme, version: string, auth?: Auth | null }} deps
  */
@@ -154,6 +199,26 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
 
   // ---------------------------------------------------------------- API
   const api = express.Router();
+  // A switched-off endpoint (ENABLE_*): 404, but told apart from a wrong path.
+  const disabled = () => new ApiError(404, 'endpoint_disabled', 'This endpoint is disabled on this server');
+  // The endpoints switched on (ENABLE_*, sign-in features): the /api index
+  // and the served OpenAPI document both list exactly these.
+  const f = config.features;
+  /** @type {[boolean | undefined, string, string][]} */
+  const endpointTable = [
+    [f.configApi, 'GET', '/v1/config'],
+    [f.createApi, 'POST', '/v1/secrets'],
+    [f.shareApi, 'POST', '/v1/share'],
+    [f.secretMetaApi, 'GET', '/v1/secrets/{id}'],
+    [f.revealApi, 'POST', '/v1/secrets/{id}/reveal'],
+    [f.openApi, 'POST', '/v1/open'],
+    [f.receipts && f.receiptApi, 'GET', '/v1/receipts/{id}'],
+    [f.receipts && f.burn && f.receiptApi, 'POST', '/v1/receipts/{id}/burn'],
+    [Boolean(auth) && f.meApi, 'GET', '/v1/me'],
+    [Boolean(auth?.c.groups.any), 'GET', '/v1/groups'],
+    [Boolean(auth?.c.userGroup), 'GET', '/v1/people'],
+  ];
+  const endpointsOn = endpointTable.filter(([on]) => on).map(([, method, path]) => /** @type {[string, string]} */ ([method, path]));
   api.use(express.json({ limit: Math.max(64 * 1024, maxCtLen * 2) }));
 
   /** @param {'create' | 'read'} bucket */
@@ -283,7 +348,9 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   if (!config.api) {
     api.use((req, _res, next) => {
       const own = fromPage(req) && /^\/v1\/(secrets|receipts|me|groups|people)(\/|$)/.test(req.path);
-      next(own ? undefined : new ApiError(404, 'not_found', 'No such endpoint'));
+      // Known paths: switched off; anything else falls through to not_found.
+      const known = /^\/(v1(\/(config|secrets|share|open|receipts|me|groups|people)(\/.*)?)?\/?|openapi\.json|docs(\/.*)?)?$/.test(req.path);
+      next(own ? undefined : known ? disabled() : undefined);
     });
   }
 
@@ -310,8 +377,13 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   // the web pages do not use these endpoints.
   /** @param {boolean} on */
   const switchedOff = (on) => {
-    if (!on) throw new ApiError(404, 'not_found', 'No such endpoint');
+    if (!on) throw disabled();
   };
+  // ENABLE_CREATE_API / ENABLE_REVEAL_API / ENABLE_RECEIPT_API=false: the
+  // web pages need these, so they still answer this server's own pages
+  // (Sec-Fetch-Site; a guard against casual use, no access control).
+  /** @param {boolean} on @param {import('express').Request} req */
+  const pagesOnly = (on, req) => switchedOff(on || fromPage(req));
 
   api.get('/v1/config', (_req, res) => {
     switchedOff(config.features.configApi);
@@ -360,7 +432,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
 
   // RECIPIENT_GROUPS=*: group search for the form (Microsoft Graph).
   api.get('/v1/groups', limit('read'), async (req, res) => {
-    if (!auth?.c.groups.any) throw new ApiError(404, 'not_found', 'No such endpoint');
+    if (!auth?.c.groups.any) throw disabled();
     if (!userOf(res)) throw new ApiError(401, 'login_required', 'Sign in first');
     const q = typeof req.query.q === 'string' ? req.query.q : '';
     try {
@@ -373,7 +445,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
 
   // RECIPIENT_USER_GROUP: people search for the form (Microsoft Graph).
   api.get('/v1/people', limit('read'), async (req, res) => {
-    if (!auth?.c.userGroup) throw new ApiError(404, 'not_found', 'No such endpoint');
+    if (!auth?.c.userGroup) throw disabled();
     if (!userOf(res) || userOf(res)?.app) throw new ApiError(401, 'login_required', 'Sign in first');
     const q = typeof req.query.q === 'string' ? req.query.q : '';
     try {
@@ -386,6 +458,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
 
   // Stores a secret the client has encrypted itself (the browser does this).
   api.post('/v1/secrets', limit('create'), async (req, res) => {
+    pagesOnly(config.features.createApi, req);
     mayCreate(res);
     const b = req.body || {};
     if (b.v !== undefined && b.v !== 1) throw new ApiError(400, 'invalid_version', 'Only format v1 is known');
@@ -429,7 +502,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   // Encrypts on the server for scripts without crypto (curl): the key is
   // returned in the links and forgotten right away.
   api.post('/v1/share', limit('create'), async (req, res) => {
-    if (!config.features.shareApi) throw new ApiError(404, 'not_found', 'No such endpoint');
+    if (!config.features.shareApi) throw disabled();
     mayCreate(res);
     const b = req.body || {};
     if (typeof b.secret !== 'string' || b.secret.length === 0) {
@@ -479,6 +552,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   });
 
   api.post('/v1/secrets/:id/reveal', limit('read'), async (req, res) => {
+    pagesOnly(config.features.revealApi, req);
     const id = String(req.params.id);
     const verifier = req.body?.verifier;
     if (verifier !== undefined && verifier !== null && !check(verifier, /^[A-Za-z0-9_-]{43}$/)) {
@@ -496,13 +570,13 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
 
   // ENABLE_RECEIPTS=false / ENABLE_BURN=false: these endpoints answer 404.
   /** @type {import('express').RequestHandler} */
-  const receiptsOn = (_req, _res, next) => next(config.features.receipts ? undefined : new ApiError(404, 'not_found', 'No such endpoint'));
+  const receiptsOn = (_req, _res, next) => next(config.features.receipts ? undefined : disabled());
 
   // Opens a secret for scripts: the link (with the key after #) and, if the
   // secret has one, its passphrase go to the server, which decrypts and
   // forgets both. Same trust as /v1/share; browsers decrypt themselves.
   api.post('/v1/open', limit('read'), async (req, res) => {
-    if (!config.features.openApi) throw new ApiError(404, 'not_found', 'No such endpoint');
+    if (!config.features.openApi) throw disabled();
     const b = req.body || {};
     const m = typeof b.link === 'string' ? /\/s\/([A-Za-z0-9_-]{22})#([A-Za-z0-9_-]{43})$/.exec(b.link.trim()) : null;
     if (!m) throw new ApiError(400, 'invalid_link', 'link must be a full secret link: https://.../s/<id>#<key>');
@@ -538,6 +612,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   });
 
   api.get('/v1/receipts/:id', receiptsOn, limit('read'), async (req, res) => {
+    pagesOnly(config.features.receiptApi, req);
     const id = String(req.params.id);
     const r = validId(id) ? await store.receipt(id) : null;
     if (!r) throw new ApiError(404, 'not_found', 'Unknown or too old');
@@ -558,7 +633,8 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   });
 
   api.post('/v1/receipts/:id/burn', receiptsOn, limit('read'), async (req, res) => {
-    if (!config.features.burn) throw new ApiError(404, 'not_found', 'No such endpoint');
+    pagesOnly(config.features.receiptApi, req);
+    if (!config.features.burn) throw disabled();
     const id = String(req.params.id);
     const r = validId(id) ? await store.burn(id) : null;
     if (r === null) throw new ApiError(404, 'not_found', 'Unknown or too old');
@@ -585,29 +661,15 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   // that are switched on. A browser goes to the docs page if there is one.
   /** @type {import('express').RequestHandler} */
   const index = (req, res) => {
+    switchedOff(config.features.apiIndex);
     if (config.apiDocs && req.accepts(['json', 'html']) === 'html') return void res.redirect(302, '/api/docs');
-    const f = config.features;
-    /** @type {[boolean | undefined, string][]} */
-    const all = [
-      [f.configApi, 'GET /api/v1/config'],
-      [true, 'POST /api/v1/secrets'],
-      [f.shareApi, 'POST /api/v1/share'],
-      [f.secretMetaApi, 'GET /api/v1/secrets/{id}'],
-      [true, 'POST /api/v1/secrets/{id}/reveal'],
-      [f.openApi, 'POST /api/v1/open'],
-      [f.receipts, 'GET /api/v1/receipts/{id}'],
-      [f.receipts && f.burn, 'POST /api/v1/receipts/{id}/burn'],
-      [Boolean(auth) && f.meApi, 'GET /api/v1/me'],
-      [Boolean(auth?.c.groups.any), 'GET /api/v1/groups'],
-      [Boolean(auth?.c.userGroup), 'GET /api/v1/people'],
-    ];
     res.json({
       name: 'Vanishly API',
       version,
       api: 'v1',
       ...(config.apiDocs ? { docs: '/api/docs' } : {}),
       openapi: '/api/openapi.json',
-      endpoints: all.filter(([on]) => on).map(([, e]) => e),
+      endpoints: endpointsOn.map(([method, path]) => `${method} /api${path}`),
     });
   };
   api.get(['/', '/v1', '/v1/'], index);
@@ -630,10 +692,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   );
   app.use('/api', api);
 
-  const openapi = readFileSync(join(ROOT, 'openapi', 'openapi.json'), 'utf8').replace(
-    '"version": "0.0.0"',
-    `"version": ${JSON.stringify(version)}`,
-  );
+  const openapi = JSON.stringify(servedSpec(JSON.parse(readFileSync(join(ROOT, 'openapi', 'openapi.json'), 'utf8')), endpointsOn, version, config.features.apiIndex), null, 2);
   const docsHtml = readFileSync(join(ROOT, 'views', 'api-docs.html'), 'utf8');
   // vendor/scalar.js: built by `npm run vendor` (also in the image and the
   // tar.gz), without the external web fonts of the npm package.

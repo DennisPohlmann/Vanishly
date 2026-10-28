@@ -13,7 +13,7 @@ without a session or bearer token, `403 not_recipient` for anybody else,
 on `GET /v1/secrets/{id}`, `/reveal` and `/v1/open`; neither uses a view
 ([CONFIG.md](CONFIG.md#sign-in-and-recipients)). Switched
 off parts (`ENABLE_*`, see [CONFIG.md](CONFIG.md#switches-enable_)) answer
-`404`; `GET /api/v1/config` lists them under `features`. Errors look like
+`404` with `"error": "endpoint_disabled"` (a wrong path: `not_found`); `GET /api/v1/config` lists them under `features`. Errors look like
 `{"error": "not_found", "message": "..."}`. With `CONFIRM_CHECKBOX=true`
 a create (`/v1/secrets`, `/v1/share`) needs `"confirmed": true` (the JSON
 value, not a string); otherwise `400 confirmation_required`, whose `message`

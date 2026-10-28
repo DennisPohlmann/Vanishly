@@ -535,7 +535,66 @@ test('GET /api and /api/v1: an index of the switched-on endpoints, browsers to t
     assert.deepEqual(j.endpoints, ['POST /api/v1/secrets', 'POST /api/v1/secrets/{id}/reveal', 'GET /api/v1/receipts/{id}', 'POST /api/v1/receipts/{id}/burn']);
   });
   await withApp({ ENABLE_API: 'false' }, async (b) => {
-    assert.equal((await fetch(`${b}/api`)).status, 404); // no public API
+    const r = await fetch(`${b}/api`);
+    assert.deepEqual([r.status, (await r.json()).error], [404, 'endpoint_disabled']); // no public API
+    assert.equal((await (await fetch(`${b}/api/v1/typo`)).json()).error, 'not_found');
+  });
+});
+
+test('served OpenAPI document: only the switched-on endpoints, the same as the /api index', opts, async () => {
+  /** @param {any} spec */
+  const ops = (spec) => Object.entries(spec.paths).flatMap(([p, item]) => Object.keys(/** @type {any} */ (item)).map((m) => `${m.toUpperCase()} /api${p}`)).filter((e) => !/ \/api(\/v1)?\/?$/.test(e)).sort();
+  for (const env of /** @type {Record<string, string>[]} */ ([
+    {},
+    { ENABLE_SHARE_API: 'false', ENABLE_OPEN_API: 'false', ENABLE_SECRET_META_API: 'false', ENABLE_CONFIG_API: 'false', ENABLE_ME_API: 'false' },
+    { ENABLE_RECEIPTS: 'false' },
+    { ENABLE_BURN: 'false', ENABLE_API_DOCS: 'false' },
+  ])) {
+    await withApp(env, async (b) => {
+      const spec = await (await fetch(`${b}/api/openapi.json`)).json();
+      const index = await (await fetch(`${b}/api`)).json();
+      assert.deepEqual(ops(spec), [...index.endpoints].sort(), JSON.stringify(env));
+      assert.equal(spec.info.version, 'test');
+      // No schema or tag is left that nothing uses.
+      const text = JSON.stringify(spec.paths) + JSON.stringify(spec.components);
+      for (const name of Object.keys(spec.components.schemas)) assert.ok(text.includes(`#/components/schemas/${name}"`), `${name} unused`);
+      const tags = new Set(Object.values(spec.paths).flatMap((i) => Object.values(/** @type {any} */ (i)).flatMap((o) => o.tags || [])));
+      assert.deepEqual(spec.tags.map((/** @type {any} */ t) => t.name).sort(), [...tags].sort());
+    });
+  }
+  await withApp({ ENABLE_SHARE_API: 'false', ENABLE_OPEN_API: 'false', ENABLE_SECRET_META_API: 'false', ENABLE_CONFIG_API: 'false', ENABLE_ME_API: 'false', ENABLE_RECEIPTS: 'false' }, async (b) => {
+    const spec = await (await fetch(`${b}/api/openapi.json`)).json();
+    assert.deepEqual(Object.keys(spec.paths), ['/', '/v1', '/v1/secrets', '/v1/secrets/{id}/reveal']);
+    assert.deepEqual(Object.keys(spec.paths['/v1/secrets/{id}']?.get ? {} : {}), []);
+    assert.equal(spec.components.schemas.PlainSecret, undefined); // only /v1/share used it
+    assert.equal(spec.components.schemas.Receipt, undefined);
+    assert.ok(spec.components.schemas.EncryptedSecret && spec.components.schemas.Error);
+  });
+  // The file itself stays complete.
+  const { readFileSync } = await import('node:fs');
+  const file = JSON.parse(readFileSync(new URL('../openapi/openapi.json', import.meta.url), 'utf8'));
+  assert.ok(file.paths['/v1/share'] && file.paths['/v1/open'] && file.paths['/v1/secrets/{id}']);
+});
+
+test('ENABLE_CREATE_API / REVEAL / RECEIPT / API_INDEX=false: 404 for scripts, the own pages keep working', opts, async () => {
+  await withApp({ ENABLE_CREATE_API: 'false', ENABLE_REVEAL_API: 'false', ENABLE_RECEIPT_API: 'false', ENABLE_API_INDEX: 'false' }, async (b) => {
+    const page = { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' };
+    const script = { 'Content-Type': 'application/json' };
+    const { key, payload } = await encryptSecret('hi');
+    /** @param {string} p @param {Record<string, string>} h @param {any} [body] */
+    const call = (p, h, body) => fetch(b + p, { method: body === undefined ? 'GET' : 'POST', headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
+    assert.equal((await call('/api/v1/secrets', script, payload)).status, 404);
+    const c = await (await call('/api/v1/secrets', page, payload)).json();
+    assert.ok(c.id);
+    assert.equal((await call(`/api/v1/receipts/${c.receiptId}`, script)).status, 404);
+    assert.equal((await call(`/api/v1/receipts/${c.receiptId}`, page)).status, 200);
+    assert.equal((await call(`/api/v1/secrets/${c.id}/reveal`, script, {})).status, 404);
+    const r = await call(`/api/v1/secrets/${c.id}/reveal`, page, {});
+    assert.equal(await decryptSecret(await r.json(), key), 'hi');
+    assert.equal((await call(`/api/v1/receipts/${c.receiptId}/burn`, script, {})).status, 404);
+    for (const p of ['/api', '/api/v1']) assert.equal((await call(p, script)).status, 404, p);
+    const spec = await (await call('/api/openapi.json', script)).json();
+    assert.deepEqual(Object.keys(spec.paths).filter((p) => /^\/(v1)?$/.test(p) || /secrets$|reveal$|receipts/.test(p)), []);
   });
 });
 
@@ -549,7 +608,13 @@ test('API switches: meta, config and me answer 404 when off; the reveal page sti
     for (const p of ['/api/v1/config', '/api/v1/me', `/api/v1/secrets/${'a'.repeat(22)}`]) {
       const r = await fetch(b + p);
       assert.equal(r.status, 404, p);
-      assert.equal((await r.json()).error, 'not_found');
+      assert.deepEqual(await r.json(), { error: 'endpoint_disabled', message: 'This endpoint is disabled on this server' });
+    }
+    // A wrong path stays not_found, so the two can be told apart.
+    assert.equal((await (await fetch(`${b}/api/v1/nope`)).json()).error, 'not_found');
+    for (const p of ['/api/v1/share', '/api/v1/open']) {
+      const r = await fetch(b + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      assert.deepEqual([r.status, (await r.json()).error], [404, 'endpoint_disabled'], p);
     }
     /** @param {string} pass */
     const roundTrip = async (pass) => {

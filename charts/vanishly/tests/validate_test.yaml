@@ -24,6 +24,14 @@ tests:
       - failedTemplate:
           errorPattern: "not config.REDIS_URL"
 
+  - it: rejects REDIS_URL_FILE in config
+    set:
+      config:
+        REDIS_URL_FILE: /run/secrets/redis-url
+    asserts:
+      - failedTemplate:
+          errorPattern: "not config.REDIS_URL"
+
   - it: rejects sign-in credentials in config
     set:
       config:

@@ -89,3 +89,17 @@ tests:
           path: stringData.redis-url
           value: rediss://:change-me@redis.example.com:6380
         documentIndex: 1
+
+  - it: passes the own CA file for an external rediss:// Redis
+    template: templates/configmap.yaml
+    set:
+      redis:
+        enabled: false
+        external:
+          url: rediss://app:change-me@redis.example.com:6380/0
+      config:
+        REDIS_TLS_CA_FILE: /etc/vanishly/redis-ca.pem
+    asserts:
+      - equal:
+          path: data.REDIS_TLS_CA_FILE
+          value: /etc/vanishly/redis-ca.pem

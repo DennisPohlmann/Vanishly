@@ -94,7 +94,11 @@ redis:
     existingSecret: vanishly-redis-url   # key redis-url: rediss://:password@redis.example.com:6380
 ```
 
-`redis.external.url` works too; the chart puts it into a Secret. With
+`redis.external.url` works too; the chart puts it into a Secret. Any Redis
+URL works there: another host, `rediss://` (TLS), an ACL user
+(`rediss://app:password@host:6380`), a database (`/2`). For an own CA, mount
+the PEM file with `extraVolumes`/`extraVolumeMounts` and set
+`config.REDIS_TLS_CA_FILE` to its path. With
 GitOps tools that render without cluster access (Argo CD), set
 `redis.auth.password` or `redis.auth.existingSecret`: a generated password
 would change on every render.

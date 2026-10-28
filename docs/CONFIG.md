@@ -16,7 +16,9 @@ The container then does not come up (`docker compose logs vanishly`).
 | Variable | Default | Meaning |
 |---|---|---|
 | `BASE_URL` | (from the request) | Public address, e.g. `https://ots.example.com`; used for the links that `POST /api/v1/share` returns |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection; with password `redis://:change-me@host:6379`, TLS `rediss://...` |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection, any host: with password `redis://:change-me@host:6379`, with an ACL user `redis://app:change-me@host:6379`, database 2 `redis://host:6379/2`, TLS `rediss://host:6380` (certificate checked against the system CAs) |
+| `REDIS_URL_FILE` | (none) | File with the URL (first line) instead of `REDIS_URL`, e.g. a Docker secret, so the password is not in the environment |
+| `REDIS_TLS_CA_FILE` | (none) | PEM file of an own CA for `rediss://` (e.g. a company CA); the certificate is always checked |
 | `REDIS_PREFIX` | `vanishly:` | Prefix of all keys, to share one Redis with other apps |
 | `HOST` | `0.0.0.0` | Listen address (`127.0.0.1` in the systemd unit) |
 | `PORT` | `3000` | Listen port |
@@ -62,6 +64,10 @@ Everything is on by default; `false` (or `0`, `no`, `off`) switches it off.
 | `ENABLE_SECRET_META_API` | `GET /api/v1/secrets/{id}` (a secret's state and passphrase parameters without using a view) answers 404; the reveal page gets what it needs with the page itself |
 | `ENABLE_CONFIG_API` | `GET /api/v1/config` (limits and options) answers 404; the pages do not use it |
 | `ENABLE_ME_API` | `GET /api/v1/me` (who is signed in) answers 404; the pages do not use it |
+| `ENABLE_CREATE_API` | `POST /api/v1/secrets` only for this server's form: scripts get 404 |
+| `ENABLE_REVEAL_API` | `POST /api/v1/secrets/{id}/reveal` only for this server's reveal page: scripts get 404 |
+| `ENABLE_RECEIPT_API` | `GET /api/v1/receipts/{id}` and `.../burn` only for this server's status page: scripts get 404 |
+| `ENABLE_API_INDEX` | `GET /api` and `GET /api/v1` (the index) answer 404 |
 | `ENABLE_PASSPHRASE` | No passphrase field; the API refuses passphrases (`passphrase_disabled`). Cannot be combined with `REQUIRE_PASSPHRASE`, `MIN_PASSPHRASE_LENGTH` or `PASSPHRASE_COMPLEXITY` |
 | `ENABLE_VIEWS` | No views dropdown: every secret can be opened once (`MAX_VIEWS` becomes 1) |
 | `ENABLE_RECEIPTS` | No status page for the sender: no receipt is stored, `/r/...` and the receipt endpoints answer 404, `receiptId` is `null`. Also switches off the next three |
@@ -73,9 +79,32 @@ Everything is on by default; `false` (or `0`, `no`, `off`) switches it off.
 | `ENABLE_THEME_TOGGLE` | No light/dark button; the template's `defaultMode` or the system setting decides |
 | `ENABLE_GITHUB_LINK` | No "Powered by Vanishly" link to GitHub in the footer |
 
-**Create and reveal only.** To offer nothing but creating a secret
-(`POST /api/v1/secrets`, what the form uses) and revealing it
-(`POST /api/v1/secrets/{id}/reveal`):
+**Every API endpoint and its switch.** All are on by default. A switched-off
+endpoint answers `404 {"error": "endpoint_disabled", ...}` (a wrong path:
+`not_found`); the answer does not name the variable. The served
+`/api/openapi.json`, the API reference (`/api/docs`) and the index (`/api`)
+list only the endpoints that are on. Endpoints the web pages need are, when
+switched off, still answered for this server's own pages (the browser's
+`Sec-Fetch-Site` header; a guard against casual use, no access control).
+
+| Endpoint | Switch | Off |
+|---|---|---|
+| `GET /api`, `GET /api/v1` | `ENABLE_API_INDEX` | 404 |
+| `GET /api/openapi.json`, `/api/docs` | `ENABLE_API_DOCS` (docs page), `ENABLE_API` (everything) | 404 |
+| `GET /api/v1/config` | `ENABLE_CONFIG_API` | 404 |
+| `POST /api/v1/secrets` | `ENABLE_CREATE_API` | 404 for scripts, the form keeps working |
+| `POST /api/v1/share` | `ENABLE_SHARE_API` | 404 |
+| `GET /api/v1/secrets/{id}` | `ENABLE_SECRET_META_API` | 404 (the reveal page does not need it) |
+| `POST /api/v1/secrets/{id}/reveal` | `ENABLE_REVEAL_API` | 404 for scripts, the reveal page keeps working |
+| `POST /api/v1/open` | `ENABLE_OPEN_API` | 404 |
+| `GET /api/v1/receipts/{id}` | `ENABLE_RECEIPT_API` (`ENABLE_RECEIPTS` also removes the status page) | 404 for scripts, the status page keeps working |
+| `POST /api/v1/receipts/{id}/burn` | `ENABLE_RECEIPT_API`, `ENABLE_BURN` | as above; `ENABLE_BURN=false` removes it for all |
+| `GET /api/v1/me` | `ENABLE_ME_API` (only with sign-in) | 404 |
+| `GET /api/v1/groups` | `RECIPIENT_GROUPS=*` (only then) | 404 |
+| `GET /api/v1/people` | `RECIPIENT_USER_GROUP` (only then) | 404 |
+
+**Create and reveal only.** To offer nothing but creating a secret and
+revealing it, in the form and for scripts:
 
 ```bash
 ENABLE_SHARE_API=false        # no server-side encryption for scripts
@@ -83,12 +112,13 @@ ENABLE_OPEN_API=false         # no server-side reveal for scripts
 ENABLE_SECRET_META_API=false  # no state lookup of a secret
 ENABLE_CONFIG_API=false       # no limits and options
 ENABLE_ME_API=false           # no "who is signed in"
+ENABLE_RECEIPT_API=false      # status page only in the browser
+ENABLE_API_INDEX=false        # no index under /api
 ```
 
-The status page for the sender uses the receipt endpoints; without it, also
-set `ENABLE_RECEIPTS=false`. The people and group search stay while their
-feature is on. `ENABLE_API=false` goes further: then only this server's own
-pages may call the API (a guard against casual use, not access control).
+For the web form only, without any scripts, also set
+`ENABLE_CREATE_API=false` and `ENABLE_REVEAL_API=false`, or `ENABLE_API=false`
+for the whole API.
 
 ### Sign-in and recipients (`AUTH_*`, `ENTRA_*`, `OIDC_*`, `RECIPIENT*`)
 
@@ -138,6 +168,18 @@ in the link.
 
 `--maxmemory-policy volatile-ttl` lets Redis drop the secrets closest to
 expiry first if memory runs out; raise `--maxmemory` for heavy use.
+
+**External Redis** (a managed service, a shared cluster): point `REDIS_URL`
+(or `REDIS_URL_FILE`) at it, e.g.
+`rediss://app:change-me@redis.example.com:6380/0`, with `REDIS_TLS_CA_FILE`
+for an own CA and `REDIS_PREFIX` to share it with other apps. With Docker
+Compose, remove the `redis` service and the `depends_on: [redis]` line of
+`vanishly` from your copy of `docker-compose.yml` and set `REDIS_URL` in
+`.env`. With Helm: `redis.enabled=false` and `redis.external.url` or
+`redis.external.existingSecret` (see the chart README). The Redis user needs
+the commands `GET`, `SET`, `HSET`, `HGETALL`, `HMGET`, `EXPIRE`/`PEXPIREAT`,
+`DEL`, `EVAL`/`EVALSHA` (the view script) and `PING` on keys with the prefix;
+`+@all ~vanishly:*` is the simple ACL.
 
 ## Minimum lengths and passphrase rules
 
