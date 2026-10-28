@@ -12,7 +12,7 @@
       <div class="hint" id="secret-hint"><span id="char-count">0</span> / {{ maxChars }} {{ t:home.chars }} <span class="rule">{{ secretRule }}</span></div>
     </div>
     <div class="field" id="passphrase-wrap">
-      <label for="passphrase">{{ passLabel }}</label>
+      <label for="passphrase" id="passphrase-label" data-required="{{ passLabelRequired }}" data-optional="{{ passLabelOptional }}">{{ passLabel }}</label>
       <input type="password" id="passphrase" name="passphrase" maxlength="1000" autocomplete="new-password" aria-describedby="passphrase-hint">
       <div class="hint" id="passphrase-hint">{{ t:home.passphraseHint }} <span class="rule">{{ passRule }}</span></div>
     </div>

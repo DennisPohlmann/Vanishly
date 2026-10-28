@@ -170,6 +170,7 @@ test('WCAG 2.2 AA and flow: sign-in and recipients', async () => {
     RECIPIENT_GROUPS: `IT Admins=${IT}`,
     RECIPIENT_USER_GROUP: IT,
     RECEIPT_SHOW_VIEWER: 'true',
+    REQUIRE_PASSPHRASE: 'unless-recipients',
   });
   const store = await Store.connect(redisUrl, config);
   handler = createApp({ config, store, theme: loadTheme(config, 'test'), version: 'test' });
@@ -194,6 +195,9 @@ test('WCAG 2.2 AA and flow: sign-in and recipients', async () => {
         await page.click('#login-card [data-login]');
         await page.waitForSelector('#create-form');
         await page.fill('#secret', 'only for bob');
+        // REQUIRE_PASSPHRASE=unless-recipients: required until a recipient is chosen.
+        assert.equal(await page.getAttribute('#passphrase', 'aria-required'), 'true');
+        assert.match((await page.textContent('#passphrase-label')) || '', /required/);
         await page.fill('#recipient-email', 'not-an-address');
         await page.click('#recipient-add');
         await page.waitForSelector('#create-error:not([hidden])');
@@ -207,6 +211,8 @@ test('WCAG 2.2 AA and flow: sign-in and recipients', async () => {
         problems.push(...(await scan(page, at('home-people-search'))));
         await page.keyboard.press('Enter');
         assert.equal(await page.isHidden('#people-results'), true);
+        assert.equal(await page.getAttribute('#passphrase', 'aria-required'), null);
+        assert.match((await page.textContent('#passphrase-label')) || '', /optional/);
         assert.match((await page.textContent('#recipient-list')) || '', /Bob Example/);
         await page.selectOption('#recipient-group', IT);
         await page.click('#recipient-group-add');

@@ -309,6 +309,8 @@ function initRecipients() {
         return li;
       }),
     );
+    // REQUIRE_PASSPHRASE=unless-recipients: the form follows the list.
+    wrap.dispatchEvent(new CustomEvent('recipients-change', { detail: items.length }));
   };
   /** @param {'user' | 'group'} kind @param {string} id @param {string} name */
   const add = (kind, id, name) => {
@@ -407,7 +409,20 @@ function initHome() {
   const secret = $('secret');
   const count = $('char-count');
   const err = $('create-error');
-  if (form.dataset.passRequired === '1') $('passphrase').setAttribute('aria-required', 'true');
+  // Passphrase required: always ('1'), or while no recipient is chosen
+  // ('unless-recipients'); label and aria-required follow.
+  const passLabel = $('passphrase-label');
+  let passRequired = form.dataset.passRequired === '1';
+  const setPassRequired = (/** @type {boolean} */ on) => {
+    passRequired = on;
+    if (on) $('passphrase').setAttribute('aria-required', 'true');
+    else $('passphrase').removeAttribute('aria-required');
+    if (passLabel?.dataset.required) passLabel.textContent = on ? passLabel.dataset.required : passLabel.dataset.optional || '';
+  };
+  if (form.dataset.passRequired === 'unless-recipients') {
+    setPassRequired(true);
+    $('recipients-wrap')?.addEventListener('recipients-change', (/** @type {any} */ ev) => setPassRequired(!ev.detail));
+  } else if (passRequired) setPassRequired(true);
   const update = () => (count.textContent = String(secret.value.length));
   secret.addEventListener('input', update);
   $('generate').addEventListener('click', () => {
@@ -425,18 +440,22 @@ function initHome() {
     const minPass = Number(form.dataset.minPass || 0);
     const pass = off('passphrase') ? '' : $('passphrase').value;
     if (secret.value.length < minChars) return showError(err, t('error.tooShort', { n: minChars }), secret);
-    if (form.dataset.passRequired === '1' && !pass) return showError(err, t('error.passRequired'), passField);
-    if (pass && pass.length < minPass) return showError(err, t('error.passTooShort', { n: minPass }), passField);
-    const missing = pass ? missingClasses(pass, (form.dataset.passClasses || '').split(',').filter(Boolean)) : [];
-    if (missing.length) {
-      return showError(err, t('error.passWeak', { list: missing.map((c) => t(`rule.${c}`)).join(', ') }), passField);
-    }
+    // Recipients first: an address typed but not yet added counts (and so
+    // decides REQUIRE_PASSPHRASE=unless-recipients).
     if (recipients) {
       const e = recipients.flush();
       if (e) return showError(err, e, $('recipient-email'));
       if ($('recipients-wrap').dataset.required === '1' && !recipients.users().length && !recipients.groups().length) {
         return showError(err, t('error.recipientsRequired'), $('recipient-email'));
       }
+    }
+    if (passRequired && !pass) {
+      return showError(err, t(form.dataset.passRequired === 'unless-recipients' ? 'error.passRequiredNoRecipients' : 'error.passRequired'), passField);
+    }
+    if (pass && pass.length < minPass) return showError(err, t('error.passTooShort', { n: minPass }), passField);
+    const missing = pass ? missingClasses(pass, (form.dataset.passClasses || '').split(',').filter(Boolean)) : [];
+    if (missing.length) {
+      return showError(err, t('error.passWeak', { list: missing.map((c) => t(`rule.${c}`)).join(', ') }), passField);
     }
     const confirmBox = $('confirm');
     if (confirmBox && !confirmBox.checked) return showError(err, t('error.confirm'), confirmBox);
@@ -459,7 +478,9 @@ function initHome() {
         if (data.error === 'too_many_recipients') return showError(err, t('error.recipientsMax', { n: data.max }), $('recipient-email'));
         if (data.error === 'too_short') return showError(err, t('error.tooShort', { n: minChars }), secret);
         if (data.error === 'confirmation_required') return showError(err, t('error.confirm'), confirmBox);
-        if (data.error === 'passphrase_required') return showError(err, t('error.passRequired'), passField);
+        if (data.error === 'passphrase_required') {
+          return showError(err, t(form.dataset.passRequired === 'unless-recipients' ? 'error.passRequiredNoRecipients' : 'error.passRequired'), passField);
+        }
         return showError(err, errorText(status));
       }
       const origin = location.origin;
@@ -536,10 +557,16 @@ function initSecret() {
       /** @type {Record<string, string>} */
       const body = {};
       if (needsPass) {
-        const meta = await api(`/api/v1/secrets/${id}`);
-        if (meta.status !== 200) return gone(meta.status);
-        pk = await unlockKey($('reveal-passphrase').value, meta.data);
-        body.verifier = await verifierFor(pk, meta.data);
+        // Salt and iterations come with the page; a view of an own template
+        // without them falls back to GET /v1/secrets/{id}.
+        let params = card.dataset.salt ? { salt: card.dataset.salt, iterations: Number(card.dataset.iterations) } : null;
+        if (!params) {
+          const meta = await api(`/api/v1/secrets/${id}`);
+          if (meta.status !== 200) return gone(meta.status);
+          params = meta.data;
+        }
+        pk = await unlockKey($('reveal-passphrase').value, params);
+        body.verifier = await verifierFor(pk, params);
       }
       const { status, data } = await api(`/api/v1/secrets/${id}/reveal`, body);
       if (status === 401 || data.error === 'not_recipient') {

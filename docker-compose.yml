@@ -57,7 +57,7 @@ services:
       MIN_SECRET_CHARS: ${MIN_SECRET_CHARS:-1}
       MIN_PASSPHRASE_LENGTH: ${MIN_PASSPHRASE_LENGTH:-0}       # 0 = any
       PASSPHRASE_COMPLEXITY: ${PASSPHRASE_COMPLEXITY:-}        # upper,lower,digit,symbol or all (empty: none)
-      REQUIRE_PASSPHRASE: ${REQUIRE_PASSPHRASE:-false}
+      REQUIRE_PASSPHRASE: ${REQUIRE_PASSPHRASE:-false}         # true, or unless-recipients: only secrets without recipients
       PASSPHRASE_ATTEMPTS: ${PASSPHRASE_ATTEMPTS:-5}           # wrong passphrases before the secret burns
       # --- Confirmation checkbox before "Create secret link"
       CONFIRM_CHECKBOX: ${CONFIRM_CHECKBOX:-false}
@@ -76,6 +76,9 @@ services:
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-true}   # API reference (Scalar) at /api/docs
       ENABLE_API_LINK: ${ENABLE_API_LINK:-true}   # "API" link in the footer
       ENABLE_SHARE_API: ${ENABLE_SHARE_API:-true} # POST /api/v1/share (server-side encryption for scripts)
+      ENABLE_SECRET_META_API: ${ENABLE_SECRET_META_API:-true}  # GET /api/v1/secrets/{id} (state without a view)
+      ENABLE_CONFIG_API: ${ENABLE_CONFIG_API:-true}            # GET /api/v1/config (limits and options)
+      ENABLE_ME_API: ${ENABLE_ME_API:-true}                    # GET /api/v1/me (who is signed in)
       ENABLE_OPEN_API: ${ENABLE_OPEN_API:-true}   # POST /api/v1/open (open a link with its passphrase from scripts)
       # --- Features (true = on)
       ENABLE_PASSPHRASE: ${ENABLE_PASSPHRASE:-true}            # passphrase field

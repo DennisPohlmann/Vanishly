@@ -99,6 +99,7 @@ export const SETTINGS = [
   'RATE_LIMIT_CREATE', 'RATE_LIMIT_READ', 'RATE_LIMIT_WINDOW',
   'API_DOCS', 'ACCESS_LOG',
   'ENABLE_API', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SHARE_API', 'ENABLE_OPEN_API',
+  'ENABLE_SECRET_META_API', 'ENABLE_CONFIG_API', 'ENABLE_ME_API',
   'ENABLE_PASSPHRASE', 'ENABLE_VIEWS', 'ENABLE_RECEIPTS', 'ENABLE_BURN', 'ENABLE_VIEW_LOG',
   'ENABLE_RECEIPT_SHARE_LINK', 'ENABLE_GENERATOR', 'ENABLE_LANG_SWITCH', 'ENABLE_THEME_TOGGLE',
   'ENABLE_GITHUB_LINK', 'VANISHLY_VERSION',
@@ -353,7 +354,15 @@ export function loadConfig(env = process.env) {
     minSecretChars: num('MIN_SECRET_CHARS', 1, 1, 1000000),
     minPassphraseLength: num('MIN_PASSPHRASE_LENGTH', 0, 0, 1000),
     passphraseClasses: named('PASSPHRASE_COMPLEXITY', () => classes(env.PASSPHRASE_COMPLEXITY || '')),
-    requirePassphrase: sw('REQUIRE_PASSPHRASE', false),
+    // REQUIRE_PASSPHRASE: false (off), true (always) or unless-recipients
+    // (only for secrets without recipients).
+    passphraseRule: named('REQUIRE_PASSPHRASE', () =>
+      String(env.REQUIRE_PASSPHRASE || '').trim().toLowerCase() === 'unless-recipients'
+        ? /** @type {'off' | 'always' | 'unless-recipients'} */ ('unless-recipients')
+        : flag(env.REQUIRE_PASSPHRASE, false)
+          ? 'always'
+          : 'off',
+    ),
     passphraseAttempts: num('PASSPHRASE_ATTEMPTS', 5, 1, 100),
     // The "Generate" button: length and character classes (empty = all four).
     generatorLength: num('GENERATOR_LENGTH', 20, 8, 128),
@@ -378,6 +387,10 @@ export function loadConfig(env = process.env) {
       generator: sw('ENABLE_GENERATOR', true),
       shareApi: sw('ENABLE_SHARE_API', true),
       openApi: sw('ENABLE_OPEN_API', true),
+      // Single API endpoints the web pages do not need (create and reveal only).
+      secretMetaApi: sw('ENABLE_SECRET_META_API', true),
+      configApi: sw('ENABLE_CONFIG_API', true),
+      meApi: sw('ENABLE_ME_API', true),
       langSwitch: sw('ENABLE_LANG_SWITCH', true),
       themeToggle: sw('ENABLE_THEME_TOGGLE', true),
       apiLink: sw('ENABLE_API_LINK', true),
@@ -387,8 +400,10 @@ export function loadConfig(env = process.env) {
     auth: authConfig(env, baseUrl),
   };
   if (config.minSecretChars > maxSecretChars) throw new Error('MIN_SECRET_CHARS is above MAX_SECRET_CHARS');
+  /** REQUIRE_PASSPHRASE=true: every secret needs one. */
+  const requirePassphrase = config.passphraseRule === 'always';
   if (!config.features.passphrase) {
-    if (config.requirePassphrase) throw new Error('REQUIRE_PASSPHRASE=true needs ENABLE_PASSPHRASE=true');
+    if (config.passphraseRule !== 'off') throw new Error(`REQUIRE_PASSPHRASE=${config.passphraseRule === 'always' ? 'true' : config.passphraseRule} needs ENABLE_PASSPHRASE=true`);
     if (config.minPassphraseLength || config.passphraseClasses.length) {
       throw new Error('MIN_PASSPHRASE_LENGTH and PASSPHRASE_COMPLEXITY need ENABLE_PASSPHRASE=true');
     }
@@ -402,7 +417,7 @@ export function loadConfig(env = process.env) {
     config.features.openApi = false;
   }
   if (!config.api && !config.apiDocs) config.features.apiLink = false;
-  return config;
+  return { ...config, requirePassphrase };
 }
 
 /** @typedef {ReturnType<typeof loadConfig>} Config */

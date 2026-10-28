@@ -119,7 +119,7 @@ config:
   MIN_PASSPHRASE_LENGTH: ""
   # upper,lower,digit,symbol or all (none).
   PASSPHRASE_COMPLEXITY: ""
-  # Every secret needs a passphrase (false).
+  # true: every secret needs a passphrase; unless-recipients: every secret without recipients (false).
   REQUIRE_PASSPHRASE: ""
   # Wrong passphrases before the secret burns (5).
   PASSPHRASE_ATTEMPTS: ""
@@ -150,6 +150,9 @@ config:
   ENABLE_API_LINK: ""
   ENABLE_SHARE_API: ""
   ENABLE_OPEN_API: ""
+  ENABLE_SECRET_META_API: ""
+  ENABLE_CONFIG_API: ""
+  ENABLE_ME_API: ""
   # == Features (true = on)
   ENABLE_PASSPHRASE: ""
   ENABLE_VIEWS: ""

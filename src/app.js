@@ -213,6 +213,19 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
    * @param {any} b
    * @param {import('express').Response} res
    */
+  /**
+   * REQUIRE_PASSPHRASE: is a passphrase needed for a secret with these
+   * recipients? The error says why.
+   * @param {unknown[]} to
+   */
+  const passphraseNeeded = (to) => {
+    if (config.passphraseRule === 'always') return new ApiError(400, 'passphrase_required', 'This server requires a passphrase');
+    if (config.passphraseRule === 'unless-recipients' && !to.length) {
+      return new ApiError(400, 'passphrase_required', 'A passphrase is required when no recipients are given');
+    }
+    return null;
+  };
+  /** @param {any} b @param {import('express').Response} res */
   const recipientsOf = (b, res) => {
     const users = b.recipients ?? [];
     const groups = b.recipientGroups ?? [];
@@ -293,7 +306,15 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     return new ApiError(400, 'confirmation_required', `${rule} ${hint}`, { rule });
   };
 
+  // ENABLE_CONFIG_API / ENABLE_ME_API / ENABLE_SECRET_META_API=false: 404,
+  // the web pages do not use these endpoints.
+  /** @param {boolean} on */
+  const switchedOff = (on) => {
+    if (!on) throw new ApiError(404, 'not_found', 'No such endpoint');
+  };
+
   api.get('/v1/config', (_req, res) => {
+    switchedOff(config.features.configApi);
     res.json({
       ttlOptions,
       languages: theme.languages,
@@ -306,6 +327,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       minPassphraseLength: config.minPassphraseLength,
       passphraseComplexity: config.passphraseClasses,
       requirePassphrase: config.requirePassphrase,
+      passphraseRule: config.passphraseRule,
       confirmation: config.confirmCheckbox
         ? Object.fromEntries(
             theme.languages.map((l) => [l, confirmRule(l)]),
@@ -331,6 +353,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   });
 
   api.get('/v1/me', (_req, res) => {
+    switchedOff(config.features.meApi);
     const u = userOf(res);
     res.json(u ? { signedIn: true, name: u.name, user: u.user, app: Boolean(u.app) } : { signedIn: false });
   });
@@ -390,11 +413,10 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     // MIN_PASSPHRASE_LENGTH cannot be checked here: the passphrase never
     // leaves the browser. The form enforces it; /v1/share checks it.
     if (config.confirmCheckbox && b.confirmed !== true) throw confirmationRequired(res);
-    if (config.requirePassphrase && !b.verifier) {
-      throw new ApiError(400, 'passphrase_required', 'This server requires a passphrase');
-    }
-    const { ttl, views } = options(b);
     const to = recipientsOf(b, res);
+    const noPass = b.verifier ? null : passphraseNeeded(to);
+    if (noPass) throw noPass;
+    const { ttl, views } = options(b);
     const s = await store.create(
       { ciphertext: b.ciphertext, iv: b.iv, salt: b.salt, iterations: b.iterations, verifier: b.verifier || undefined },
       ttl,
@@ -425,9 +447,9 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     if (pass && !config.features.passphrase) {
       throw new ApiError(400, 'passphrase_disabled', 'Passphrases are switched off on this server');
     }
-    if (config.requirePassphrase && !pass) {
-      throw new ApiError(400, 'passphrase_required', 'This server requires a passphrase');
-    }
+    const to = recipientsOf(b, res);
+    const noPass = pass ? null : passphraseNeeded(to);
+    if (noPass) throw noPass;
     if (pass && pass.length < config.minPassphraseLength) {
       throw new ApiError(400, 'passphrase_too_short', `The passphrase must be at least ${config.minPassphraseLength} characters long`);
     }
@@ -436,7 +458,6 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       throw new ApiError(400, 'passphrase_too_weak', `The passphrase must also contain: ${missing.join(', ')}`, { missing });
     }
     const { ttl, views } = options(b);
-    const to = recipientsOf(b, res);
     const { key, payload } = await encryptSecret(b.secret, pass);
     const s = await store.create(payload, ttl, views, to);
     const o = origin(req);
@@ -448,6 +469,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   });
 
   api.get('/v1/secrets/:id', limit('read'), async (req, res) => {
+    switchedOff(config.features.secretMetaApi);
     const id = String(req.params.id);
     // Restricted: the salt and the views only for a recipient.
     await mayOpen(id, res);
@@ -558,6 +580,37 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       res.sendFile(scalarJs);
     });
   }
+
+  // GET /api and /api/v1: a small index instead of 404, with the endpoints
+  // that are switched on. A browser goes to the docs page if there is one.
+  /** @type {import('express').RequestHandler} */
+  const index = (req, res) => {
+    if (config.apiDocs && req.accepts(['json', 'html']) === 'html') return void res.redirect(302, '/api/docs');
+    const f = config.features;
+    /** @type {[boolean | undefined, string][]} */
+    const all = [
+      [f.configApi, 'GET /api/v1/config'],
+      [true, 'POST /api/v1/secrets'],
+      [f.shareApi, 'POST /api/v1/share'],
+      [f.secretMetaApi, 'GET /api/v1/secrets/{id}'],
+      [true, 'POST /api/v1/secrets/{id}/reveal'],
+      [f.openApi, 'POST /api/v1/open'],
+      [f.receipts, 'GET /api/v1/receipts/{id}'],
+      [f.receipts && f.burn, 'POST /api/v1/receipts/{id}/burn'],
+      [Boolean(auth) && f.meApi, 'GET /api/v1/me'],
+      [Boolean(auth?.c.groups.any), 'GET /api/v1/groups'],
+      [Boolean(auth?.c.userGroup), 'GET /api/v1/people'],
+    ];
+    res.json({
+      name: 'Vanishly API',
+      version,
+      api: 'v1',
+      ...(config.apiDocs ? { docs: '/api/docs' } : {}),
+      openapi: '/api/openapi.json',
+      endpoints: all.filter(([on]) => on).map(([, e]) => e),
+    });
+  };
+  api.get(['/', '/v1', '/v1/'], index);
 
   api.use((_req, _res, next) => next(new ApiError(404, 'not_found', 'No such endpoint')));
   api.use(
@@ -678,8 +731,10 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
    * RECIPIENT_GROUPS (a dropdown, or a search with "*").
    * @param {import('express').Response} res
    */
+  /** @param {import('express').Response} res can this sender choose recipients? */
+  const recipientsOn = (res) => Boolean(auth && auth.c.recipients !== 'off' && userOf(res));
   const recipientsBlock = (res) => {
-    if (!auth || auth.c.recipients === 'off' || !userOf(res)) return '';
+    if (!recipientsOn(res)) return '';
     const t = theme.strings[lang(res)];
     const required = auth.c.recipients === 'required';
     const g = auth.c.groups;
@@ -753,8 +808,12 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
           maxChars: config.maxSecretChars,
           minChars: config.minSecretChars,
           minPass: config.minPassphraseLength,
-          passRequired: config.requirePassphrase ? '1' : '0',
-          passLabel: config.requirePassphrase ? t['home.passphraseRequired'] : t['home.passphrase'],
+          // unless-recipients: required until a recipient is chosen (the
+          // page script switches it); without the recipients field always.
+          passRequired: config.passphraseRule === 'always' || (config.passphraseRule === 'unless-recipients' && !recipientsOn(res)) ? '1' : config.passphraseRule === 'unless-recipients' ? 'unless-recipients' : '0',
+          passLabel: config.passphraseRule === 'off' ? t['home.passphrase'] : t['home.passphraseRequired'],
+          passLabelRequired: t['home.passphraseRequired'],
+          passLabelOptional: t['home.passphrase'],
           secretRule: config.minSecretChars > 1 ? t['home.minChars'].replace('{n}', String(config.minSecretChars)) : '',
           confirmBlock,
           passClasses: config.passphraseClasses.join(','),
@@ -799,6 +858,10 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
           id,
           // Locked: nothing about the secret (passphrase, views) for others.
           passphrase: m.passphrase && !locked ? '1' : '0',
+          // What the browser needs to derive the passphrase verifier, so the
+          // reveal works without GET /v1/secrets/{id} (ENABLE_SECRET_META_API).
+          salt: m.passphrase && !locked ? m.salt : '',
+          iterations: m.passphrase && !locked ? String(m.iterations) : '',
           viewsLeft: locked ? '' : m.viewsLeft,
           // One view (the default): no counter, just "only once".
           intro: locked

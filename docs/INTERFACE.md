@@ -22,15 +22,16 @@ and `rule` give the rule of the form's checkbox in the language of the request:
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/v1/config` | limits and options of this server |
+| `GET /api`, `GET /api/v1` | index: name, version, `api: "v1"`, docs and OpenAPI links and the endpoints switched on; a browser goes to `/api/docs` |
+| `GET /api/v1/config` | limits and options of this server (`ENABLE_CONFIG_API`) |
 | `POST /api/v1/secrets` | store a secret encrypted by the client |
 | `POST /api/v1/share` | encrypt on the server and store (for scripts) |
 | `POST /api/v1/open` | open a secret link, with its passphrase, on the server (for scripts) |
-| `GET /api/v1/secrets/{id}` | check a secret without using a view; passphrase parameters |
+| `GET /api/v1/secrets/{id}` | check a secret without using a view; passphrase parameters (`ENABLE_SECRET_META_API`) |
 | `POST /api/v1/secrets/{id}/reveal` | take one view, get the ciphertext |
 | `GET /api/v1/receipts/{id}` | status for the sender |
 | `POST /api/v1/receipts/{id}/burn` | destroy the secret now |
-| `GET /api/v1/me` | who is signed in (sign-in on) |
+| `GET /api/v1/me` | who is signed in (sign-in on; `ENABLE_ME_API`) |
 | `GET /api/v1/groups?q=` | search groups for recipients (`RECIPIENT_GROUPS=*`) |
 | `GET /api/v1/people?q=` | search people for recipients (`RECIPIENT_USER_GROUP`): `{ people: [{ name, user, mail }] }`, put `user` into `recipients` |
 

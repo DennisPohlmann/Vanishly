@@ -36,7 +36,7 @@ The container then does not come up (`docker compose logs vanishly`).
 | `MIN_SECRET_CHARS` | `1` | Shortest secret in characters, e.g. `12` to refuse short passwords ([details](#minimum-lengths-and-passphrase-rules)) |
 | `MIN_PASSPHRASE_LENGTH` | `0` | Shortest passphrase in characters; `0` = any ([details](#minimum-lengths-and-passphrase-rules)) |
 | `PASSPHRASE_COMPLEXITY` | (none) | Character classes the passphrase must contain, comma-separated: `upper`, `lower`, `digit`, `symbol`, or `all` ([details](#minimum-lengths-and-passphrase-rules)) |
-| `REQUIRE_PASSPHRASE` | `false` | `true`: every secret needs a passphrase |
+| `REQUIRE_PASSPHRASE` | `false` | `true`: every secret needs a passphrase. `unless-recipients`: every secret without recipients needs one; with recipients (sign-in) it is optional. The form shows the field as required until a recipient is chosen; the API answers `passphrase_required` ("A passphrase is required when no recipients are given"). Without sign-in this means: always |
 | `CONFIRM_CHECKBOX` | `false` | `true`: the sender must tick a confirmation before creating the link; the API then needs `"confirmed": true` and otherwise answers `confirmation_required` with the same text as the checkbox |
 | `CONFIRM_TEXT_EN`, `CONFIRM_TEXT_DE` | (built-in text) | Own text of the confirmation per language; `CONFIRM_TEXT` sets both. Default: "I confirm that this secret contains only one password: not several passwords, no user name and no links that together give access to a whole system." |
 | `PASSPHRASE_ATTEMPTS` | `5` | Wrong passphrases before the secret is destroyed |
@@ -59,6 +59,9 @@ Everything is on by default; `false` (or `0`, `no`, `off`) switches it off.
 | `ENABLE_API_LINK` | No "API" link in the footer; the API itself stays |
 | `ENABLE_SHARE_API` | `POST /api/v1/share` (server-side encryption for scripts) answers 404 |
 | `ENABLE_OPEN_API` | `POST /api/v1/open` (scripts open a link with its passphrase on the server) answers 404 |
+| `ENABLE_SECRET_META_API` | `GET /api/v1/secrets/{id}` (a secret's state and passphrase parameters without using a view) answers 404; the reveal page gets what it needs with the page itself |
+| `ENABLE_CONFIG_API` | `GET /api/v1/config` (limits and options) answers 404; the pages do not use it |
+| `ENABLE_ME_API` | `GET /api/v1/me` (who is signed in) answers 404; the pages do not use it |
 | `ENABLE_PASSPHRASE` | No passphrase field; the API refuses passphrases (`passphrase_disabled`). Cannot be combined with `REQUIRE_PASSPHRASE`, `MIN_PASSPHRASE_LENGTH` or `PASSPHRASE_COMPLEXITY` |
 | `ENABLE_VIEWS` | No views dropdown: every secret can be opened once (`MAX_VIEWS` becomes 1) |
 | `ENABLE_RECEIPTS` | No status page for the sender: no receipt is stored, `/r/...` and the receipt endpoints answer 404, `receiptId` is `null`. Also switches off the next three |
@@ -69,6 +72,23 @@ Everything is on by default; `false` (or `0`, `no`, `off`) switches it off.
 | `ENABLE_LANG_SWITCH` | No language link in the header; `?lang=` and the `lang` cookie no longer count, the browser language and `DEFAULT_LANG` still decide. To serve one language only, use `LANGUAGES` |
 | `ENABLE_THEME_TOGGLE` | No light/dark button; the template's `defaultMode` or the system setting decides |
 | `ENABLE_GITHUB_LINK` | No "Powered by Vanishly" link to GitHub in the footer |
+
+**Create and reveal only.** To offer nothing but creating a secret
+(`POST /api/v1/secrets`, what the form uses) and revealing it
+(`POST /api/v1/secrets/{id}/reveal`):
+
+```bash
+ENABLE_SHARE_API=false        # no server-side encryption for scripts
+ENABLE_OPEN_API=false         # no server-side reveal for scripts
+ENABLE_SECRET_META_API=false  # no state lookup of a secret
+ENABLE_CONFIG_API=false       # no limits and options
+ENABLE_ME_API=false           # no "who is signed in"
+```
+
+The status page for the sender uses the receipt endpoints; without it, also
+set `ENABLE_RECEIPTS=false`. The people and group search stay while their
+feature is on. `ENABLE_API=false` goes further: then only this server's own
+pages may call the API (a guard against casual use, not access control).
 
 ### Sign-in and recipients (`AUTH_*`, `ENTRA_*`, `OIDC_*`, `RECIPIENT*`)
 

@@ -513,6 +513,67 @@ test('confirmation: the API error states the same rule as the form', opts, async
   });
 });
 
+test('GET /api and /api/v1: an index of the switched-on endpoints, browsers to the docs', opts, async () => {
+  await withApp({}, async (b) => {
+    for (const p of ['/api', '/api/', '/api/v1', '/api/v1/']) {
+      const r = await fetch(b + p, { redirect: 'manual' });
+      assert.equal(r.status, 200, p);
+      const j = await r.json();
+      assert.deepEqual([j.name, j.version, j.api, j.docs, j.openapi], ['Vanishly API', 'test', 'v1', '/api/docs', '/api/openapi.json'], p);
+      assert.ok(j.endpoints.includes('POST /api/v1/secrets') && j.endpoints.includes('GET /api/v1/secrets/{id}'));
+    }
+    const html = await fetch(`${b}/api`, { headers: { Accept: 'text/html,application/xhtml+xml' }, redirect: 'manual' });
+    assert.deepEqual([html.status, html.headers.get('location')], [302, '/api/docs']);
+    const spec = await (await fetch(`${b}/api/openapi.json`)).json();
+    assert.ok(spec.paths['/'] && spec.paths['/v1']);
+  });
+  await withApp({ ENABLE_API_DOCS: 'false', ENABLE_SECRET_META_API: 'false', ENABLE_SHARE_API: 'false', ENABLE_OPEN_API: 'false', ENABLE_CONFIG_API: 'false' }, async (b) => {
+    const r = await fetch(`${b}/api`, { headers: { Accept: 'text/html' }, redirect: 'manual' });
+    assert.equal(r.status, 200); // no docs: JSON for browsers too
+    const j = await r.json();
+    assert.equal(j.docs, undefined);
+    assert.deepEqual(j.endpoints, ['POST /api/v1/secrets', 'POST /api/v1/secrets/{id}/reveal', 'GET /api/v1/receipts/{id}', 'POST /api/v1/receipts/{id}/burn']);
+  });
+  await withApp({ ENABLE_API: 'false' }, async (b) => {
+    assert.equal((await fetch(`${b}/api`)).status, 404); // no public API
+  });
+});
+
+test('API switches: meta, config and me answer 404 when off; the reveal page still works', opts, async () => {
+  await withApp({}, async (b) => {
+    for (const p of ['/api/v1/config', '/api/v1/me']) assert.equal((await fetch(b + p)).status, 200, p);
+    const cfg = await (await fetch(`${b}/api/v1/config`)).json();
+    assert.deepEqual([cfg.features.secretMetaApi, cfg.features.configApi, cfg.features.meApi, cfg.passphraseRule], [true, true, true, 'off']);
+  });
+  await withApp({ ENABLE_SECRET_META_API: 'false', ENABLE_CONFIG_API: 'false', ENABLE_ME_API: 'false', ENABLE_SHARE_API: 'false', ENABLE_OPEN_API: 'false' }, async (b) => {
+    for (const p of ['/api/v1/config', '/api/v1/me', `/api/v1/secrets/${'a'.repeat(22)}`]) {
+      const r = await fetch(b + p);
+      assert.equal(r.status, 404, p);
+      assert.equal((await r.json()).error, 'not_found');
+    }
+    /** @param {string} pass */
+    const roundTrip = async (pass) => {
+      const { key, payload } = await encryptSecret(`secret ${pass}`, pass);
+      const c = await (await fetch(`${b}/api/v1/secrets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json();
+      const html = await (await fetch(`${b}/s/${c.id}`)).text();
+      const salt = /data-salt="([^"]*)"/.exec(html)?.[1] || '';
+      const iterations = Number(/data-iterations="([^"]*)"/.exec(html)?.[1] || 0);
+      assert.equal(Boolean(salt), Boolean(pass));
+      /** @type {Uint8Array | undefined} */ let pk;
+      /** @type {Record<string, string>} */ const body = {};
+      if (pass) {
+        pk = await unlockKey(pass, { salt, iterations });
+        body.verifier = await verifierFor(pk, { salt });
+      }
+      const r = await fetch(`${b}/api/v1/secrets/${c.id}/reveal`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      assert.equal(r.status, 200);
+      return decryptSecret(await r.json(), key, pk);
+    };
+    assert.equal(await roundTrip(''), 'secret ');
+    assert.equal(await roundTrip('Pass phrase 1'), 'secret Pass phrase 1');
+  });
+});
+
 test('open a secret from a script with link and passphrase', opts, async () => {
   const { key, payload } = await encryptSecret('db password', 'Sunflower-42');
   const c = (await call('/api/v1/secrets', { ...payload, views: 2 })).data;

@@ -71,6 +71,7 @@
   "error.tooShort": "Das Geheimnis muss mindestens {n} Zeichen lang sein.",
   "error.passTooShort": "Die Passphrase muss mindestens {n} Zeichen lang sein.",
   "error.passRequired": "Gib eine Passphrase ein: Dieser Server verlangt eine.",
+  "error.passRequiredNoRecipients": "Gib eine Passphrase ein oder wähle Empfänger: Ohne Empfänger verlangt dieser Server eine Passphrase.",
   "unit.w.1": "{n} Woche",
   "unit.w.n": "{n} Wochen",
   "unit.d.1": "{n} Tag",

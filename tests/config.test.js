@@ -61,6 +61,17 @@ test('languages: LANGUAGES and DEFAULT_LANG are checked for form here, for exist
 });
 
 test('feature switches', () => {
+  const sw = loadConfig({}).features;
+  assert.deepEqual([sw.secretMetaApi, sw.configApi, sw.meApi], [true, true, true]);
+  const offs = loadConfig({ ENABLE_SECRET_META_API: 'false', ENABLE_CONFIG_API: 'no', ENABLE_ME_API: '0' }).features;
+  assert.deepEqual([offs.secretMetaApi, offs.configApi, offs.meApi], [false, false, false]);
+  assert.throws(() => loadConfig({ ENABLE_ME_API: 'maybe' }), /ENABLE_ME_API/);
+  assert.deepEqual([loadConfig({}).passphraseRule, loadConfig({}).requirePassphrase], ['off', false]);
+  assert.deepEqual([loadConfig({ REQUIRE_PASSPHRASE: 'true' }).passphraseRule, loadConfig({ REQUIRE_PASSPHRASE: 'true' }).requirePassphrase], ['always', true]);
+  const ur = loadConfig({ REQUIRE_PASSPHRASE: 'Unless-Recipients' });
+  assert.deepEqual([ur.passphraseRule, ur.requirePassphrase], ['unless-recipients', false]);
+  assert.throws(() => loadConfig({ REQUIRE_PASSPHRASE: 'unless-recipients', ENABLE_PASSPHRASE: 'false' }), /REQUIRE_PASSPHRASE=unless-recipients needs ENABLE_PASSPHRASE=true/);
+  assert.throws(() => loadConfig({ REQUIRE_PASSPHRASE: 'sometimes' }), /REQUIRE_PASSPHRASE/);
   assert.equal(loadConfig({}).features.passphrase, true);
   assert.equal(loadConfig({ ENABLE_PASSPHRASE: 'off' }).features.passphrase, false);
   assert.throws(() => loadConfig({ ENABLE_VIEWS: 'maybe' }), /invalid switch/);

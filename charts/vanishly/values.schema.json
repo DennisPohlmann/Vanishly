@@ -343,7 +343,7 @@
             },
             {
               "type": "string",
-              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off|unless-recipients)$"
             }
           ]
         },
@@ -488,6 +488,39 @@
           ]
         },
         "ENABLE_OPEN_API": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "ENABLE_SECRET_META_API": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "ENABLE_CONFIG_API": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "ENABLE_ME_API": {
           "anyOf": [
             {
               "type": "boolean"

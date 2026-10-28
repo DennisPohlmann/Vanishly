@@ -38,6 +38,56 @@
     }
   ],
   "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "operationId": "apiIndex",
+        "summary": "API index",
+        "description": "Name, version and the endpoints switched on. A browser (Accept: text/html) is sent to /api/docs when the docs are on.",
+        "responses": {
+          "200": {
+            "description": "The index",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiIndex"
+                }
+              }
+            }
+          },
+          "302": {
+            "description": "Browser: to /api/docs"
+          }
+        }
+      }
+    },
+    "/v1": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "operationId": "apiIndexV1",
+        "summary": "API index",
+        "description": "Name, version and the endpoints switched on. A browser (Accept: text/html) is sent to /api/docs when the docs are on.",
+        "responses": {
+          "200": {
+            "description": "The index",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiIndex"
+                }
+              }
+            }
+          },
+          "302": {
+            "description": "Browser: to /api/docs"
+          }
+        }
+      }
+    },
     "/v1/config": {
       "get": {
         "tags": [
@@ -56,7 +106,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Switched off with ENABLE_CONFIG_API=false (404); the web pages do not use it."
       }
     },
     "/v1/secrets": {
@@ -88,7 +139,7 @@
             }
           },
           "400": {
-            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short` (below MIN_SECRET_CHARS, judged from the ciphertext size) or `passphrase_required` (REQUIRE_PASSPHRASE and no verifier) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
+            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short` (below MIN_SECRET_CHARS, judged from the ciphertext size) or `passphrase_required` (REQUIRE_PASSPHRASE=true and no verifier, or REQUIRE_PASSPHRASE=unless-recipients with neither verifier nor recipients) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
             "content": {
               "application/json": {
                 "schema": {
@@ -191,7 +242,7 @@
             }
           },
           "400": {
-            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short`, `passphrase_required` `passphrase_too_short` (MIN_PASSPHRASE_LENGTH) or `passphrase_too_weak` (PASSPHRASE_COMPLEXITY; `missing` lists the classes) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
+            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short`, `passphrase_required` (REQUIRE_PASSPHRASE=true without passphrase, or unless-recipients with neither passphrase nor recipients), `passphrase_too_short` (MIN_PASSPHRASE_LENGTH) or `passphrase_too_weak` (PASSPHRASE_COMPLEXITY; `missing` lists the classes) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
             "content": {
               "application/json": {
                 "schema": {
@@ -258,7 +309,7 @@
         ],
         "operationId": "getSecretMeta",
         "summary": "Check a secret without using a view",
-        "description": "Tells whether the secret still exists and returns what a client needs to compute the passphrase verifier.",
+        "description": "Tells whether the secret still exists and returns what a client needs to compute the passphrase verifier. Switched off with ENABLE_SECRET_META_API=false (404); the reveal page of this server gets salt and iterations with the page.",
         "parameters": [
           {
             "name": "id",
@@ -737,7 +788,7 @@
         ],
         "operationId": "me",
         "summary": "Who is signed in",
-        "description": "With sign-in on: the user of the session cookie or bearer token.",
+        "description": "With sign-in on: the user of the session cookie or bearer token. Switched off with ENABLE_ME_API=false (404).",
         "responses": {
           "200": {
             "description": "The caller",
@@ -1367,7 +1418,16 @@
           },
           "requirePassphrase": {
             "type": "boolean",
-            "description": "REQUIRE_PASSPHRASE: secrets without passphrase are refused"
+            "description": "REQUIRE_PASSPHRASE=true: every secret without a passphrase is refused (false with unless-recipients; see passphraseRule)"
+          },
+          "passphraseRule": {
+            "type": "string",
+            "enum": [
+              "off",
+              "always",
+              "unless-recipients"
+            ],
+            "description": "REQUIRE_PASSPHRASE: off, always, or unless-recipients (a secret without recipients needs a passphrase; passphrase_required otherwise)"
           },
           "confirmation": {
             "type": [
@@ -1413,7 +1473,10 @@
               "themeToggle",
               "apiLink",
               "githubLink",
-              "openApi"
+              "openApi",
+              "secretMetaApi",
+              "configApi",
+              "meApi"
             ],
             "properties": {
               "passphrase": {
@@ -1453,6 +1516,15 @@
                 "type": "boolean"
               },
               "openApi": {
+                "type": "boolean"
+              },
+              "secretMetaApi": {
+                "type": "boolean"
+              },
+              "configApi": {
+                "type": "boolean"
+              },
+              "meApi": {
                 "type": "boolean"
               }
             }
@@ -1524,6 +1596,47 @@
         "required": [
           "features"
         ]
+      },
+      "ApiIndex": {
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "api",
+          "openapi",
+          "endpoints"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "examples": [
+              "Vanishly API"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "description": "Vanishly version"
+          },
+          "api": {
+            "type": "string",
+            "const": "v1"
+          },
+          "docs": {
+            "type": "string",
+            "description": "The API reference page; only with ENABLE_API_DOCS"
+          },
+          "openapi": {
+            "type": "string",
+            "description": "This document"
+          },
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The endpoints switched on on this server, e.g. \"POST /api/v1/secrets\""
+          }
+        }
       }
     },
     "securitySchemes": {

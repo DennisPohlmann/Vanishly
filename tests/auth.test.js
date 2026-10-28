@@ -253,6 +253,65 @@ test('only a signed-in recipient gets the ciphertext; others use no view', opts,
   assert.equal(csrf2.status, 401);
 });
 
+/**
+ * Reveals like the page does with ENABLE_SECRET_META_API=false: salt and
+ * iterations from the /s/:id page data, then POST reveal.
+ * @param {any} call @param {string} id @param {string} key @param {string} pass @param {string} [cookie]
+ */
+async function revealLikePage(call, id, key, pass, cookie) {
+  const html = String((await call(`/s/${id}`, { cookie })).data);
+  const salt = /data-salt="([^"]*)"/.exec(html)?.[1] || '';
+  const iterations = Number(/data-iterations="([^"]*)"/.exec(html)?.[1] || 0);
+  /** @type {Uint8Array | undefined} */ let pk;
+  /** @type {Record<string, string>} */ const body = {};
+  if (pass) {
+    pk = await unlockKey(pass, { salt, iterations });
+    body.verifier = await verifierFor(pk, { salt });
+  }
+  const r = await call(`/api/v1/secrets/${id}/reveal`, { cookie, body });
+  return { html, salt, status: r.status, data: r.data, text: r.status === 200 ? await decryptSecret(r.data, key, pk) : null };
+}
+
+test('ENABLE_SECRET_META_API=false: restricted secrets reveal from the page data, only for recipients', opts, async () => {
+  const { call, login } = await startApp({ ENABLE_SECRET_META_API: 'false' });
+  const alice = (await login(ALICE)).cookie;
+  const bob = (await login(BOB)).cookie;
+  const c = await create(call, alice, { recipients: ['bob@example.com'] }, 'for bob', 'Pass phrase 1');
+  assert.equal(c.status, 201);
+  assert.equal((await call(`/api/v1/secrets/${c.data.id}`, { cookie: bob })).status, 404);
+  // Others get no salt in the page and no secret.
+  const other = await revealLikePage(call, c.data.id, c.key, '', alice);
+  assert.equal(other.salt, '');
+  assert.match(other.html, /data-locked="denied"/);
+  assert.equal(other.status, 403);
+  // The recipient: salt from the page, the right passphrase opens it.
+  const r = await revealLikePage(call, c.data.id, c.key, 'Pass phrase 1', bob);
+  assert.notEqual(r.salt, '');
+  assert.equal(r.text, 'for bob');
+});
+
+test('REQUIRE_PASSPHRASE=unless-recipients: a passphrase only for secrets without recipients', opts, async () => {
+  const { call, login, base } = await startApp({ REQUIRE_PASSPHRASE: 'unless-recipients' });
+  const alice = (await login(ALICE)).cookie;
+  const none = await create(call, alice);
+  assert.equal(none.status, 400);
+  assert.equal(none.data.error, 'passphrase_required');
+  assert.equal(none.data.message, 'A passphrase is required when no recipients are given');
+  assert.equal((await create(call, alice, {}, 'with pass', 'Pass phrase 1')).status, 201);
+  assert.equal((await create(call, alice, { recipients: ['bob@example.com'] })).status, 201);
+  assert.equal((await create(call, alice, { recipientGroups: [] })).status, 400);
+  const share = await call('/api/v1/share', { cookie: alice, body: { secret: 'x' } });
+  assert.equal(share.data.message, 'A passphrase is required when no recipients are given');
+  assert.equal((await call('/api/v1/share', { cookie: alice, body: { secret: 'x', recipients: ['bob@example.com'] } })).status, 201);
+  const cfg = await call('/api/v1/config');
+  assert.deepEqual([cfg.data.requirePassphrase, cfg.data.passphraseRule], [false, 'unless-recipients']);
+  // The form: required until a recipient is chosen (the page script switches it).
+  const html = String((await call('/', { cookie: alice })).data);
+  assert.match(html, /data-pass-required="unless-recipients"/);
+  assert.match(html, /<label for="passphrase" id="passphrase-label" data-required="Passphrase \(required\)" data-optional="Passphrase \(optional\)">Passphrase \(required\)<\/label>/);
+  assert.ok(base);
+});
+
 test('a non-recipient cannot burn a restricted secret with wrong passphrases', opts, async () => {
   const { call, login } = await startApp();
   const alice = (await login(ALICE)).cookie;
