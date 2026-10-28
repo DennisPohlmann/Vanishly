@@ -1,0 +1,9 @@
+<!-- Own view example: replaces views/error.html for this template only.
+     Placeholders: {{ name }} (escaped), {{{ name }}} (HTML built by the app),
+     {{ t:key }} (text from translations/*.json or template.json "strings"). -->
+<section class="card">
+  <h1>{{ heading }}</h1>
+  <p class="lead">{{ text }}</p>
+  <p class="hint">ACME IT service desk: <a href="mailto:it@example.com">it@example.com</a></p>
+  <a class="btn btn-primary btn-block" href="/">{{ t:nav.new }}</a>
+</section>

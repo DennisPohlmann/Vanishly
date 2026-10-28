@@ -1,0 +1,151 @@
+suite: optional objects
+templates:
+  - templates/ingress.yaml
+  - templates/httproute.yaml
+  - templates/hpa.yaml
+  - templates/pdb.yaml
+  - templates/networkpolicy.yaml
+  - templates/service.yaml
+  - templates/serviceaccount.yaml
+  - templates/extra-objects.yaml
+release:
+  name: t
+  namespace: ots
+capabilities:
+  majorVersion: 1
+  minorVersion: 33
+tests:
+  - it: renders an Ingress with TLS and annotations
+    template: templates/ingress.yaml
+    set:
+      ingress:
+        enabled: true
+        className: nginx
+        annotations:
+          cert-manager.io/cluster-issuer: letsencrypt
+        tls:
+          - secretName: ots-tls
+            hosts: [ots.example.com]
+    asserts:
+      - equal:
+          path: spec.ingressClassName
+          value: nginx
+      - equal:
+          path: metadata.annotations["cert-manager.io/cluster-issuer"]
+          value: letsencrypt
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.name
+          value: t-vanishly
+      - equal:
+          path: spec.tls[0].secretName
+          value: ots-tls
+
+  - it: renders an HTTPRoute for a Gateway
+    template: templates/httproute.yaml
+    set:
+      httpRoute:
+        enabled: true
+        parentRefs:
+          - name: public
+            namespace: gateways
+    asserts:
+      - isKind:
+          of: HTTPRoute
+      - equal:
+          path: spec.rules[0].backendRefs[0]
+          value:
+            name: t-vanishly
+            port: 80
+
+  - it: renders a HorizontalPodAutoscaler
+    template: templates/hpa.yaml
+    set:
+      autoscaling:
+        enabled: true
+        targetMemoryUtilizationPercentage: 70
+    asserts:
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - lengthEqual:
+          path: spec.metrics
+          count: 2
+
+  - it: renders a PodDisruptionBudget with maxUnavailable
+    template: templates/pdb.yaml
+    set:
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 1
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+      - notExists:
+          path: spec.minAvailable
+
+  - it: limits egress to DNS and the bundled Redis
+    template: templates/networkpolicy.yaml
+    set:
+      networkPolicy:
+        enabled: true
+    asserts:
+      - lengthEqual:
+          path: spec.egress
+          count: 2
+      - equal:
+          path: spec.egress[1].to[0].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: redis
+
+  - it: sets Service type, annotations and nodePort
+    template: templates/service.yaml
+    set:
+      service:
+        type: NodePort
+        nodePort: 30080
+        annotations:
+          example.com/a: b
+    asserts:
+      - equal:
+          path: spec.type
+          value: NodePort
+      - equal:
+          path: spec.ports[0].nodePort
+          value: 30080
+      - equal:
+          path: metadata.annotations["example.com/a"]
+          value: b
+
+  - it: merges overrides.service
+    template: templates/service.yaml
+    set:
+      overrides:
+        service:
+          spec:
+            publishNotReadyAddresses: true
+    asserts:
+      - equal:
+          path: spec.publishNotReadyAddresses
+          value: true
+
+  - it: skips the ServiceAccount when create is false
+    template: templates/serviceaccount.yaml
+    set:
+      serviceAccount:
+        create: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders extraObjects with tpl
+    template: templates/extra-objects.yaml
+    set:
+      extraObjects:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ .Release.Name }}-extra"
+    asserts:
+      - equal:
+          path: metadata.name
+          value: t-extra

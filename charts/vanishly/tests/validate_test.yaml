@@ -1,0 +1,62 @@
+suite: checks of the values
+templates:
+  - templates/validate.yaml
+release:
+  name: t
+  namespace: ots
+capabilities:
+  majorVersion: 1
+  minorVersion: 33
+tests:
+  - it: needs an external Redis when the bundled one is off
+    set:
+      redis:
+        enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "set redis.external.url or redis.external.existingSecret"
+
+  - it: rejects REDIS_URL in config
+    set:
+      config:
+        REDIS_URL: redis://x:6379
+    asserts:
+      - failedTemplate:
+          errorPattern: "not config.REDIS_URL"
+
+  - it: rejects sign-in credentials in config
+    set:
+      config:
+        AUTH_SECRET: change-me
+    asserts:
+      - failedTemplate:
+          errorPattern: "AUTH_SECRET is a credential"
+
+  - it: rejects template paths outside TEMPLATES_DIR
+    set:
+      templates:
+        files:
+          ../etc/passwd: x
+    asserts:
+      - failedTemplate:
+          errorPattern: "must be a relative path"
+
+  - it: rejects templates.volume together with files
+    set:
+      templates:
+        files:
+          a/theme.css: x
+        volume:
+          emptyDir: {}
+    asserts:
+      - failedTemplate:
+          errorPattern: "either templates.volume or"
+
+  - it: rejects a Redis password that would break the URL
+    set:
+      redis:
+        auth:
+          password: "p@ss/word"
+    asserts:
+      - failedTemplate:
+          errorPattern: "may only contain"

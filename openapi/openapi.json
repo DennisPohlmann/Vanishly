@@ -1,0 +1,1544 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Vanishly API",
+    "version": "0.0.0",
+    "description": "Share secrets with links that work only once (or a few times) and then burn.\n\n**End-to-end encryption.** Secrets are encrypted on the client (AES-256-GCM, format v1, see `public/js/vanishly-crypto.js` and docs/INTERFACE.md). The server stores only the ciphertext. The key travels in the URL fragment (`#...`), which browsers never send to the server.\n\nUse `POST /v1/secrets` with a client-encrypted payload. For scripts without crypto, `POST /v1/share` encrypts on the server, returns the full links with the key and forgets the key.\n\n**Authentication.** By default none: whoever knows a secret or receipt id may use it, so ids are 128-bit random values. With sign-in on (`AUTH_PROVIDER=entra` or `oidc`, see `auth` in `GET /v1/config`) creating may need a signed-in user (`AUTH_CREATE`), and a secret with `recipients` / `recipientGroups` opens only for one of them: `GET /v1/secrets/{id}`, `/reveal` and `/v1/open` answer `401 login_required` without a sign-in and `403 not_recipient` for anybody else, without using a view. Browsers use the session cookie of `/auth/login`; scripts send an access token of the provider as `Authorization: Bearer` when the server sets `AUTH_API_AUDIENCE`.\n\n**Switches.** An operator can turn parts off (see `features` in `GET /v1/config`). Switched-off endpoints answer 404: `/v1/share` (`ENABLE_SHARE_API`), the receipt endpoints (`ENABLE_RECEIPTS`), burn (`ENABLE_BURN`). With `ENABLE_API=false` the whole API answers 404 except for the server's own pages.",
+    "license": {
+      "name": "GPL-3.0-or-later",
+      "identifier": "GPL-3.0-or-later"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ],
+  "security": [
+    {},
+    {
+      "bearerAuth": []
+    },
+    {
+      "sessionCookie": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "secrets",
+      "description": "Create and reveal secrets"
+    },
+    {
+      "name": "receipts",
+      "description": "Status for the sender, burn"
+    },
+    {
+      "name": "meta",
+      "description": "Server settings"
+    }
+  ],
+  "paths": {
+    "/v1/config": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "operationId": "getConfig",
+        "summary": "Limits and options of this server",
+        "responses": {
+          "200": {
+            "description": "Settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Config"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/secrets": {
+      "post": {
+        "tags": [
+          "secrets"
+        ],
+        "operationId": "createSecret",
+        "summary": "Store a client-encrypted secret",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EncryptedSecret"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short` (below MIN_SECRET_CHARS, judged from the ciphertext size) or `passphrase_required` (REQUIRE_PASSPHRASE and no verifier) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Secret too long",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in needed (`login_required`): creating needs a signed-in user (AUTH_CREATE=signed-in), or recipients were given without one",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/share": {
+      "post": {
+        "tags": [
+          "secrets"
+        ],
+        "operationId": "shareSecret",
+        "summary": "Encrypt on the server and store (for scripts)",
+        "description": "The server encrypts the plaintext with a fresh key, stores the ciphertext and returns the links with the key in the fragment. The key and plaintext are not stored. Prefer client-side encryption where you can.\n\n```\ncurl -s -X POST https://ots.example.com/api/v1/share -H 'Content-Type: application/json' -d '{\"secret\":\"hunter2\",\"ttl\":3600}'\n```",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlainSecret"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Created"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "shareUrl",
+                        "receiptUrl"
+                      ],
+                      "properties": {
+                        "shareUrl": {
+                          "type": "string",
+                          "format": "uri",
+                          "description": "Link for the recipient, with the key after #"
+                        },
+                        "receiptUrl": {
+                          "type": "string",
+                          "format": "uri",
+                          "description": "Status link for the sender, with the key after # (keep it private)"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short`, `passphrase_required` `passphrase_too_short` (MIN_PASSPHRASE_LENGTH) or `passphrase_too_weak` (PASSPHRASE_COMPLEXITY; `missing` lists the classes) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Secret too long",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Switched off (ENABLE_SHARE_API=false or ENABLE_API=false)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in needed (`login_required`): creating needs a signed-in user (AUTH_CREATE=signed-in), or recipients were given without one",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/secrets/{id}": {
+      "get": {
+        "tags": [
+          "secrets"
+        ],
+        "operationId": "getSecretMeta",
+        "summary": "Check a secret without using a view",
+        "description": "Tells whether the secret still exists and returns what a client needs to compute the passphrase verifier.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Secret id",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{22}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretMeta"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown, viewed, burned or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The secret has recipients and nobody is signed in (`login_required`); no view used",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not a recipient (`not_recipient`); no view used",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/secrets/{id}/reveal": {
+      "post": {
+        "tags": [
+          "secrets"
+        ],
+        "operationId": "revealSecret",
+        "summary": "Take one view: returns the ciphertext",
+        "description": "Counts one view. When no views are left the secret is deleted. With a passphrase the verifier is checked first; a wrong one does not use a view, and after PASSPHRASE_ATTEMPTS wrong ones the secret is destroyed.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Secret id",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{22}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "verifier": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{43}$",
+                    "description": "Passphrase verifier (32 bytes, base64url), only for secrets with a passphrase"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ciphertext",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Revealed"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong passphrase; or `not_recipient`: signed in, but not a recipient (no view used)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "attemptsLeft": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown, viewed, burned or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Destroyed after too many wrong passphrases",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The secret has recipients and nobody is signed in (`login_required`); no view used",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/receipts/{id}": {
+      "get": {
+        "tags": [
+          "receipts"
+        ],
+        "operationId": "getReceipt",
+        "summary": "Status of a secret for its sender",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Receipt id",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{22}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or too old (also when ENABLE_RECEIPTS=false)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/receipts/{id}/burn": {
+      "post": {
+        "tags": [
+          "receipts"
+        ],
+        "operationId": "burnSecret",
+        "summary": "Destroy the secret now",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Receipt id",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{22}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Burned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "const": "burned"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or too old (also when ENABLE_RECEIPTS=false or ENABLE_BURN=false)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already viewed, burned or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/open": {
+      "post": {
+        "operationId": "openSecret",
+        "tags": [
+          "secrets"
+        ],
+        "summary": "Open a secret on the server (for scripts)",
+        "description": "For scripts without crypto: send the full secret link (with the key after `#`) and, if the secret has one, its passphrase. The server checks the passphrase, takes one view, decrypts, returns the plaintext and forgets link and passphrase. Works for every secret, also those created in the web form. Like `/v1/share`, the server sees the plaintext for this one request; browsers decrypt themselves. Answers 404 with ENABLE_OPEN_API=false or ENABLE_API=false.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "link"
+                ],
+                "properties": {
+                  "link": {
+                    "type": "string",
+                    "description": "The share link: https://.../s/<id>#<key>",
+                    "examples": [
+                      "https://ots.example.com/s/AbCdEfGhIjKlMnOpQrStUv#key43charactersbase64url..............."
+                    ]
+                  },
+                  "passphrase": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "description": "The secret's passphrase, if it has one"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "secret",
+                    "viewsLeft"
+                  ],
+                  "properties": {
+                    "secret": {
+                      "type": "string"
+                    },
+                    "viewsLeft": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_link`, `invalid_passphrase`, or `passphrase_required` (the secret has a passphrase and none was sent; no view is used)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong passphrase; `attemptsLeft` says how many tries remain, no view is used; or `not_recipient`: signed in, but not a recipient (no view used)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown, viewed, burned or expired (or switched off)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Too many wrong passphrases, the secret was destroyed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`bad_key`: the key in the link does not fit; the view was used",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The secret has recipients and nobody is signed in (`login_required`); no view used",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "operationId": "me",
+        "summary": "Who is signed in",
+        "description": "With sign-in on: the user of the session cookie or bearer token.",
+        "responses": {
+          "200": {
+            "description": "The caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "signedIn"
+                  ],
+                  "properties": {
+                    "signedIn": {
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "type": "string",
+                      "description": "user name / e-mail"
+                    },
+                    "app": {
+                      "type": "boolean",
+                      "description": "a token of an app (client credentials), no user"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/groups": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "operationId": "searchGroups",
+        "summary": "Search groups for recipients",
+        "description": "Only with RECIPIENT_GROUPS=* (Entra and ENTRA_GRAPH=true), for signed-in callers: groups whose name starts with q, at most 10.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 64
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Groups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "groups": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Group search is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The directory (Microsoft Graph) is not reachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/people": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "operationId": "searchPeople",
+        "summary": "Search people for recipients",
+        "description": "Only with RECIPIENT_USER_GROUP (Entra and ENTRA_GRAPH=true), for signed-in users (not app tokens): members of that group (also through nested groups) whose name, e-mail or user name starts with q, at most 10. Put \"user\" into \"recipients\" of a new secret; it is the address the person signs in with.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 64
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "People",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "people": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "description": "Display name"
+                          },
+                          "user": {
+                            "type": "string",
+                            "format": "email",
+                            "description": "Sign-in address (UPN; for guests their e-mail)"
+                          },
+                          "mail": {
+                            "type": "string",
+                            "description": "E-mail address, empty when the account has none"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or an app token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "People search is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The directory (Microsoft Graph) is not reachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "examples": [
+              "not_found"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string",
+            "description": "With confirmation_required: the rule to confirm, the same text as the checkbox of the form (CONFIRM_TEXT or the built-in one), in the language of the request"
+          }
+        },
+        "examples": [
+          {
+            "error": "confirmation_required",
+            "message": "I confirm that this secret contains only one password: not several passwords, no user name and no links that together give access to a whole system. Send \"confirmed\": true to confirm.",
+            "rule": "I confirm that this secret contains only one password: not several passwords, no user name and no links that together give access to a whole system."
+          }
+        ]
+      },
+      "Options": {
+        "type": "object",
+        "properties": {
+          "ttl": {
+            "type": "integer",
+            "minimum": 60,
+            "description": "Seconds until the secret expires (default DEFAULT_TTL, 60 to MAX_TTL; the form offers TTL_OPTIONS)",
+            "examples": [
+              86400
+            ]
+          },
+          "views": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "How often it can be viewed (at most MAX_VIEWS)"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Required, exactly the JSON value true, when the server has CONFIRM_CHECKBOX on: you confirm the rule of the form's checkbox (`confirmation` of /v1/config). Missing, false or \"true\" as a string: 400 `confirmation_required`, whose `message` and `rule` state that rule in the language of the request"
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "email",
+              "maxLength": 254
+            },
+            "description": "Only with sign-in on: e-mail addresses / user names who may open the secret (case-insensitive). The caller must be signed in. Empty or missing: anyone with the link",
+            "examples": [
+              [
+                "bob@example.com"
+              ]
+            ]
+          },
+          "recipientGroups": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Only with sign-in on: groups whose members may open the secret, from RECIPIENT_GROUPS (Entra: group object ids; with RECIPIENT_GROUPS=* any group id from GET /v1/groups)"
+          }
+        }
+      },
+      "EncryptedSecret": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Options"
+          },
+          {
+            "type": "object",
+            "required": [
+              "ciphertext",
+              "iv",
+              "salt",
+              "iterations"
+            ],
+            "properties": {
+              "v": {
+                "type": "integer",
+                "const": 1,
+                "description": "Format version"
+              },
+              "ciphertext": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "description": "AES-256-GCM ciphertext with tag, base64url"
+              },
+              "iv": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{16}$",
+                "description": "12-byte IV, base64url"
+              },
+              "salt": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{22}$",
+                "description": "16-byte salt, base64url"
+              },
+              "iterations": {
+                "type": "integer",
+                "minimum": 100000,
+                "maximum": 2000000,
+                "description": "PBKDF2 iterations for the passphrase"
+              },
+              "verifier": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{43}$",
+                "description": "Passphrase verifier; leave out without a passphrase"
+              }
+            }
+          }
+        ]
+      },
+      "PlainSecret": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Options"
+          },
+          {
+            "type": "object",
+            "required": [
+              "secret"
+            ],
+            "properties": {
+              "secret": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Plaintext (MIN_SECRET_CHARS to MAX_SECRET_CHARS characters)"
+              },
+              "passphrase": {
+                "type": "string",
+                "maxLength": 1000,
+                "description": "Required with REQUIRE_PASSPHRASE; at least MIN_PASSPHRASE_LENGTH characters and the classes of PASSPHRASE_COMPLEXITY"
+              }
+            }
+          }
+        ]
+      },
+      "Created": {
+        "type": "object",
+        "required": [
+          "id",
+          "receiptId",
+          "secretPath",
+          "receiptPath",
+          "expires",
+          "views",
+          "passphrase",
+          "restricted"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "receiptId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null when receipts are switched off (ENABLE_RECEIPTS=false)"
+          },
+          "secretPath": {
+            "type": "string",
+            "examples": [
+              "/s/AbCdEfGhIjKlMnOpQrStUv"
+            ],
+            "description": "Append #<key> for the share link"
+          },
+          "receiptPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Status page for the sender; null when receipts are switched off"
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "views": {
+            "type": "integer"
+          },
+          "passphrase": {
+            "type": "boolean"
+          },
+          "restricted": {
+            "type": "boolean",
+            "description": "true when recipients were given"
+          }
+        }
+      },
+      "SecretMeta": {
+        "type": "object",
+        "required": [
+          "passphrase",
+          "salt",
+          "iterations",
+          "viewsLeft",
+          "expires"
+        ],
+        "properties": {
+          "passphrase": {
+            "type": "boolean"
+          },
+          "salt": {
+            "type": "string"
+          },
+          "iterations": {
+            "type": "integer"
+          },
+          "viewsLeft": {
+            "type": "integer"
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "restricted": {
+            "type": "boolean",
+            "description": "Only for the recipients (only a recipient gets this answer for such a secret)"
+          }
+        }
+      },
+      "Revealed": {
+        "type": "object",
+        "required": [
+          "ciphertext",
+          "iv",
+          "salt",
+          "iterations",
+          "viewsLeft"
+        ],
+        "properties": {
+          "ciphertext": {
+            "type": "string"
+          },
+          "iv": {
+            "type": "string"
+          },
+          "salt": {
+            "type": "string"
+          },
+          "iterations": {
+            "type": "integer"
+          },
+          "viewsLeft": {
+            "type": "integer",
+            "description": "0: this was the last view, the secret is deleted"
+          }
+        }
+      },
+      "Receipt": {
+        "type": "object",
+        "required": [
+          "state",
+          "created",
+          "expires",
+          "maxViews",
+          "viewsLeft",
+          "passphrase",
+          "views"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "new",
+              "viewed",
+              "received",
+              "burned",
+              "expired"
+            ]
+          },
+          "secretPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "While the secret can still be viewed null when ENABLE_RECEIPT_SHARE_LINK=false."
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "maxViews": {
+            "type": "integer"
+          },
+          "viewsLeft": {
+            "type": "integer"
+          },
+          "passphrase": {
+            "type": "boolean"
+          },
+          "burned": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "views": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Times of the views (no IPs are stored) Empty when ENABLE_VIEW_LOG=false."
+          },
+          "recipients": {
+            "type": "integer",
+            "description": "Number of recipients and groups; 0 = anyone with the link"
+          },
+          "viewedBy": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Per view (same order as views): the name of the signed-in viewer with RECEIPT_SHOW_VIEWER, else null"
+          }
+        }
+      },
+      "Config": {
+        "type": "object",
+        "properties": {
+          "ttlOptions": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Expiry choices of the form (TTL_OPTIONS), in seconds"
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "examples": [
+                "en"
+              ]
+            },
+            "description": "Languages the pages are served in (LANGUAGES; built in: en, de, more via TRANSLATIONS_DIR)"
+          },
+          "defaultLang": {
+            "type": "string",
+            "description": "Language when the visitor's choice and browser do not decide (DEFAULT_LANG)"
+          },
+          "defaultTtl": {
+            "type": "integer"
+          },
+          "maxTtl": {
+            "type": "integer"
+          },
+          "maxViews": {
+            "type": "integer"
+          },
+          "maxSecretChars": {
+            "type": "integer"
+          },
+          "passphraseAttempts": {
+            "type": "integer"
+          },
+          "iterations": {
+            "type": "integer"
+          },
+          "minSecretChars": {
+            "type": "integer",
+            "description": "MIN_SECRET_CHARS"
+          },
+          "minPassphraseLength": {
+            "type": "integer",
+            "description": "MIN_PASSPHRASE_LENGTH (0 = no minimum); enforced by the browser and by /v1/share"
+          },
+          "requirePassphrase": {
+            "type": "boolean",
+            "description": "REQUIRE_PASSPHRASE: secrets without passphrase are refused"
+          },
+          "confirmation": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Text the sender must confirm (CONFIRM_CHECKBOX), per language; null when off",
+            "properties": {
+              "en": {
+                "type": "string"
+              },
+              "de": {
+                "type": "string"
+              }
+            }
+          },
+          "passphraseComplexity": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "upper",
+                "lower",
+                "digit",
+                "symbol"
+              ]
+            },
+            "description": "PASSPHRASE_COMPLEXITY: classes the passphrase must contain; enforced by the browser and by /v1/share"
+          },
+          "features": {
+            "type": "object",
+            "description": "Switchable features (ENABLE_*); false = switched off",
+            "required": [
+              "passphrase",
+              "views",
+              "receipts",
+              "burn",
+              "viewLog",
+              "receiptShareLink",
+              "generator",
+              "shareApi",
+              "langSwitch",
+              "themeToggle",
+              "apiLink",
+              "githubLink",
+              "openApi"
+            ],
+            "properties": {
+              "passphrase": {
+                "type": "boolean"
+              },
+              "views": {
+                "type": "boolean"
+              },
+              "receipts": {
+                "type": "boolean"
+              },
+              "burn": {
+                "type": "boolean"
+              },
+              "viewLog": {
+                "type": "boolean"
+              },
+              "receiptShareLink": {
+                "type": "boolean"
+              },
+              "generator": {
+                "type": "boolean"
+              },
+              "shareApi": {
+                "type": "boolean"
+              },
+              "langSwitch": {
+                "type": "boolean"
+              },
+              "themeToggle": {
+                "type": "boolean"
+              },
+              "apiLink": {
+                "type": "boolean"
+              },
+              "githubLink": {
+                "type": "boolean"
+              },
+              "openApi": {
+                "type": "boolean"
+              }
+            }
+          },
+          "auth": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "null when sign-in is off",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "entra",
+                  "oidc"
+                ]
+              },
+              "createNeedsLogin": {
+                "type": "boolean"
+              },
+              "recipients": {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "optional",
+                  "required"
+                ]
+              },
+              "recipientsMax": {
+                "type": "integer"
+              },
+              "recipientDomains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "groups": {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "list",
+                  "search"
+                ]
+              },
+              "groupList": {
+                "type": "array",
+                "description": "The groups of RECIPIENT_GROUPS, only for a signed-in caller",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "peopleSearch": {
+                "type": "boolean",
+                "description": "true with RECIPIENT_USER_GROUP: GET /v1/people suggests people"
+              }
+            }
+          }
+        },
+        "required": [
+          "features"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Access token of the sign-in provider for AUTH_API_AUDIENCE (only with sign-in on)"
+      },
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-vanishly-session",
+        "description": "Session of the web sign-in (`vanishly-session` without HTTPS)"
+      }
+    }
+  }
+}

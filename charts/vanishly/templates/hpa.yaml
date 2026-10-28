@@ -1,0 +1,39 @@
+{{- define "vanishly.hpa" -}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+{{ include "vanishly.metadata" (dict "context" . "name" (include "vanishly.fullname" .) "component" "app") }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "vanishly.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  {{- with .Values.autoscaling.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  metrics:
+    {{- with .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+    {{- with .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+    {{- with .Values.autoscaling.metrics }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end -}}
+{{- if .Values.autoscaling.enabled }}
+{{ include "vanishly.render" (dict "context" . "key" "hpa" "object" (include "vanishly.hpa" .)) }}
+{{- end }}

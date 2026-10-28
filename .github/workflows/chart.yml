@@ -1,0 +1,142 @@
+name: chart
+
+# Checks the Helm chart in charts/vanishly on every pull request and push
+# to main that touches it: helm lint, values.schema.json, unit tests
+# (helm-unittest), the generated README (helm-docs), kubeconform against the
+# Kubernetes API, and ct lint + ct install, which installs the chart with
+# every file in charts/vanishly/ci/ into a kind cluster (with an image built
+# from this commit) and runs `helm test`.
+# build.yml calls it for a release (input "release"): it then checks the
+# chart again, packages it with the release version as chart and app
+# version, pushes it to oci://ghcr.io/<owner>/charts/vanishly and adds the
+# .tgz to the draft release.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - charts/**
+      - ct.yaml
+      - .github/workflows/chart.yml
+  push:
+    branches: [main]
+    paths:
+      - charts/**
+      - ct.yaml
+      - .github/workflows/chart.yml
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release:
+        description: Version to publish (without v); empty = check only
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  CHART: charts/vanishly
+  HELM_VERSION: v4.3.1
+  HELM_UNITTEST_VERSION: v1.2.1
+  HELM_DOCS_VERSION: v1.14.2
+  KUBECONFORM_VERSION: v0.8.0
+
+jobs:
+  lint:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release != '' && format('v{0}', inputs.release) || '' }}
+      - uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+      - name: helm lint (default and ci values)
+        run: |
+          helm lint --strict "$CHART"
+          for f in "$CHART"/ci/*-values.yaml; do helm lint --strict "$CHART" -f "$f"; done
+      - name: unit tests
+        run: |
+          # Helm 4 verifies plugins; a plugin installed from git has no signature.
+          verify=$(helm plugin install --help | grep -q -- '--verify' && echo --verify=false || true)
+          helm plugin install https://github.com/helm-unittest/helm-unittest.git --version "$HELM_UNITTEST_VERSION" $verify
+          helm unittest --strict "$CHART"
+      - name: README.md is generated from values.yaml
+        run: |
+          go install "github.com/norwoodj/helm-docs/cmd/helm-docs@$HELM_DOCS_VERSION"
+          "$(go env GOPATH)/bin/helm-docs" --chart-search-root charts
+          git diff --exit-code -- "$CHART/README.md" || {
+            echo "::error::charts/vanishly/README.md is out of date: run helm-docs --chart-search-root charts"; exit 1; }
+      - name: kubeconform (rendered manifests against the Kubernetes API)
+        run: |
+          go install "github.com/yannh/kubeconform/cmd/kubeconform@$KUBECONFORM_VERSION"
+          for f in "$CHART"/ci/*-values.yaml; do
+            helm template vanishly "$CHART" -f "$f" --kube-version 1.33.0 |
+              "$(go env GOPATH)/bin/kubeconform" -strict -summary -kubernetes-version 1.33.0 \
+                -schema-location default \
+                -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          done
+
+  # A real install in kind with an image built from this commit; skipped
+  # when build.yml calls this for a release (that commit was tested on push).
+  install:
+    if: inputs.release == ''
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # ct compares with the target branch
+      - uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - uses: helm/chart-testing-action@v2.9.0
+      - name: ct lint
+        run: ct lint --config ct.yaml --charts "$CHART"
+      - uses: helm/kind-action@v1.15.1
+      - name: build the image and load it into kind
+        run: |
+          docker build --build-arg VERSION=ct -t vanishly:ct .
+          kind load docker-image vanishly:ct --name chart-testing
+      - name: ct install (every ci/*-values.yaml, then helm test)
+        run: >-
+          ct install --config ct.yaml --charts "$CHART"
+          --helm-extra-set-args "--set=image.registry= --set=image.repository=vanishly --set=image.tag=ct --set=image.pullPolicy=Never"
+
+  publish:
+    if: inputs.release != ''
+    needs: lint
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write # the .tgz in the release
+      packages: write
+    env:
+      RELEASE: ${{ inputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ inputs.release }}
+      - uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: package
+        run: helm package "$CHART" --version "$RELEASE" --app-version "$RELEASE" --destination dist
+      - name: push to ghcr.io
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          echo "$GH_TOKEN" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+          helm push "dist/vanishly-$RELEASE.tgz" "oci://ghcr.io/${OWNER,,}/charts"
+          helm registry logout ghcr.io
+      - name: add the chart to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v$RELEASE" "dist/vanishly-$RELEASE.tgz" --repo "$GITHUB_REPOSITORY"

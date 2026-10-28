@@ -1,0 +1,22 @@
+{{- define "vanishly.templatesConfigmap" -}}
+apiVersion: v1
+kind: ConfigMap
+{{ include "vanishly.metadata" (dict "context" . "name" (printf "%s-templates" (include "vanishly.fullname" .)) "component" "app") }}
+{{- with .Values.templates.files }}
+data:
+  {{- range $path, $content := . }}
+  # {{ $path }}
+  {{ include "vanishly.templates.key" $path }}: {{ $content | quote }}
+  {{- end }}
+{{- end }}
+{{- with .Values.templates.binaryFiles }}
+binaryData:
+  {{- range $path, $content := . }}
+  # {{ $path }}
+  {{ include "vanishly.templates.key" $path }}: {{ $content | nospace | quote }}
+  {{- end }}
+{{- end }}
+{{- end -}}
+{{- if or .Values.templates.files .Values.templates.binaryFiles }}
+{{ include "vanishly.render" (dict "context" . "key" "templatesConfigMap" "object" (include "vanishly.templatesConfigmap" .)) }}
+{{- end }}

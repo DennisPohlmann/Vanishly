@@ -1,0 +1,21 @@
+<section class="card" id="receipt-card" data-id="{{ id }}">
+  <h1>{{ t:receipt.title }}</h1>
+  <p class="notice notice-error" id="receipt-error" role="alert" hidden></p>
+  <dl class="facts" id="receipt-facts" hidden>
+    <dt>{{ t:receipt.state }}</dt><dd><span class="badge" id="r-state"></span></dd>
+    <dt>{{ t:receipt.created }}</dt><dd id="r-created"></dd>
+    <dt>{{ t:receipt.expires }}</dt><dd id="r-expires"></dd>
+    <dt class="r-views-row">{{ t:receipt.views }}</dt><dd class="r-views-row" id="r-views"></dd>
+    <dt>{{ t:receipt.passphrase }}</dt><dd id="r-pass"></dd>
+    <dt class="r-recipients-row" hidden>{{ t:receipt.recipients }}</dt><dd class="r-recipients-row" id="r-recipients" hidden></dd>
+    <dt class="r-log-row">{{ t:receipt.log }}</dt><dd class="r-log-row"><ul class="plain" id="r-log"></ul></dd>
+  </dl>
+  <div id="r-share" hidden>
+    <label for="r-share-link">{{ t:receipt.shareLink }}</label>
+    <div class="copy-row">
+      <input type="text" id="r-share-link" readonly>
+      <button type="button" class="btn" data-copy="r-share-link">{{ t:created.copy }}</button>
+    </div>
+  </div>
+  <button type="button" class="btn btn-danger btn-block" id="burn" hidden>{{ t:receipt.burn }}</button>
+</section>

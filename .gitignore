@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+/custom-templates/*
+!/custom-templates/README.md
+vendor/

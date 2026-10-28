@@ -1,0 +1,53 @@
+<section class="card" id="create-card">
+  <h1>{{ t:home.title }}</h1>
+  <p class="lead">{{ t:tagline }}</p>
+  <form id="create-form" autocomplete="off" novalidate data-min-chars="{{ minChars }}" data-min-pass="{{ minPass }}" data-pass-required="{{ passRequired }}" data-pass-classes="{{ passClasses }}">
+    <div class="field">
+      <div class="field-head">
+        <label for="secret">{{ t:home.secret }}</label>
+        <button type="button" class="btn btn-small btn-ghost" id="generate" data-length="{{ genLength }}" data-sets="{{ genSets }}">{{ t:home.generate }}</button>
+      </div>
+      <textarea id="secret" name="secret" rows="7" maxlength="{{ maxChars }}" required aria-describedby="secret-hint" spellcheck="false"
+        placeholder="{{ t:home.secretPlaceholder }}"></textarea>
+      <div class="hint" id="secret-hint"><span id="char-count">0</span> / {{ maxChars }} {{ t:home.chars }} <span class="rule">{{ secretRule }}</span></div>
+    </div>
+    <div class="field" id="passphrase-wrap">
+      <label for="passphrase">{{ passLabel }}</label>
+      <input type="password" id="passphrase" name="passphrase" maxlength="1000" autocomplete="new-password" aria-describedby="passphrase-hint">
+      <div class="hint" id="passphrase-hint">{{ t:home.passphraseHint }} <span class="rule">{{ passRule }}</span></div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="ttl">{{ t:home.expires }}</label>
+        <select id="ttl" name="ttl">{{{ ttlSelect }}}</select>
+      </div>
+      <div class="field" id="views-wrap">
+        <label for="views">{{ t:home.views }}</label>
+        <select id="views" name="views">{{{ viewsSelect }}}</select>
+      </div>
+    </div>
+    {{{ recipientsBlock }}}
+    {{{ confirmBlock }}}
+    <p class="notice notice-error" id="create-error" role="alert" hidden></p>
+    <button type="submit" class="btn btn-primary btn-block" id="create-submit">{{ t:home.submit }}</button>
+  </form>
+</section>
+
+<section class="card" id="created-card" hidden>
+  <h1 id="created-title" tabindex="-1">{{ t:created.title }}</h1>
+  <label for="share-link">{{ t:created.share }}</label>
+  <div class="copy-row">
+    <input type="text" id="share-link" readonly>
+    <button type="button" class="btn btn-primary" data-copy="share-link">{{ t:created.copy }}</button>
+  </div>
+  <div id="receipt-wrap">
+    <label for="receipt-link">{{ t:created.receipt }}</label>
+    <div class="copy-row">
+      <input type="text" id="receipt-link" readonly>
+      <button type="button" class="btn" data-copy="receipt-link">{{ t:created.copy }}</button>
+    </div>
+  </div>
+  <p class="hint" id="created-info" role="status"></p>
+  <p class="notice notice-ok" id="created-restricted" hidden>{{ t:created.restricted }}</p>
+  <a class="btn btn-ghost btn-block" href="/">{{ t:created.another }}</a>
+</section>

@@ -1,0 +1,8 @@
+# Builds the Vanishly image from this folder instead of pulling it:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#   (or: make up)
+services:
+  vanishly:
+    image: vanishly:local
+    build: .

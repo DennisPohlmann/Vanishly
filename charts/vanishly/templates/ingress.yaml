@@ -1,0 +1,44 @@
+{{- define "vanishly.ingress" -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+{{ include "vanishly.metadata" (dict "context" . "name" (include "vanishly.fullname" .) "component" "app" "labels" .Values.ingress.labels "annotations" .Values.ingress.annotations) }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- range . }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ tpl . $ | quote }}
+        {{- end }}
+      {{- with .secretName }}
+      secretName: {{ tpl . $ }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - {{- with .host }}
+      host: {{ tpl . $ | quote }}
+      {{- end }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ default "Prefix" .pathType }}
+            backend:
+              service:
+                name: {{ include "vanishly.fullname" $ }}
+                port:
+                  name: {{ $.Values.service.portName }}
+          {{- end }}
+    {{- end }}
+    {{- with .Values.ingress.extraRules }}
+    {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 4 }}
+    {{- end }}
+{{- end -}}
+{{- if .Values.ingress.enabled }}
+{{ include "vanishly.render" (dict "context" . "key" "ingress" "object" (include "vanishly.ingress" .)) }}
+{{- end }}

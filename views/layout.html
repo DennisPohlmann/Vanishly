@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="{{ lang }}" data-default-mode="{{ defaultMode }}" data-mode-toggle="{{ modeToggle }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <title>{{ title }}</title>
+  <link rel="icon" href="{{ favicon }}">
+  <script src="/static/js/theme-mode.js?v={{ version }}"></script>
+  <link rel="stylesheet" href="/static/css/base.css?v={{ version }}">
+  <link rel="stylesheet" href="{{ themeCss }}">
+</head>
+<body data-page="{{ page }}" class="{{ featureClasses }}">
+  <a class="skip-link" href="#main">{{ t:nav.skip }}</a>
+  <header class="site-header">
+    <a class="brand" href="/">
+      {{{ logoHtml }}}
+      <span class="brand-name">{{ siteName }}</span>
+    </a>
+    <nav class="site-nav" aria-label="{{ t:nav.label }}">
+      <a href="/">{{ t:nav.new }}</a>
+      {{{ authNav }}}
+      <a class="lang-switch" href="?lang={{ otherLang }}" hreflang="{{ otherLang }}" lang="{{ otherLang }}">{{ otherLangName }}</a>
+      <button type="button" class="mode-toggle" id="mode-toggle" title="{{ t:theme.toggle }}" aria-label="{{ t:theme.toggle }}" aria-pressed="false">
+        <span class="icon-sun" aria-hidden="true">&#9728;</span><span class="icon-moon" aria-hidden="true">&#9790;</span>
+      </button>
+    </nav>
+  </header>
+  <main class="site-main" id="main" tabindex="-1">
+    <noscript><p class="notice notice-error">{{ t:error.nojs }}</p></noscript>
+    {{{ content }}}
+  </main>
+  <footer class="site-footer">
+    <span class="footer-links">{{{ footerLinks }}}<a class="api-link" href="{{ apiHref }}">{{ t:nav.api }}</a></span>
+    <a class="github-link" href="https://github.com/DennisPohlmann/Vanishly" rel="noopener">{{ t:footer.powered }}</a>
+  </footer>
+  <div class="sr-only" id="sr-status" role="status" aria-live="polite"></div>
+  <script type="application/json" id="i18n">{{{ i18n }}}</script>
+  <script type="module" src="/static/js/app.js?v={{ version }}"></script>
+</body>
+</html>

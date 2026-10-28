@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.github
+.claude
+.env
+.env.local
+custom-templates
+docs
+tests
+Dockerfile
+docker-compose.yml
+docker-compose.build.yml
+vendor

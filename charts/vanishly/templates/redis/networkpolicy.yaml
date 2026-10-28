@@ -1,0 +1,25 @@
+{{- define "vanishly.redis.networkpolicy" -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+{{ include "vanishly.metadata" (dict "context" . "name" (include "vanishly.redis.fullname" .) "component" "redis") }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "vanishly.redis.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  # Only the Vanishly pods reach Redis; Redis itself talks to nobody.
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "vanishly.selectorLabels" . | nindent 14 }}
+      ports:
+        - port: redis
+          protocol: TCP
+  egress: []
+{{- end -}}
+{{- if and .Values.redis.enabled .Values.networkPolicy.enabled }}
+{{ include "vanishly.render" (dict "context" . "key" "redisNetworkPolicy" "object" (include "vanishly.redis.networkpolicy" .)) }}
+{{- end }}

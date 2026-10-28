@@ -1,0 +1,271 @@
+name: build
+
+# Every push to main checks, builds the package (workflow artifact) and
+# publishes the image as ghcr.io/dennispohlmann/vanishly:edge.
+# semantic-release then reads the Conventional Commits since the last tag:
+# for a feat, fix or breaking change it bumps the version files, writes
+# CHANGELOG.md, commits that as "chore(release): vX.Y.Z [skip ci]", tags
+# vX.Y.Z and creates the GitHub release as a draft; package and image then
+# build that tag, add the archive and the SBOM to the draft and push the
+# image tags <version>, <major>.<minor> and latest, chart pushes the Helm
+# chart to oci://ghcr.io/<owner>/charts/vanishly, and publish-release
+# publishes it. The draft is needed because releases are immutable: once
+# published, no asset can be added. A manual run builds without publishing.
+# A pull request (e.g. from Dependabot) runs the same checks and builds
+# without publishing. The image is built and scanned with Trivy first
+# (image-scan); a fixable HIGH or CRITICAL vulnerability stops the release.
+# Security checks on every run: npm audit, Trivy over the repository
+# (secrets, lock file, misconfigurations), the Dockerfile, the built image
+# and the Redis image; CodeQL runs in codeql.yml.
+# Once a week (schedule) edge is rebuilt from main, to take in the Alpine
+# updates of apk upgrade without waiting for a commit.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NPM_CONFIG_UPDATE_NOTIFIER: "false"
+  IMAGE: ghcr.io/${{ github.repository_owner }}/vanishly
+
+jobs:
+  check:
+    runs-on: ubuntu-26.04
+    services:
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install -g npm@latest
+      - run: npm ci
+      - run: npm run vendor
+      - name: type check
+        run: npm run lint
+      - name: known vulnerabilities in the production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: tests
+        run: npm test
+        env:
+          REDIS_URL: redis://localhost:6379
+      - name: OpenAPI document
+        run: npx --yes @redocly/cli@2.62.1 lint --extends=minimal openapi/openapi.json
+      # WCAG 2.2 AA (axe-core) of every page and state, all built-in
+      # templates, light and dark, desktop and 320 px phone.
+      - name: accessibility
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:a11y
+        env:
+          REDIS_URL: redis://localhost:6379
+
+  # Builds the image without pushing it and scans it: HIGH or CRITICAL
+  # vulnerabilities that have a fix fail, and so do HIGH or CRITICAL
+  # misconfigurations of the Dockerfile. Findings accepted on purpose go into
+  # .trivyignore with a reason and an expiry date.
+  image-scan:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-trivy
+      - name: scan the Dockerfile
+        run: trivy config --severity HIGH,CRITICAL --exit-code 1 .
+      # Committed secrets (keys, tokens, passwords), vulnerable packages in
+      # package-lock.json and misconfigurations, over the whole checkout.
+      - name: scan the repository (secrets, dependencies, config)
+        run: >-
+          trivy fs --scanners vuln,secret,misconfig --skip-dirs node_modules
+          --severity HIGH,CRITICAL --exit-code 1 .
+      # The Redis image of docker-compose.yml is part of what users run.
+      - name: scan the Redis image of docker-compose.yml
+        run: |
+          redis=$(sed -n 's/^ *image: *\(redis:[^ ]*\).*/\1/p' docker-compose.yml)
+          trivy image --scanners vuln --ignore-unfixed \
+            --severity HIGH,CRITICAL --exit-code 1 "$redis"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: vanishly:scan
+          cache-from: type=gha
+      - name: scan the image
+        run: >-
+          trivy image --scanners vuln --ignore-unfixed
+          --severity HIGH,CRITICAL --exit-code 1 vanishly:scan
+
+  release:
+    needs: [check, image-scan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # all tags and commits since the last release
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: semantic-release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: >-
+          npx --yes
+          -p semantic-release@25.0.9
+          -p @semantic-release/changelog@7.0.0
+          -p @semantic-release/exec@7.1.0
+          -p @semantic-release/git@11.0.1
+          -p conventional-changelog-conventionalcommits@9.3.1
+          semantic-release
+
+  # Runs after the release job (or without it on a manual run) and builds the
+  # new tag if there was a release, otherwise the pushed commit.
+  package:
+    needs: [check, image-scan, release]
+    if: ${{ !cancelled() && needs.check.result == 'success' && needs.image-scan.result == 'success' && needs.release.result != 'failure' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    env:
+      RELEASE: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.version != '' && format('v{0}', needs.release.outputs.version) || github.sha }}
+          fetch-depth: 0 # tags, for the version
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install -g npm@latest
+      - name: make package
+        run: make package
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vanishly
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          if-no-files-found: error
+      - name: add the archive to the release
+        if: env.RELEASE != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v$RELEASE" dist/*.tar.gz dist/*.tar.gz.sha256 --repo "$GITHUB_REPOSITORY"
+
+  # Publishes on a push to main and on the weekly schedule (edge only), with
+  # an SBOM and full provenance as attestations; a release also gets the
+  # SBOM as an SPDX file. A pull request stops at image-scan.
+  image:
+    needs: [check, image-scan, release]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.check.result == 'success' && needs.image-scan.result == 'success' && needs.release.result != 'failure' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write # the SBOM file in the release
+      packages: write
+    env:
+      RELEASE: ${{ needs.release.outputs.version }}
+      PUBLISH: ${{ github.event_name == 'push' || github.event_name == 'schedule' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.version != '' && format('v{0}', needs.release.outputs.version) || github.sha }}
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}},value=v${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
+            type=raw,value=latest,enable=${{ env.RELEASE != '' }}
+          flavor: latest=false
+      - uses: docker/login-action@v4
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ env.PUBLISH == 'true' }}
+          sbom: ${{ env.PUBLISH == 'true' }}
+          provenance: ${{ env.PUBLISH == 'true' && 'mode=max' || 'false' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ env.RELEASE || format('edge+{0}', github.sha) }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: ./.github/actions/setup-trivy
+        if: env.RELEASE != ''
+      - name: add the SBOM to the release
+        if: env.RELEASE != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+        run: |
+          sbom="dist/vanishly-$RELEASE-image.spdx.json"
+          mkdir -p dist
+          trivy image --format spdx-json --output "$sbom" "${IMAGE,,}:$RELEASE"
+          gh release upload "v$RELEASE" "$sbom" --repo "$GITHUB_REPOSITORY"
+
+  # The Helm chart of the release: chart.yml checks it, pushes it to
+  # oci://ghcr.io/<owner>/charts/vanishly and adds the .tgz to the draft.
+  # After image, so the image tag the chart points to exists.
+  chart:
+    needs: [release, image]
+    if: ${{ !cancelled() && needs.release.outputs.version != '' && needs.image.result == 'success' }}
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/chart.yml
+    with:
+      release: ${{ needs.release.outputs.version }}
+
+  # Publishes the draft release once the archive and the SBOM are attached.
+  # Releases are immutable, so this has to come last.
+  publish-release:
+    needs: [release, package, image, chart]
+    if: needs.release.outputs.version != ''
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    env:
+      RELEASE: ${{ needs.release.outputs.version }}
+    steps:
+      - name: publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "v$RELEASE" --draft=false --latest --repo "$GITHUB_REPOSITORY"

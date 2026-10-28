@@ -1,0 +1,8 @@
+# chart-testing (ct) settings for charts/vanishly; used by .github/workflows/chart.yml.
+chart-dirs:
+  - charts
+target-branch: main
+# The chart version is set by semantic-release together with the app version.
+check-version-increment: false
+validate-maintainers: false
+helm-extra-args: --timeout 5m

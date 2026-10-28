@@ -1,0 +1,12 @@
+{{- define "vanishly.configmap" -}}
+apiVersion: v1
+kind: ConfigMap
+{{ include "vanishly.metadata" (dict "context" . "name" (include "vanishly.fullname" .) "component" "app") }}
+{{- with include "vanishly.configData" . | fromYaml }}
+data:
+  {{- toYaml . | nindent 2 }}
+{{- else }}
+data: {}
+{{- end }}
+{{- end -}}
+{{ include "vanishly.render" (dict "context" . "key" "configMap" "object" (include "vanishly.configmap" .)) }}

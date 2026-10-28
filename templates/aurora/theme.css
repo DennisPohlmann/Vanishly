@@ -1,0 +1,103 @@
+/* Vanishly "aurora" template: bright white with soft violet and teal
+   accents, round pill buttons; a deep night-blue dark mode. Mobile first.
+   The variables come first; the rules after them add the look (accent line,
+   pill buttons, gradient button) on top of public/css/base.css. */
+
+:root,
+html[data-theme="light"] {
+  --font: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 22px;
+  --logo-height: 2.2rem;
+
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f6f4fe;
+  --input-bg: #fcfbff;
+  --border: #e6e2f5;
+  --text: #1f1a33;
+  --muted: #6b6585;
+  --link: #6a3fd4;
+  --link-hover: #4f2bb0;
+  --accent: #6a3fd4;
+  --accent-hover: #5630bd;
+  --accent-on: #ffffff;
+  --header-bg: rgba(255, 255, 255, .85);
+  --header-text: #1f1a33;
+  --good: #0d7f69;
+  --good-bg: #e6f7f2;
+  --bad: #c42b5a;
+  --bad-on: #ffffff;
+  --bad-bg: #fdecf2;
+  --shadow: 0 1px 2px rgba(31, 26, 51, .04), 0 12px 40px rgba(106, 63, 212, .08);
+  --glow-1: rgba(138, 92, 246, .07);
+  --glow-2: rgba(20, 184, 166, .06);
+  --glow-3: rgba(236, 72, 153, 0);
+  --gradient: linear-gradient(120deg, #7c4dff, #14b8a6);
+  --gradient-hover: linear-gradient(120deg, #6a3fd4, #0f9a8a);
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --bg: #0c0a1d;
+  --surface: rgba(24, 20, 48, .78);
+  --surface-2: #221d42;
+  --input-bg: #120f28;
+  --border: #342c5e;
+  --text: #ece8ff;
+  --muted: #a69fca;
+  --link: #b49bff;
+  --link-hover: #d0c2ff;
+  --accent: #9d7bff;
+  --accent-hover: #b49bff;
+  --accent-on: #120c2c;
+  --header-bg: rgba(12, 10, 29, .6);
+  --header-text: #ece8ff;
+  --good: #3dd6b5;
+  --good-bg: #0f2c29;
+  --bad: #ff6b96;
+  --bad-on: #2a0814;
+  --bad-bg: #321324;
+  --shadow: 0 10px 40px rgba(0, 0, 0, .45);
+  --glow-1: rgba(124, 77, 255, .35);
+  --glow-2: rgba(20, 184, 166, .22);
+  --glow-3: rgba(236, 72, 153, .14);
+  --gradient: linear-gradient(120deg, #7c4dff, #14b8a6);
+  --gradient-hover: linear-gradient(120deg, #6a3fd4, #0f9a8a);
+  color-scheme: dark;
+}
+
+/* A faint aurora behind everything: barely there in light mode, a glow in dark mode */
+body {
+  background:
+    radial-gradient(60rem 30rem at 10% -10%, var(--glow-1), transparent 60%),
+    radial-gradient(50rem 30rem at 100% 0%, var(--glow-2), transparent 60%),
+    radial-gradient(40rem 25rem at 50% 110%, var(--glow-3), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+.site-header { -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+html[data-theme="dark"] .site-header { border-bottom-color: transparent; }
+.brand-name { letter-spacing: -.01em; }
+h1 { font-weight: 800; letter-spacing: -.02em; }
+
+/* Cards: white with a thin violet-to-teal line on top */
+.card { position: relative; overflow: hidden; }
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: var(--gradient);
+}
+html[data-theme="dark"] .card { -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border-color: transparent; }
+
+/* Pill buttons; the main button gets the aurora gradient */
+.btn { border-radius: 999px; }
+.check, .notice { border-radius: 16px; }
+.btn-primary { background: var(--gradient); border-color: transparent; color: #ffffff; }
+.btn-primary:hover { background: var(--gradient-hover); border-color: transparent; color: #ffffff; }
+input[type="text"], input[type="password"], select, textarea { border-radius: 14px; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+.mode-toggle { background: var(--surface-2); border-color: transparent; }
+.site-footer { border-top-color: transparent; }

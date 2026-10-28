@@ -1,0 +1,138 @@
+{{- define "vanishly.redis.deployment" -}}
+{{- $r := .Values.redis -}}
+apiVersion: apps/v1
+kind: Deployment
+{{ include "vanishly.metadata" (dict "context" . "name" (include "vanishly.redis.fullname" .) "component" "redis" "labels" $r.deploymentLabels "annotations" $r.deploymentAnnotations) }}
+spec:
+  # One instance with the secrets in memory; two would not share them.
+  replicas: 1
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "vanishly.redis.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vanishly.labels" (dict "context" . "component" "redis" "extra" $r.podLabels) | nindent 8 }}
+      annotations:
+        {{- if and $r.auth.enabled (not $r.auth.existingSecret) }}
+        checksum/secret: {{ toYaml $r.auth | sha256sum }}
+        {{- end }}
+        {{- with $r.podAnnotations }}
+        {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "vanishly.imagePullSecrets" (dict "Values" .Values "extra" .Values.imagePullSecrets) | nindent 6 }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: {{ $r.terminationGracePeriodSeconds }}
+      {{- with $r.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $r.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with $r.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      {{- with $r.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $r.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $r.affinity }}
+      affinity:
+        {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 8 }}
+      {{- end }}
+      {{- with $r.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- include "vanishly.topologySpread" (dict "constraints" . "selector" (include "vanishly.redis.selectorLabels" $)) | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: redis
+          image: {{ include "vanishly.redis.image" . }}
+          imagePullPolicy: {{ $r.image.pullPolicy }}
+          # Secrets stay in memory only: no snapshots, no append-only file.
+          command:
+            - sh
+            - -c
+            - |
+              exec redis-server --port {{ $r.service.port }} --save "" --appendonly no \
+                --maxmemory {{ $r.maxmemory }} --maxmemory-policy {{ $r.maxmemoryPolicy }} \
+                {{- if $r.auth.enabled }}
+                --requirepass "$REDIS_PASSWORD" \
+                {{- end }}
+                "$@"
+            - redis-server
+            {{- range $r.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - name: redis
+              containerPort: {{ $r.service.port }}
+              protocol: TCP
+          env:
+            {{- if $r.auth.enabled }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vanishly.redis.passwordSecretName" . }}
+                  key: {{ include "vanishly.redis.passwordSecretKey" . }}
+            # Used by redis-cli in the probes.
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vanishly.redis.passwordSecretName" . }}
+                  key: {{ include "vanishly.redis.passwordSecretKey" . }}
+            {{- end }}
+            {{- with $r.extraEnv }}
+            {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 12 }}
+            {{- end }}
+          {{- with $r.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $r.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if $r.startupProbe.enabled }}
+          startupProbe:
+            {{- include "vanishly.probe" $r.startupProbe | nindent 12 }}
+          {{- end }}
+          {{- if $r.livenessProbe.enabled }}
+          livenessProbe:
+            {{- include "vanishly.probe" $r.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if $r.readinessProbe.enabled }}
+          readinessProbe:
+            {{- include "vanishly.probe" $r.readinessProbe | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            {{- with $r.extraVolumeMounts }}
+            {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 12 }}
+            {{- end }}
+        {{- with $r.extraContainers }}
+        {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 8 }}
+        {{- end }}
+      volumes:
+        # Nothing is written here (no persistence); memory-backed anyway.
+        - name: data
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ $r.dataSizeLimit }}
+        {{- with $r.extraVolumes }}
+        {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 8 }}
+        {{- end }}
+{{- end -}}
+{{- if .Values.redis.enabled }}
+{{ include "vanishly.render" (dict "context" . "key" "redisDeployment" "object" (include "vanishly.redis.deployment" .)) }}
+{{- end }}

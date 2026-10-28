@@ -1,0 +1,19 @@
+{
+  "name": {
+    "de": "Aurora (weiß, rund)",
+    "en": "Aurora (white, round)"
+  },
+  "siteName": "Vanishly",
+  "logo": "logo.svg",
+  "favicon": "logo.svg",
+  "defaultMode": "light",
+  "footerLinks": [],
+  "strings": {
+    "en": {
+      "tagline": "Send it once. Then it fades like the northern lights."
+    },
+    "de": {
+      "tagline": "Einmal senden. Dann verblasst es wie ein Polarlicht."
+    }
+  }
+}

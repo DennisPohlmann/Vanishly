@@ -1,0 +1,26 @@
+Vanishly {{ .Chart.AppVersion }} is installed as "{{ include "vanishly.fullname" . }}" in namespace {{ include "vanishly.namespace" . }}.
+{{- $baseUrl := include "vanishly.baseUrl" . }}
+
+{{- if .Values.ingress.enabled }}
+
+Open: {{ $baseUrl | default (printf "https://%s" (first .Values.ingress.hosts).host) }}
+{{- else if .Values.httpRoute.enabled }}
+
+Open: {{ $baseUrl | default "the host of your Gateway" }}
+{{- else }}
+
+Try it locally:
+  kubectl -n {{ include "vanishly.namespace" . }} port-forward svc/{{ include "vanishly.fullname" . }} 3000:{{ .Values.service.port }}
+  then open http://127.0.0.1:3000
+{{- end }}
+
+Redis: {{ if .Values.redis.enabled }}bundled ({{ include "vanishly.redis.fullname" . }}, in memory only: a restart drops open secrets){{ else }}external{{ end }}.
+{{- if and (or .Values.ingress.enabled .Values.httpRoute.enabled) (not .Values.config.TRUST_PROXY) }}
+
+Note: config.TRUST_PROXY is not set. Behind an ingress controller or a
+gateway, all clients then share the rate limits of one address. Set it to
+the controller's hops or network (e.g. "1" or "10.0.0.0/8").
+{{- end }}
+
+Check it: helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+Settings: https://github.com/DennisPohlmann/Vanishly/blob/main/docs/CONFIG.md

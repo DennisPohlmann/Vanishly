@@ -1,0 +1,29 @@
+{{- define "vanishly.httproute" -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+{{ include "vanishly.metadata" (dict "context" . "name" (include "vanishly.fullname" .) "component" "app" "labels" .Values.httpRoute.labels "annotations" .Values.httpRoute.annotations) }}
+spec:
+  parentRefs:
+    {{- toYaml .Values.httpRoute.parentRefs | nindent 4 }}
+  {{- with .Values.httpRoute.hostnames }}
+  hostnames:
+    {{- range . }}
+    - {{ tpl . $ | quote }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- if .Values.httpRoute.rules }}
+    {{- include "vanishly.tplvalues" (dict "value" .Values.httpRoute.rules "context" $) | nindent 4 }}
+    {{- else }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "vanishly.fullname" . }}
+          port: {{ .Values.service.port }}
+    {{- end }}
+{{- end -}}
+{{- if .Values.httpRoute.enabled }}
+{{ include "vanishly.render" (dict "context" . "key" "httpRoute" "object" (include "vanishly.httproute" .)) }}
+{{- end }}

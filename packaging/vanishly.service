@@ -1,0 +1,39 @@
+# Vanishly - systemd unit for the tar.gz (/opt/vanishly).
+# Settings: /etc/vanishly/vanishly.env (from .env.example).
+[Unit]
+Description=Vanishly one-time secrets
+After=network-online.target redis-server.service redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vanishly
+Group=vanishly
+WorkingDirectory=/opt/vanishly
+EnvironmentFile=/etc/vanishly/vanishly.env
+# Only the reverse proxy on this host talks to the app.
+Environment=HOST=127.0.0.1
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+ReadOnlyPaths=/opt/vanishly /var/lib/vanishly
+
+[Install]
+WantedBy=multi-user.target

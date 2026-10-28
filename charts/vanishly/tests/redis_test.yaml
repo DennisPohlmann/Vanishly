@@ -1,0 +1,89 @@
+suite: bundled redis
+templates:
+  - templates/redis/deployment.yaml
+  - templates/redis/secret.yaml
+  - templates/redis/service.yaml
+release:
+  name: t
+  namespace: ots
+capabilities:
+  majorVersion: 1
+  minorVersion: 33
+tests:
+  - it: keeps secrets in memory only and runs as the redis user
+    template: templates/redis/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: '--save "" --appendonly no'
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: '--requirepass "\$REDIS_PASSWORD"'
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 999
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.volumes[0].emptyDir.medium
+          value: Memory
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: docker.io/redis:8-alpine
+
+  - it: runs without a password when auth is off
+    template: templates/redis/deployment.yaml
+    set:
+      redis:
+        auth:
+          enabled: false
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: requirepass
+
+  - it: passes extra arguments
+    template: templates/redis/deployment.yaml
+    set:
+      redis:
+        extraArgs: ["--loglevel", "warning"]
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].command[3]
+          value: redis-server
+      - equal:
+          path: spec.template.spec.containers[0].command[4]
+          value: --loglevel
+
+  - it: generates a password Secret
+    template: templates/redis/secret.yaml
+    asserts:
+      - isKind:
+          of: Secret
+      - exists:
+          path: data.redis-password
+
+  - it: uses an existing password Secret
+    template: templates/redis/secret.yaml
+    set:
+      redis:
+        auth:
+          existingSecret: redis-auth
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders nothing for an external Redis
+    template: templates/redis/service.yaml
+    set:
+      redis:
+        enabled: false
+        external:
+          url: redis://redis.example.com:6379
+    asserts:
+      - hasDocuments:
+          count: 0

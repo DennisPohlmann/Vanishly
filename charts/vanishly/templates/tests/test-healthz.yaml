@@ -1,0 +1,47 @@
+{{- if .Values.tests.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "vanishly.fullname" . | trunc 50 | trimSuffix "-" }}-test
+  namespace: {{ include "vanishly.namespace" . }}
+  labels:
+    {{- include "vanishly.labels" (dict "context" . "component" "test") | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  {{- include "vanishly.imagePullSecrets" (dict "Values" .Values "extra" .Values.imagePullSecrets) | nindent 2 }}
+  {{- with .Values.podSecurityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  containers:
+    - name: healthz
+      image: {{ include "vanishly.helperImage" (dict "context" . "image" .Values.tests.image) }}
+      # /healthz through the Service, then the start page.
+      command:
+        - node
+        - -e
+        - |
+          const base = 'http://{{ include "vanishly.fullname" . }}:{{ .Values.service.port }}';
+          (async () => {
+            for (const path of ['/healthz', '/']) {
+              const res = await fetch(base + path);
+              console.log(path, res.status);
+              if (!res.ok) process.exit(1);
+            }
+          })().catch((err) => { console.error(err.message); process.exit(1); });
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 64Mi
+{{- end }}

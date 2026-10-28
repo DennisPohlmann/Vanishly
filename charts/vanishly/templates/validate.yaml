@@ -1,0 +1,42 @@
+{{- /* Checks of combinations the schema cannot express; a wrong one stops the install with a message. */ -}}
+{{- if and (not .Values.redis.enabled) (not .Values.redis.external.url) (not .Values.redis.external.existingSecret) -}}
+{{- fail "vanishly: redis.enabled is false, so set redis.external.url or redis.external.existingSecret" -}}
+{{- end -}}
+{{- if and .Values.redis.enabled (or .Values.redis.external.url .Values.redis.external.existingSecret) -}}
+{{- fail "vanishly: redis.external.* is set while redis.enabled is true; set redis.enabled=false to use the external Redis" -}}
+{{- end -}}
+{{- if .Values.config.REDIS_URL -}}
+{{- fail "vanishly: set the Redis address with redis.external.url (or redis.external.existingSecret), not config.REDIS_URL" -}}
+{{- end -}}
+{{- range $k := list "ENTRA_CLIENT_SECRET" "OIDC_CLIENT_SECRET" "AUTH_SECRET" -}}
+{{- if index $.Values.config $k -}}
+{{- fail (printf "vanishly: %s is a credential; set it through secretConfig or existingSecret, not config (which becomes a ConfigMap)" $k) -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.redis.enabled .Values.redis.auth.enabled .Values.redis.auth.password (not (regexMatch "^[A-Za-z0-9._~-]+$" .Values.redis.auth.password)) -}}
+{{- fail "vanishly: redis.auth.password may only contain A-Z a-z 0-9 . _ ~ - (it becomes part of REDIS_URL)" -}}
+{{- end -}}
+{{- if and .Values.redis.external.url (not (regexMatch "^rediss?://\\S+$" .Values.redis.external.url)) -}}
+{{- fail "vanishly: redis.external.url must look like redis://host:6379 or rediss://..." -}}
+{{- end -}}
+{{- if and .Values.templates.volume (include "vanishly.templates.copied" .) -}}
+{{- fail "vanishly: use either templates.volume or templates.files/binaryFiles/existingConfigMaps, not both" -}}
+{{- end -}}
+{{- $paths := concat (keys .Values.templates.files) (keys .Values.templates.binaryFiles) -}}
+{{- range .Values.templates.existingConfigMaps -}}
+{{- range .items -}}{{- $paths = append $paths .path -}}{{- end -}}
+{{- end -}}
+{{- range $paths -}}
+{{- if not (regexMatch "^[A-Za-z0-9_-]+(/[A-Za-z0-9._-]+)+$" .) -}}
+{{- fail (printf "vanishly: template file %q must be a relative path like my-brand/theme.css (no .., no leading /)" .) -}}
+{{- end -}}
+{{- if regexMatch "(^|/)\\.\\.?(/|$)" . -}}
+{{- fail (printf "vanishly: template file %q must not contain . or .. segments" .) -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.podDisruptionBudget.enabled (not .Values.autoscaling.enabled) (lt (int .Values.replicaCount) 2) (not .Values.podDisruptionBudget.maxUnavailable) -}}
+{{- fail "vanishly: a PodDisruptionBudget with replicaCount < 2 blocks every node drain; raise replicaCount, enable autoscaling or set podDisruptionBudget.maxUnavailable" -}}
+{{- end -}}
+{{- if and .Values.httpRoute.enabled (not .Values.httpRoute.parentRefs) -}}
+{{- fail "vanishly: httpRoute.enabled needs httpRoute.parentRefs (the Gateway)" -}}
+{{- end -}}

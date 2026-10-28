@@ -1,0 +1,15 @@
+{
+  "name": { "de": "Beispiel-Marke (orange)", "en": "Example brand (orange)" },
+  "siteName": "ACME Secrets",
+  "logo": "logo.svg",
+  "favicon": "logo.svg",
+  "defaultMode": "light",
+  "footerLinks": [
+    { "label": { "de": "Impressum", "en": "Imprint" }, "url": "https://example.com/imprint" },
+    { "label": { "de": "Datenschutz", "en": "Privacy" }, "url": "https://example.com/privacy" }
+  ],
+  "strings": {
+    "en": { "tagline": "ACME's safe way to hand over passwords: one link, one view." },
+    "de": { "tagline": "So gibt ACME Passwörter sicher weiter: ein Link, ein Aufruf." }
+  }
+}

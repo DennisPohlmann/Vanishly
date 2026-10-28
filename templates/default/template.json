@@ -1,0 +1,9 @@
+{
+  "name": { "de": "Standard (hell/dunkel)", "en": "Default (light/dark)" },
+  "siteName": "Vanishly",
+  "logo": "logo.svg",
+  "favicon": "favicon.svg",
+  "defaultMode": "auto",
+  "footerLinks": [],
+  "strings": {}
+}

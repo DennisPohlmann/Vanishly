@@ -1,0 +1,17 @@
+{{- define "vanishly.redis.service" -}}
+apiVersion: v1
+kind: Service
+{{ include "vanishly.metadata" (dict "context" . "name" (include "vanishly.redis.fullname" .) "component" "redis" "labels" .Values.redis.service.labels "annotations" .Values.redis.service.annotations) }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: {{ .Values.redis.service.port }}
+      targetPort: redis
+      protocol: TCP
+  selector:
+    {{- include "vanishly.redis.selectorLabels" . | nindent 4 }}
+{{- end -}}
+{{- if .Values.redis.enabled }}
+{{ include "vanishly.render" (dict "context" . "key" "redisService" "object" (include "vanishly.redis.service" .)) }}
+{{- end }}

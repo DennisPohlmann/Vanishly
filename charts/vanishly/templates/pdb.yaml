@@ -1,0 +1,20 @@
+{{- define "vanishly.pdb" -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+{{ include "vanishly.metadata" (dict "context" . "name" (include "vanishly.fullname" .) "component" "app") }}
+spec:
+  {{- if not (kindIs "invalid" .Values.podDisruptionBudget.maxUnavailable) }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- with .Values.podDisruptionBudget.unhealthyPodEvictionPolicy }}
+  unhealthyPodEvictionPolicy: {{ . }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "vanishly.selectorLabels" . | nindent 6 }}
+{{- end -}}
+{{- if .Values.podDisruptionBudget.enabled }}
+{{ include "vanishly.render" (dict "context" . "key" "pdb" "object" (include "vanishly.pdb" .)) }}
+{{- end }}

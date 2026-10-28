@@ -1,0 +1,28 @@
+apiVersion: v2
+name: vanishly
+description: >-
+  Vanishly - share secrets with one-time links that burn after reading,
+  end-to-end encrypted in the browser and stored in Redis.
+type: application
+# The chart is released together with the app: semantic-release sets both
+# to the new version, and CI publishes it as
+# oci://ghcr.io/dennispohlmann/charts/vanishly.
+version: 0.0.0
+appVersion: "0.0.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/DennisPohlmann/Vanishly
+sources:
+  - https://github.com/DennisPohlmann/Vanishly
+icon: https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/public/favicon.svg
+keywords:
+  - secrets
+  - one-time-secret
+  - password-sharing
+  - end-to-end-encryption
+  - redis
+maintainers:
+  - name: DennisPohlmann
+    url: https://github.com/DennisPohlmann
+annotations:
+  artifacthub.io/license: GPL-3.0-or-later
+  artifacthub.io/containsSecurityUpdates: "false"

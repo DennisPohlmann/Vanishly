@@ -1,0 +1,206 @@
+# Vanishly Helm chart
+
+Runs [Vanishly](https://github.com/DennisPohlmann/Vanishly) on Kubernetes:
+one-time secret links, end-to-end encrypted in the browser, stored in Redis.
+The chart brings its own Redis (in memory only, password protected) or uses
+an external one. Everything can be changed through values; whatever the
+values do not cover can be patched with `overrides` or added with
+`extraObjects`.
+
+The chart is released together with the app, with the same version, as an
+OCI package on GitHub Container Registry.
+
+## Install
+
+```sh
+helm install vanishly oci://ghcr.io/dennispohlmann/charts/vanishly \
+  --namespace vanishly --create-namespace \
+  --set ingress.enabled=true \
+  --set ingress.hosts[0].host=ots.example.com \
+  --set ingress.hosts[0].paths[0].path=/ \
+  --set config.TRUST_PROXY=10.0.0.0/8
+```
+
+A specific version: `--version <version>`. Show the values of a version:
+`helm show values oci://ghcr.io/dennispohlmann/charts/vanishly`. Check a
+running release: `helm test vanishly -n vanishly`.
+
+From a checkout: `helm install vanishly ./charts/vanishly`.
+
+Update: `helm upgrade vanishly oci://ghcr.io/dennispohlmann/charts/vanishly -n vanishly --reuse-values`.
+Uninstall: `helm uninstall vanishly -n vanishly`.
+
+## What it runs
+
+- **Vanishly** as a Deployment (any number of pods; all state is in Redis)
+  as uid 1000 with a read-only root file system, no capabilities, no
+  service account token and the RuntimeDefault seccomp profile. A
+  checksum of the settings is in the pod annotations, so a changed setting
+  rolls the pods.
+- **Redis** (`redis.enabled`, default) as one pod, `redis:8-alpine` as uid
+  999, read-only, without snapshots or append-only file: secrets live only
+  in memory, and a Redis restart drops open secrets (as with
+  docker-compose.yml). A password is generated on the first install and
+  kept across upgrades. Vanishly pods wait in an init container until
+  Redis answers.
+- Optional: Ingress, Gateway API HTTPRoute, HorizontalPodAutoscaler,
+  PodDisruptionBudget, NetworkPolicies, a `helm test` pod.
+
+There is no ServiceMonitor: Vanishly has no metrics endpoint. Probes use
+`/healthz` (200 when Redis accepts writes); the liveness probe is a TCP
+check, so a Redis outage takes pods out of the Service without restarting
+them all.
+
+## Settings
+
+Every Vanishly setting of [docs/CONFIG.md](../../docs/CONFIG.md) is a key
+of `config` with the same name; an empty value means the app's default.
+They go into a ConfigMap and reach the pod as environment variables.
+Vanishly checks every value at start and stops with a message on a wrong
+value or a misspelt name (`kubectl logs`); the chart's `values.schema.json`
+already checks types, ranges and patterns at `helm install`.
+
+```yaml
+config:
+  TRUST_PROXY: "10.0.0.0/8"   # behind an ingress controller; otherwise all clients share one rate limit
+  HSTS: true
+  TEMPLATE: aurora
+  TTL_OPTIONS: 15m,1h,1d,7d
+  DEFAULT_TTL: 1d
+  REQUIRE_PASSPHRASE: true
+```
+
+`BASE_URL` is set to `https://<first ingress or httpRoute host>` when it is
+empty (`baseUrlFromIngress`).
+
+Sensitive values: `secretConfig` (a Secret made by the chart),
+`existingSecret` / `existingConfigMap` (all their keys as environment
+variables), or `extraEnv` / `extraEnvFrom` for anything else. Names
+`config` does not list are passed as they are, so settings of a newer app
+version work before the chart knows them.
+
+### Redis
+
+```yaml
+# bundled, with your own password Secret (key redis-password)
+redis:
+  auth:
+    existingSecret: vanishly-redis
+
+# external
+redis:
+  enabled: false
+  external:
+    existingSecret: vanishly-redis-url   # key redis-url: rediss://:password@redis.example.com:6380
+```
+
+`redis.external.url` works too; the chart puts it into a Secret. With
+GitOps tools that render without cluster access (Argo CD), set
+`redis.auth.password` or `redis.auth.existingSecret`: a generated password
+would change on every render.
+
+### Own design templates
+
+Vanishly reads only plain files, and Kubernetes mounts ConfigMaps as
+symbolic links. The chart therefore copies template files into an
+`emptyDir` in an init container and mounts that read-only at
+`TEMPLATES_DIR`. See [templates/README.md](../../templates/README.md) for
+the files of a template.
+
+```yaml
+config:
+  TEMPLATE: acme
+templates:
+  files:
+    acme/theme.css: |
+      :root, html[data-theme="light"] { --accent: #c2410c; }
+      html[data-theme="dark"] { --accent: #fb923c; }
+    acme/template.json: |
+      { "siteName": "ACME Secrets", "logo": "logo.svg" }
+    acme/assets/logo.svg: |
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg>
+  binaryFiles:
+    acme/assets/photo.png: iVBORw0KGgo...   # base64
+```
+
+Or from ConfigMaps you manage yourself
+(`templates.existingConfigMaps: [{name: acme-theme, items: [{key: theme.css, path: acme/theme.css}]}]`),
+or any volume mounted as it is (`templates.volume: {persistentVolumeClaim: {claimName: acme}}`).
+ConfigMaps are limited to 1 MiB in total.
+
+Own translations use the same files: put them into a folder below
+`TEMPLATES_DIR` that is no template and point `TRANSLATIONS_DIR` at it.
+
+```yaml
+config:
+  TRANSLATIONS_DIR: /var/lib/vanishly/templates/translations
+  LANGUAGES: en,fr
+templates:
+  files:
+    translations/fr.json: |
+      { "lang.name": "Français", "home.title": "Partager un secret" }
+```
+
+### Labels, annotations and overrides
+
+- `commonLabels` / `commonAnnotations` go on every object; `podLabels`,
+  `podAnnotations`, `deploymentLabels`, `service.labels`,
+  `ingress.annotations` and the like on single ones. Annotations, affinity
+  and the `extra*` lists are rendered with `tpl`, so `{{ "{{ .Release.Name }}" }}` works.
+- `overrides.<object>` is deep-merged into the rendered object last (lists
+  are replaced as a whole), for anything without its own value:
+
+  ```yaml
+  overrides:
+    deployment:
+      spec:
+        template:
+          spec:
+            hostUsers: false
+    redisService:
+      spec:
+        ipFamilyPolicy: PreferDualStack
+  ```
+
+  Keys: `deployment`, `service`, `serviceAccount`, `configMap`, `secret`,
+  `redisUrlSecret`, `templatesConfigMap`, `ingress`, `httpRoute`, `hpa`,
+  `pdb`, `networkPolicy`, `redisDeployment`, `redisService`,
+  `redisSecret`, `redisNetworkPolicy`.
+- A probe's handler is replaced by setting the old one to `null`
+  (`readinessProbe: {httpGet: null, exec: {...}}`).
+- `extraObjects` adds any manifest (map or string, rendered with `tpl`).
+
+### Network policies
+
+`networkPolicy.enabled` lets only the Vanishly pods reach Redis and
+restricts Vanishly's egress to DNS and Redis (`networkPolicy.egress.extraRules`
+for more). `networkPolicy.ingress.from` limits who reaches Vanishly, e.g.
+the ingress controller:
+
+```yaml
+networkPolicy:
+  enabled: true
+  ingress:
+    from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingress-nginx
+```
+
+With sign-in (`config.AUTH_PROVIDER` entra or oidc), Vanishly also talks to the
+identity provider (and Microsoft Graph with `ENTRA_GRAPH`): allow that with
+`networkPolicy.egress.extraRules`, port 443.
+
+## Values
+
+{{ template "chart.valuesTable" . }}
+
+## Development
+
+`helm lint --strict charts/vanishly`, unit tests with the
+[helm-unittest](https://github.com/helm-unittest/helm-unittest) plugin
+(`helm unittest charts/vanishly`), and `ct lint` / `ct install` with the
+value files in `ci/`. This README is generated from `README.md.gotmpl` and
+the `# --` comments of `values.yaml` with
+[helm-docs](https://github.com/norwoodj/helm-docs); `values.schema.json`
+checks the values. CI runs all of it (`.github/workflows/chart.yml`).

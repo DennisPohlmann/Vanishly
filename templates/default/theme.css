@@ -1,0 +1,58 @@
+/* Vanishly default template: light and dark mode.
+   The visitor switches with the button in the header; without a choice the
+   system setting (or "defaultMode" in template.json) decides.
+   Only CSS variables belong here; layout is in public/css/base.css. */
+
+:root,
+html[data-theme="light"] {
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --radius: 12px;
+  --logo-height: 2rem;
+
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-2: #eef1f6;
+  --input-bg: #ffffff;
+  --border: #d5dbe5;
+  --text: #17202e;
+  --muted: #5a6577;
+  --link: #1f5fd1;
+  --link-hover: #174aa6;
+  --accent: #1f5fd1;
+  --accent-hover: #174aa6;
+  --accent-on: #ffffff;
+  --header-bg: #ffffff;
+  --header-text: #17202e;
+  --good: #1e8a4c;
+  --good-bg: #e6f5ec;
+  --bad: #c62f3a;
+  --bad-on: #ffffff;
+  --bad-bg: #fcebec;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 16px rgba(16, 24, 40, .06);
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --bg: #0f141c;
+  --surface: #171e29;
+  --surface-2: #1f2835;
+  --input-bg: #0f141c;
+  --border: #2c3747;
+  --text: #e6ebf2;
+  --muted: #9aa6b8;
+  --link: #7fb0ff;
+  --link-hover: #a8c9ff;
+  --accent: #5b95f5;
+  --accent-hover: #7fb0ff;
+  --accent-on: #0b1220;
+  --header-bg: #131a24;
+  --header-text: #e6ebf2;
+  --good: #3fb871;
+  --good-bg: #13291d;
+  --bad: #ef5d68;
+  --bad-on: #1a0b0d;
+  --bad-bg: #2e1517;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+  color-scheme: dark;
+}

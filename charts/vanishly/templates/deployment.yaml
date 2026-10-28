@@ -1,0 +1,272 @@
+{{- define "vanishly.deployment" -}}
+{{- $copied := include "vanishly.templates.copied" . -}}
+{{- $templatesDir := include "vanishly.templatesDir" . -}}
+apiVersion: apps/v1
+kind: Deployment
+{{ include "vanishly.metadata" (dict "context" . "name" (include "vanishly.fullname" .) "component" "app" "labels" .Values.deploymentLabels "annotations" .Values.deploymentAnnotations) }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  minReadySeconds: {{ .Values.minReadySeconds }}
+  {{- with .Values.updateStrategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "vanishly.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vanishly.labels" (dict "context" . "component" "app" "extra" .Values.podLabels) | nindent 8 }}
+      annotations:
+        # Settings and template files are read at start: a change rolls the pods.
+        checksum/config: {{ include "vanishly.configData" . | sha256sum }}
+        checksum/secret: {{ toYaml (list .Values.secretConfig .Values.redis.external) | sha256sum }}
+        {{- if $copied }}
+        checksum/templates: {{ toYaml (list .Values.templates.files .Values.templates.binaryFiles .Values.templates.existingConfigMaps) | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "vanishly.imagePullSecrets" (dict "Values" .Values "extra" .Values.imagePullSecrets) | nindent 6 }}
+      serviceAccountName: {{ include "vanishly.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      enableServiceLinks: {{ .Values.enableServiceLinks }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.schedulerName }}
+      schedulerName: {{ . }}
+      {{- end }}
+      {{- with .Values.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.dnsPolicy }}
+      dnsPolicy: {{ . }}
+      {{- end }}
+      {{- with .Values.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- include "vanishly.topologySpread" (dict "constraints" . "selector" (include "vanishly.selectorLabels" $)) | nindent 8 }}
+      {{- end }}
+      {{- if or $copied (and .Values.redis.enabled .Values.redis.waitForRedis) .Values.initContainers }}
+      initContainers:
+        {{- if $copied }}
+        # Vanishly accepts only plain files; ConfigMap volumes are symbolic links.
+        - name: copy-templates
+          image: {{ include "vanishly.helperImage" (dict "context" . "image" .Values.templates.copy.image) }}
+          imagePullPolicy: {{ default .Values.image.pullPolicy .Values.templates.copy.image.pullPolicy }}
+          command:
+            - sh
+            - -ec
+            - |
+              for f in /templates-src/*; do cp -RL "$f" /templates/; done
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.templates.copy.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: templates-src
+              mountPath: /templates-src
+              readOnly: true
+            - name: templates
+              mountPath: /templates
+        {{- end }}
+        {{- if and .Values.redis.enabled .Values.redis.waitForRedis }}
+        # Vanishly stops when Redis is not reachable at start; wait for it instead.
+        - name: wait-for-redis
+          image: {{ include "vanishly.redis.image" . }}
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              until redis-cli -h {{ include "vanishly.redis.fullname" . }} -p {{ .Values.redis.service.port }} ping 2>/dev/null | grep -q PONG; do
+                echo "waiting for Redis"; sleep 2
+              done
+          {{- if .Values.redis.auth.enabled }}
+          env:
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vanishly.redis.passwordSecretName" . }}
+                  key: {{ include "vanishly.redis.passwordSecretKey" . }}
+          {{- end }}
+          {{- with .Values.redis.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.redis.waitResources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- with .Values.initContainers }}
+        {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: vanishly
+          image: {{ include "vanishly.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: {{ .Values.containerPort.name }}
+              containerPort: {{ include "vanishly.port" . }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "vanishly.fullname" . }}
+            {{- if .Values.secretConfig }}
+            - secretRef:
+                name: {{ include "vanishly.fullname" . }}
+            {{- end }}
+            {{- with .Values.existingConfigMap }}
+            - configMapRef:
+                name: {{ tpl . $ }}
+            {{- end }}
+            {{- with .Values.existingSecret }}
+            - secretRef:
+                name: {{ tpl . $ }}
+            {{- end }}
+            {{- with .Values.extraEnvFrom }}
+            {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 12 }}
+            {{- end }}
+          env:
+            {{- if and .Values.redis.enabled .Values.redis.auth.enabled }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vanishly.redis.passwordSecretName" . }}
+                  key: {{ include "vanishly.redis.passwordSecretKey" . }}
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@{{ include "vanishly.redis.fullname" . }}:{{ .Values.redis.service.port }}"
+            {{- else if .Values.redis.enabled }}
+            - name: REDIS_URL
+              value: "redis://{{ include "vanishly.redis.fullname" . }}:{{ .Values.redis.service.port }}"
+            {{- else }}
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vanishly.redisUrlSecretName" . }}
+                  key: {{ include "vanishly.redisUrlSecretKey" . }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 12 }}
+            {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe:
+            {{- include "vanishly.probe" .Values.startupProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            {{- include "vanishly.probe" .Values.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe.enabled }}
+          readinessProbe:
+            {{- include "vanishly.probe" .Values.readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- with .Values.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if or $copied .Values.templates.volume }}
+            - name: templates
+              mountPath: {{ $templatesDir }}
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 12 }}
+            {{- end }}
+        {{- with .Values.extraContainers }}
+        {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.tmpSizeLimit }}
+        {{- if $copied }}
+        - name: templates
+          emptyDir:
+            sizeLimit: {{ .Values.templates.sizeLimit }}
+        - name: templates-src
+          projected:
+            sources:
+              {{- if or .Values.templates.files .Values.templates.binaryFiles }}
+              - configMap:
+                  name: {{ include "vanishly.fullname" . }}-templates
+                  items:
+                    {{- range $path, $_ := .Values.templates.files }}
+                    - key: {{ include "vanishly.templates.key" $path }}
+                      path: {{ $path }}
+                    {{- end }}
+                    {{- range $path, $_ := .Values.templates.binaryFiles }}
+                    - key: {{ include "vanishly.templates.key" $path }}
+                      path: {{ $path }}
+                    {{- end }}
+              {{- end }}
+              {{- range .Values.templates.existingConfigMaps }}
+              - configMap:
+                  name: {{ tpl .name $ }}
+                  items:
+                    {{- toYaml .items | nindent 20 }}
+              {{- end }}
+        {{- else if .Values.templates.volume }}
+        - name: templates
+          {{- include "vanishly.tplvalues" (dict "value" .Values.templates.volume "context" $) | nindent 10 }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 8 }}
+        {{- end }}
+{{- end -}}
+{{ include "vanishly.render" (dict "context" . "key" "deployment" "object" (include "vanishly.deployment" .)) }}

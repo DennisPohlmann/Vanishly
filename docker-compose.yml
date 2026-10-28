@@ -1,0 +1,155 @@
+# Vanishly with Redis.
+#
+#   cp .env.example .env     # optional: your values; or edit environment: below
+#   docker compose up -d
+#
+# The app listens on 127.0.0.1:3000; put a reverse proxy with TLS in front
+# (docs/INSTALLATION.md). Redis is reachable only inside this network.
+name: vanishly
+
+# podman-compose: no pod and no extra infra container; Docker ignores this.
+x-podman:
+  in_pod: false
+
+services:
+  vanishly:
+    image: ghcr.io/dennispohlmann/vanishly:latest
+    # The image runs as the unprivileged user "node" (uid 1000).
+    # This file only pulls images, so it works on its own in any folder.
+    # To build from a checkout instead:
+    #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+    restart: unless-stopped
+    # Every setting with its default. Change it here, or set it in .env next
+    # to this file (VAR=value): ${VAR:-default} takes .env first. An empty
+    # value means the default. A wrong value or a misspelt name stops the
+    # start with a message (docker compose logs vanishly). docs/CONFIG.md
+    # explains each one. env_file also passes the names in .env that are not
+    # listed here, so a typo there (ENABLE_VEIWS) stops the start too.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # --- Server
+      BASE_URL: ${BASE_URL:-}                     # public address, e.g. https://ots.example.com (links of /v1/share)
+      HOST: ${HOST:-0.0.0.0}                      # listen address inside the container
+      PORT: ${PORT:-3000}                         # listen port inside the container (see ports: below)
+      TRUST_PROXY: ${TRUST_PROXY:-false}          # reverse proxies in front: 1, loopback, 10.0.0.0/8, or false
+      HSTS: ${HSTS:-false}                        # send Strict-Transport-Security (only behind HTTPS)
+      ACCESS_LOG: ${ACCESS_LOG:-true}             # one line per request, ids replaced by :id
+      # --- Redis
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379} # with password: redis://:change-me@redis:6379
+      REDIS_PREFIX: ${REDIS_PREFIX:-vanishly:}    # prefix of all keys
+      # --- Design and language
+      TEMPLATE: ${TEMPLATE:-default}              # default, aurora, example-brand or your own
+      DEFAULT_MODE: ${DEFAULT_MODE:-}             # auto (system setting), light or dark (empty: the template's choice, usually auto)
+      TEMPLATES_DIR: ${TEMPLATES_DIR:-/var/lib/vanishly/templates}
+      LANGUAGES: ${LANGUAGES:-}                   # languages served, e.g. en (empty: all translations, en,de)
+      DEFAULT_LANG: ${DEFAULT_LANG:-en}           # when the browser names none of LANGUAGES
+      TRANSLATIONS_DIR: ${TRANSLATIONS_DIR:-/var/lib/vanishly/translations}  # own translations (fr.json, ...)
+      # --- Expiry and views
+      TTL_OPTIONS: ${TTL_OPTIONS:-}               # dropdown entries, e.g. 15m,1h,1d,7d (empty: 5m,1h,1d,3d,7d up to MAX_TTL)
+      DEFAULT_TTL: ${DEFAULT_TTL:-}               # preselected entry, e.g. 1d (empty: 1 day or the closest option)
+      MAX_TTL: ${MAX_TTL:-}                       # longest expiry in seconds (empty: 604800, or the largest TTL_OPTIONS entry)
+      MAX_VIEWS: ${MAX_VIEWS:-10}                 # most views per secret (1-100)
+      RECEIPT_KEEP: ${RECEIPT_KEEP:-604800}       # seconds a receipt stays after its secret is gone
+      # --- Secret and passphrase rules
+      MAX_SECRET_CHARS: ${MAX_SECRET_CHARS:-10000}
+      MIN_SECRET_CHARS: ${MIN_SECRET_CHARS:-1}
+      MIN_PASSPHRASE_LENGTH: ${MIN_PASSPHRASE_LENGTH:-0}       # 0 = any
+      PASSPHRASE_COMPLEXITY: ${PASSPHRASE_COMPLEXITY:-}        # upper,lower,digit,symbol or all (empty: none)
+      REQUIRE_PASSPHRASE: ${REQUIRE_PASSPHRASE:-false}
+      PASSPHRASE_ATTEMPTS: ${PASSPHRASE_ATTEMPTS:-5}           # wrong passphrases before the secret burns
+      # --- Confirmation checkbox before "Create secret link"
+      CONFIRM_CHECKBOX: ${CONFIRM_CHECKBOX:-false}
+      CONFIRM_TEXT: ${CONFIRM_TEXT:-}             # both languages (empty: built-in text)
+      CONFIRM_TEXT_EN: ${CONFIRM_TEXT_EN:-}
+      CONFIRM_TEXT_DE: ${CONFIRM_TEXT_DE:-}
+      # --- "Generate" button
+      GENERATOR_LENGTH: ${GENERATOR_LENGTH:-20}   # 8-128
+      GENERATOR_COMPLEXITY: ${GENERATOR_COMPLEXITY:-all}       # upper,lower,digit,symbol or all
+      # --- Rate limits per client IP and window; 0 switches one off
+      RATE_LIMIT_CREATE: ${RATE_LIMIT_CREATE:-30}
+      RATE_LIMIT_READ: ${RATE_LIMIT_READ:-120}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-600}
+      # --- API
+      ENABLE_API: ${ENABLE_API:-true}             # false: the API only serves this server's own pages
+      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-true}   # API reference (Scalar) at /api/docs
+      ENABLE_API_LINK: ${ENABLE_API_LINK:-true}   # "API" link in the footer
+      ENABLE_SHARE_API: ${ENABLE_SHARE_API:-true} # POST /api/v1/share (server-side encryption for scripts)
+      ENABLE_OPEN_API: ${ENABLE_OPEN_API:-true}   # POST /api/v1/open (open a link with its passphrase from scripts)
+      # --- Features (true = on)
+      ENABLE_PASSPHRASE: ${ENABLE_PASSPHRASE:-true}            # passphrase field
+      ENABLE_VIEWS: ${ENABLE_VIEWS:-true}                      # views dropdown (false: always 1 view)
+      ENABLE_RECEIPTS: ${ENABLE_RECEIPTS:-true}                # status page for the sender
+      ENABLE_BURN: ${ENABLE_BURN:-true}                        # "Burn now" on the status page
+      ENABLE_VIEW_LOG: ${ENABLE_VIEW_LOG:-true}                # times of the views on the status page
+      ENABLE_RECEIPT_SHARE_LINK: ${ENABLE_RECEIPT_SHARE_LINK:-true}  # share link again on the status page
+      ENABLE_GENERATOR: ${ENABLE_GENERATOR:-true}              # "Generate" button
+      ENABLE_LANG_SWITCH: ${ENABLE_LANG_SWITCH:-true}          # language link in the header
+      ENABLE_THEME_TOGGLE: ${ENABLE_THEME_TOGGLE:-true}        # light/dark button in the header
+      ENABLE_GITHUB_LINK: ${ENABLE_GITHUB_LINK:-true}          # "Powered by Vanishly" link to GitHub in the footer
+      # --- Sign-in and recipients (docs/CONFIG.md); off with AUTH_PROVIDER=none,
+      # then the others must stay empty
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-none}       # none, entra or oidc (needs BASE_URL)
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}       # entra: directory (tenant) id
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}       # entra: application (client) id
+      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}            # or ENTRA_CLIENT_SECRET_FILE (Docker secret)
+      ENTRA_AUTHORITY: ${ENTRA_AUTHORITY:-}       # empty: https://login.microsoftonline.com
+      ENTRA_GRAPH: ${ENTRA_GRAPH:-}               # true: Graph (GroupMember.Read.All): group search, >200 groups
+      ENTRA_GRAPH_URL: ${ENTRA_GRAPH_URL:-}       # empty: https://graph.microsoft.com
+      OIDC_ISSUER: ${OIDC_ISSUER:-}               # oidc: issuer URL
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-} # or OIDC_CLIENT_SECRET_FILE
+      OIDC_SCOPES: ${OIDC_SCOPES:-}               # empty: openid profile email
+      AUTH_SECRET: ${AUTH_SECRET:-}               # 32+ random characters (openssl rand -base64 48), or AUTH_SECRET_FILE
+      AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-}     # seconds a sign-in lasts (empty: 28800)
+      AUTH_CREATE: ${AUTH_CREATE:-}               # signed-in (default) or anyone
+      AUTH_API_AUDIENCE: ${AUTH_API_AUDIENCE:-}   # accept bearer tokens with this audience, e.g. api://<client id>
+      RECIPIENTS: ${RECIPIENTS:-}                 # off, optional (default) or required
+      RECIPIENTS_MAX: ${RECIPIENTS_MAX:-}         # empty: 10
+      RECIPIENT_GROUPS: ${RECIPIENT_GROUPS:-}     # Name=<group id>,... or * (search, needs ENTRA_GRAPH)
+      RECIPIENT_USER_GROUP: ${RECIPIENT_USER_GROUP:-} # group object id: people search in the form (needs ENTRA_GRAPH)
+      RECIPIENT_DOMAINS: ${RECIPIENT_DOMAINS:-}   # allowed e-mail domains, e.g. example.com
+      RECEIPT_SHOW_VIEWER: ${RECEIPT_SHOW_VIEWER:-}           # true: show who opened it on the status page
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      # Own templates (logo, CSS, pictures); see templates/README.md.
+      - ./custom-templates:/var/lib/vanishly/templates:ro
+    # A plain start order is enough: at start Vanishly checks that Redis is
+    # reachable and writable (exit 69 after 10 s otherwise), and
+    # restart: unless-stopped tries again. This also works with podman-compose.
+    depends_on: [redis]
+    # Same check as the Dockerfile's HEALTHCHECK, which the published OCI
+    # image does not carry (Podman then has no health check at all).
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    # The latest Redis 8 (8.x on Alpine): `docker compose pull` brings its
+    # updates. CI scans this exact image with Trivy on every build.
+    image: redis:8-alpine
+    restart: unless-stopped
+    # Secrets live in memory only: no snapshots, no append-only file, so
+    # nothing of them lands on disk. A restart of Redis drops open secrets;
+    # see docs/CONFIG.md to keep them across restarts.
+    # Runs as the unprivileged user "redis" of the image (uid 999), not root.
+    user: "999:1000"
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-ttl"]
+    read_only: true
+    # Working folder in memory; mode instead of uid/gid, which Podman refuses.
+    tmpfs:
+      - /data:mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true

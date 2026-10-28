@@ -1,0 +1,68 @@
+# chart-testing: most options switched on at once.
+replicaCount: 2
+commonLabels:
+  team: security
+commonAnnotations:
+  example.com/owner: platform
+podLabels:
+  tier: web
+podAnnotations:
+  example.com/scrape: "false"
+config:
+  TRUST_PROXY: "10.0.0.0/8"
+  HSTS: true
+  TEMPLATE: ci-brand
+  MAX_VIEWS: 5
+  TTL_OPTIONS: 15m,1h,1d,7d
+  DEFAULT_TTL: 1d
+  CONFIRM_CHECKBOX: true
+  CONFIRM_TEXT_EN: I only share one password here.
+secretConfig:
+  CONFIRM_TEXT_DE: Ich teile hier nur ein Passwort.
+extraEnv:
+  - name: ACCESS_LOG
+    value: "false"
+templates:
+  files:
+    ci-brand/theme.css: |
+      :root, html[data-theme="light"] { --accent: #0a7d55; }
+      html[data-theme="dark"] { --accent: #4fd1a5; }
+    ci-brand/template.json: |
+      { "siteName": "CI Secrets" }
+  binaryFiles:
+    ci-brand/assets/dot.png: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+  hosts:
+    - host: ots.example.com
+      paths:
+        - path: /
+  tls:
+    - secretName: ots-example-com-tls
+      hosts: [ots.example.com]
+podDisruptionBudget:
+  enabled: true
+networkPolicy:
+  enabled: true
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+redis:
+  extraArgs: ["--loglevel", "warning"]
+overrides:
+  deployment:
+    spec:
+      template:
+        spec:
+          shareProcessNamespace: false
+extraObjects:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: '{{ include "vanishly.fullname" . }}-extra'
+    data:
+      release: "{{ .Release.Name }}"

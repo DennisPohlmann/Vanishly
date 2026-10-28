@@ -1,0 +1,60 @@
+/* Example brand template: shows what a company template changes.
+   Copy this folder, rename it, swap the logo and colours. */
+
+/* Own font file? Put it into assets/ and load it here, e.g.
+@font-face { font-family: "Brand"; src: url("assets/brand.woff2") format("woff2"); font-display: swap; }
+   (theme.css is served at /theme/theme.css, so "assets/..." is relative to it.) */
+
+:root,
+html[data-theme="light"] {
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 6px;
+  --logo-height: 2.25rem;
+
+  --bg: #fff8f2;
+  --surface: #ffffff;
+  --surface-2: #fdeee2;
+  --input-bg: #ffffff;
+  --border: #ecd3bf;
+  --text: #2b1d12;
+  --muted: #6e5646;
+  --link: #b4470b;
+  --link-hover: #8a3606;
+  --accent: #c2510c;
+  --accent-hover: #9e420a;
+  --accent-on: #ffffff;
+  --header-bg: #2b1d12;
+  --header-text: #fff3e8;
+  --good: #2f7d32;
+  --good-bg: #e8f4e8;
+  --bad: #b3261e;
+  --bad-on: #ffffff;
+  --bad-bg: #fbe9e7;
+  --shadow: 0 2px 10px rgba(80, 40, 10, .08);
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --bg: #17110c;
+  --surface: #221912;
+  --surface-2: #2d2118;
+  --input-bg: #17110c;
+  --border: #46342a;
+  --text: #f6e9de;
+  --muted: #c2a995;
+  --link: #ff9a5a;
+  --link-hover: #ffb684;
+  --accent: #ff8a3d;
+  --accent-hover: #ffa466;
+  --accent-on: #1f1209;
+  --header-bg: #0f0a07;
+  --header-text: #f6e9de;
+  --good: #66bb6a;
+  --good-bg: #1a2a1b;
+  --bad: #ef6b60;
+  --bad-on: #1f0b09;
+  --bad-bg: #331713;
+  --shadow: 0 2px 10px rgba(0, 0, 0, .35);
+  color-scheme: dark;
+}

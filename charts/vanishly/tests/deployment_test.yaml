@@ -1,0 +1,285 @@
+suite: deployment
+templates:
+  - templates/deployment.yaml
+release:
+  name: t
+  namespace: ots
+capabilities:
+  majorVersion: 1
+  minorVersion: 33
+tests:
+  - it: runs the image as non-root with a read-only root file system
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: t-vanishly
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^ghcr\.io/dennispohlmann/vanishly:[0-9]+\.[0-9]+\.[0-9]+$'
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 1000
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value: [ALL]
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - equal:
+          path: spec.template.spec.enableServiceLinks
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 3000
+
+  - it: connects to the bundled Redis with the password from its Secret
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_URL
+            value: "redis://:$(REDIS_PASSWORD)@t-vanishly-redis:6379"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: t-vanishly-redis
+                key: redis-password
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: wait-for-redis
+
+  - it: takes an external Redis URL from a Secret
+    set:
+      redis:
+        enabled: false
+        external:
+          existingSecret: my-redis
+          existingSecretUrlKey: url
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_URL
+            valueFrom:
+              secretKeyRef:
+                name: my-redis
+                key: url
+      - notExists:
+          path: spec.template.spec.initContainers
+
+  - it: uses tag, digest and the global registry
+    set:
+      global:
+        imageRegistry: registry.example.com
+      image:
+        tag: "9.9.9"
+        digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/dennispohlmann/vanishly@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+  - it: adds commonLabels, podLabels and podAnnotations
+    set:
+      commonLabels:
+        team: security
+      podLabels:
+        tier: web
+      podAnnotations:
+        example.com/note: "{{ .Release.Name }}"
+      deploymentAnnotations:
+        example.com/owner: platform
+    asserts:
+      - equal:
+          path: metadata.labels.team
+          value: security
+      - equal:
+          path: spec.template.metadata.labels.tier
+          value: web
+      - equal:
+          path: spec.template.metadata.labels.team
+          value: security
+      - equal:
+          path: spec.template.metadata.annotations["example.com/note"]
+          value: t
+      - equal:
+          path: metadata.annotations["example.com/owner"]
+          value: platform
+
+  - it: leaves out replicas while autoscaling
+    set:
+      autoscaling:
+        enabled: true
+    asserts:
+      - notExists:
+          path: spec.replicas
+
+  - it: passes envFrom sources and extra env
+    set:
+      secretConfig:
+        CONFIRM_TEXT: x
+      existingSecret: more-settings
+      existingConfigMap: more-config
+      extraEnv:
+        - name: ACCESS_LOG
+          value: "false"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom
+          value:
+            - configMapRef:
+                name: t-vanishly
+            - secretRef:
+                name: t-vanishly
+            - configMapRef:
+                name: more-config
+            - secretRef:
+                name: more-settings
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ACCESS_LOG
+            value: "false"
+
+  - it: copies template files into an emptyDir and mounts it at TEMPLATES_DIR
+    set:
+      templates:
+        files:
+          my-brand/theme.css: ":root {}"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: copy-templates
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: templates
+            mountPath: /var/lib/vanishly/templates
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: templates
+            emptyDir:
+              sizeLimit: 32Mi
+      - exists:
+          path: spec.template.metadata.annotations["checksum/templates"]
+
+  - it: mounts a template volume directly at a changed TEMPLATES_DIR
+    set:
+      config:
+        TEMPLATES_DIR: /srv/templates
+      templates:
+        volume:
+          persistentVolumeClaim:
+            claimName: brand
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: templates
+            persistentVolumeClaim:
+              claimName: brand
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: templates
+            mountPath: /srv/templates
+            readOnly: true
+
+  - it: switches probes off and swaps a probe's handler
+    set:
+      livenessProbe:
+        enabled: false
+      readinessProbe:
+        httpGet: null
+        exec:
+          command: [node, -e, "process.exit(0)"]
+        periodSeconds: 1
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].livenessProbe
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe
+          value:
+            exec:
+              command: [node, -e, "process.exit(0)"]
+            periodSeconds: 1
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+  - it: fills in the selector of topology spread constraints
+    set:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels
+          value:
+            app.kubernetes.io/name: vanishly
+            app.kubernetes.io/instance: t
+            app.kubernetes.io/component: app
+
+  - it: adds sidecars, init containers and volumes
+    set:
+      initContainers:
+        - name: hello
+          image: busybox
+      extraContainers:
+        - name: sidecar
+          image: busybox
+      extraVolumes:
+        - name: extra
+          emptyDir: {}
+      extraVolumeMounts:
+        - name: extra
+          mountPath: /extra
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers
+          content:
+            name: hello
+            image: busybox
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: sidecar
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: extra
+            emptyDir: {}
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: extra
+            mountPath: /extra
+
+  - it: merges overrides.deployment last
+    set:
+      overrides:
+        deployment:
+          spec:
+            template:
+              spec:
+                hostUsers: false
+                shareProcessNamespace: true
+    asserts:
+      - equal:
+          path: spec.template.spec.hostUsers
+          value: false
+      - equal:
+          path: spec.template.spec.shareProcessNamespace
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: vanishly

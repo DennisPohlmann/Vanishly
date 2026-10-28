@@ -1,0 +1,78 @@
+# .github/dependabot.yml - Vanishly
+# Dependabot: npm, GitHub Actions, the Node base image and the Redis image.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    commit-message:
+      prefix: fix
+      prefix-development: chore
+      include: scope
+    groups:
+      runtime:
+        dependency-type: production
+        update-types: [minor, patch]
+      dev:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Base images in the Dockerfile and docker-compose.yml, pinned by digest: a new digest behind the
+  # same tag is an Alpine or Node patch, so it is checked daily with a short
+  # cooldown. Node majors stay a manual decision.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: daily
+      time: "06:00"
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 2
+    commit-message:
+      prefix: fix
+      include: scope
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
+      - dependency-name: redis
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    ignore:
+      - dependency-name: redis
+        update-types: [version-update:semver-major]
