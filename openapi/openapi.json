@@ -832,7 +832,7 @@
         ],
         "operationId": "searchGroups",
         "summary": "Search groups for recipients",
-        "description": "Only with RECIPIENT_GROUPS=* (Entra and ENTRA_GRAPH=true), for signed-in callers: groups whose name starts with q, at most 10.",
+        "description": "Only with RECIPIENT_GROUPS=* and a directory (Entra with ENTRA_GRAPH=true; keycloak, okta, google or cognito with DIRECTORY_API=true), for signed-in callers: groups whose name starts with or contains q, at most 10. id is the value to put into recipientGroups.",
         "parameters": [
           {
             "name": "q",
@@ -893,7 +893,7 @@
             }
           },
           "502": {
-            "description": "The directory (Microsoft Graph) is not reachable",
+            "description": "The directory (e.g. Microsoft Graph, the Keycloak admin API) is not reachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -930,7 +930,7 @@
         ],
         "operationId": "searchPeople",
         "summary": "Search people for recipients",
-        "description": "Only with RECIPIENT_USER_GROUP (Entra and ENTRA_GRAPH=true), for signed-in users (not app tokens): members of that group (also through nested groups) whose name, e-mail or user name starts with q, at most 10. Put \"user\" into \"recipients\" of a new secret; it is the address the person signs in with.",
+        "description": "Only with RECIPIENT_USER_GROUP and a directory (Entra with ENTRA_GRAPH=true, a preset with DIRECTORY_API=true), for signed-in users (not app tokens): members of that group (with Entra, Google and JumpCloud also through nested groups) whose name, e-mail or user name starts with q, at most 10. Put \"user\" into \"recipients\" of a new secret; it is the address the person signs in with.",
         "parameters": [
           {
             "name": "q",
@@ -998,7 +998,7 @@
             }
           },
           "502": {
-            "description": "The directory (Microsoft Graph) is not reachable",
+            "description": "The directory (e.g. Microsoft Graph, the Keycloak admin API) is not reachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -1561,7 +1561,14 @@
                 "type": "string",
                 "enum": [
                   "entra",
-                  "oidc"
+                  "oidc",
+                  "keycloak",
+                  "okta",
+                  "auth0",
+                  "google",
+                  "ping",
+                  "jumpcloud",
+                  "cognito"
                 ]
               },
               "createNeedsLogin": {

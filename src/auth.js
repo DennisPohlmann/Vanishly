@@ -1,5 +1,6 @@
-// Vanishly - optional sign-in (AUTH_PROVIDER=entra or oidc): OpenID Connect
-// login, sessions, API bearer tokens and the recipient check.
+// Vanishly - optional sign-in (AUTH_PROVIDER=entra, oidc or a preset such as
+// keycloak, okta, google): OpenID Connect login, sessions, API bearer tokens
+// and the recipient check. People and group search: src/directory/.
 //
 // Keys (below REDIS_PREFIX):
 //   sess:<sha256 of the cookie>  hash  name user ids created; expires with the session
@@ -12,6 +13,8 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import * as client from 'openid-client';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { groupValue } from './config.js';
+import { createDirectory } from './directory/index.js';
 
 /** @typedef {NonNullable<import('./config.js').Config['auth']>} AuthConfig */
 /**
@@ -41,7 +44,7 @@ export class Auth {
   /**
    * @param {AuthConfig} cfg
    * @param {{ redis: any, p: string }} store
-   * @param {{ fetch?: typeof fetch }} [opts] fetch for Graph (tests)
+   * @param {{ fetch?: typeof fetch }} [opts] fetch for the directory (tests)
    */
   constructor(cfg, store, opts = {}) {
     this.c = cfg;
@@ -55,8 +58,7 @@ export class Auth {
     this.discovered = null;
     /** @type {ReturnType<typeof createRemoteJWKSet> | null} */
     this.jwks = null;
-    /** @type {{ token: string, until: number } | null} */
-    this.graphToken = null;
+    this.directory = createDirectory(cfg, { fetch: this.fetch, oidc: () => this.oidc() });
     /** @type {Map<string, { ids: string[], until: number }>} groups of API callers, 5 minutes */
     this.groupCache = new Map();
     /** @type {Map<string, { people: { name: string, user: string, mail: string }[], until: number }>} people search, 1 minute */
@@ -83,8 +85,17 @@ export class Auth {
    * @param {string} value address (lower-cased here) or group
    */
   hash(kind, value) {
-    const v = kind === 'u' ? value.trim().toLowerCase() : value.trim();
+    const v = kind === 'u' ? value.trim().toLowerCase() : this.group(value);
     return createHmac('sha256', this.c.secret).update(`${kind}:${v}`).digest('base64url').slice(0, 32);
+  }
+
+  /**
+   * A group value as compared and hashed: Entra ids and Google addresses in
+   * lower case, Keycloak groups as paths.
+   * @param {string} g
+   */
+  group(g) {
+    return groupValue(g, this.c.lowerGroups, this.c.groupPaths);
   }
 
   /** @param {string} v */
@@ -101,8 +112,24 @@ export class Auth {
 
   /** @param {string} group */
   groupAllowed(group) {
-    if (this.c.groups.any) return /^[0-9a-f-]{36}$/i.test(group);
-    return this.c.groups.list.some((g) => g.id === (this.c.provider === 'entra' ? group.toLowerCase() : group));
+    if (this.c.groups.any) {
+      return this.c.provider === 'entra' ? /^[0-9a-f-]{36}$/i.test(group) : group.trim().length > 0 && group.length <= 200 && !/[\x00-\x1f]/.test(group);
+    }
+    return this.c.groups.list.some((g) => g.id === this.group(group));
+  }
+
+  /**
+   * AUTH_ALLOWED_DOMAINS: only accounts of these domains sign in. With Google
+   * the Workspace domain (hd) must match too, so a private Google account
+   * with an address of the domain is not enough.
+   * @param {Record<string, any>} claims
+   * @param {string} user the address from identity()
+   */
+  signInAllowed(claims, user) {
+    const d = this.c.allowedDomains;
+    if (!d.length) return true;
+    if (!user || !d.includes(user.split('@')[1])) return false;
+    return this.c.provider !== 'google' || (typeof claims.hd === 'string' && d.includes(claims.hd.toLowerCase()));
   }
 
   /**
@@ -123,6 +150,7 @@ export class Auth {
         ? [claims.preferred_username, claims.upn, claims.unique_name, claims.xms_edov === true || claims.xms_edov === '1' ? claims.email : '']
         : [claims.email_verified === false || claims.email_verified === 'false' ? '' : claims.email];
     const user = names.filter((v) => typeof v === 'string' && Auth.validEmail(v)).map((v) => v.trim().toLowerCase());
+    if (!this.signInAllowed(claims, user[0] || '')) throw new Error('account of a domain that may not sign in');
     const ids = [...new Set(user)].map((u) => this.hash('u', u));
     const groups = await this.groupsOf(claims);
     for (const g of groups) ids.push(this.hash('g', g));
@@ -132,111 +160,74 @@ export class Auth {
 
   /**
    * The groups of a user that matter here: all with RECIPIENT_GROUPS=*,
-   * otherwise only the listed ones. From the "groups" claim; with Entra and
-   * ENTRA_GRAPH=true from Graph when the token has none or too many (overage).
+   * otherwise only the listed ones. From the groups claim (OIDC_GROUPS_CLAIM);
+   * from the directory where the token has none: Entra with ENTRA_GRAPH=true
+   * (no claim or overage), Google with DIRECTORY_API=true.
    * @param {Record<string, any>} claims
    */
   async groupsOf(claims) {
     const { any, list } = this.c.groups;
     if (!any && !list.length) return [];
-    let groups = strings(claims.groups);
-    const overage = Boolean(claims._claim_names?.groups || claims.hasgroups);
-    if (this.c.graph && typeof claims.oid === 'string' && (overage || !Array.isArray(claims.groups))) {
-      const cached = this.groupCache.get(claims.oid);
+    const claim = this.c.groupsClaim ? claims[this.c.groupsClaim] : undefined;
+    let groups = typeof claim === 'string' ? [claim] : strings(claim);
+    const key = String(claims.oid || claims.sub || '');
+    if (this.directory && key) {
+      const cached = this.groupCache.get(key);
       if (cached && cached.until > Date.now()) groups = cached.ids;
       else {
-        groups = await this.graphMemberGroups(claims.oid);
-        this.groupCache.set(claims.oid, { ids: groups, until: Date.now() + 300000 });
-        if (this.groupCache.size > 1000) this.groupCache.delete(this.groupCache.keys().next().value || '');
+        const found = await this.directory.groupsOf(claims);
+        if (found) {
+          groups = found;
+          this.groupCache.set(key, { ids: groups, until: Date.now() + 300000 });
+          if (this.groupCache.size > 1000) this.groupCache.delete(this.groupCache.keys().next().value || '');
+        }
       }
     }
-    if (this.c.provider === 'entra') groups = groups.map((g) => g.toLowerCase());
+    groups = groups.map((g) => this.group(g)).filter(Boolean);
     return any ? groups : groups.filter((g) => list.some((l) => l.id === g));
   }
 
-  // ------------------------------------------------------------ Graph (Entra)
-  /** An app-only token for Graph (client credentials: GroupMember.Read.All, with the people search also User.Read.All). */
-  async graphAccess() {
-    if (this.graphToken && this.graphToken.until > Date.now()) return this.graphToken.token;
-    const t = await client.clientCredentialsGrant(await this.oidc(), { scope: `${this.c.graphUrl}/.default` });
-    this.graphToken = { token: t.access_token, until: Date.now() + Math.max(60, (t.expires_in || 3600) - 120) * 1000 };
-    return t.access_token;
-  }
-
-  /**
-   * @param {string} path below /v1.0
-   * @param {RequestInit} [init]
-   */
-  async graph(path, init = {}) {
-    const res = await this.fetch(`${this.c.graphUrl}/v1.0${path}`, {
-      ...init,
-      headers: { Authorization: `Bearer ${await this.graphAccess()}`, 'Content-Type': 'application/json', ...init.headers },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) throw new Error(`Graph answered ${res.status}`);
-    return /** @type {any} */ (await res.json());
-  }
-
-  /** @param {string} oid */
-  async graphMemberGroups(oid) {
-    if (!/^[0-9a-f-]{36}$/i.test(oid)) return [];
-    const r = await this.graph(`/users/${oid}/getMemberGroups`, {
-      method: 'POST',
-      body: JSON.stringify({ securityEnabledOnly: false }),
-    });
-    return strings(r.value);
-  }
-
+  // ------------------------------------------------------------ directory
   /**
    * Groups whose name starts with q (RECIPIENT_GROUPS=*), at most 10.
    * @param {string} q
    * @returns {Promise<{ id: string, name: string }[]>}
    */
   async searchGroups(q) {
-    const term = q.replace(/["\\]/g, '').trim().slice(0, 64);
-    if (term.length < 2) return [];
-    const params = new URLSearchParams({
-      $search: `"displayName:${term}"`,
-      $select: 'id,displayName',
-      $top: '10',
-      $orderby: 'displayName',
-    });
-    const r = await this.graph(`/groups?${params}`, { headers: { ConsistencyLevel: 'eventual' } });
-    return (Array.isArray(r.value) ? r.value : [])
-      .filter((/** @type {any} */ g) => typeof g?.id === 'string' && typeof g?.displayName === 'string')
-      .map((/** @type {any} */ g) => ({ id: g.id.toLowerCase(), name: g.displayName }));
+    const term = q.replace(/["\\]/g, '').trim().toLowerCase().slice(0, 64);
+    if (term.length < 2 || !this.directory || !this.c.groups.any) return [];
+    const found = await this.directory.searchGroups(term);
+    /** @type {{ id: string, name: string }[]} */
+    const out = [];
+    for (const g of found) {
+      if (typeof g?.id !== 'string' || typeof g?.name !== 'string' || !this.groupAllowed(g.id)) continue;
+      const id = this.group(g.id);
+      if (!out.some((o) => o.id === id)) out.push({ id, name: g.name.trim().slice(0, 200) || id });
+    }
+    return out.slice(0, 10);
   }
 
   /**
-   * Members of RECIPIENT_USER_GROUP (also through nested groups) whose name,
-   * mail or user name starts with q, at most 10. "user" is the address the
-   * person signs in with, so it matches identity(): the UPN, for guests
-   * (#EXT#) their mail. Answers are kept for a minute.
+   * Members of RECIPIENT_USER_GROUP whose name, mail or user name starts
+   * with q, at most 10. "user" is the address the person signs in with, so
+   * it matches identity(). Answers are kept for a minute.
    * @param {string} q
    * @returns {Promise<{ name: string, user: string, mail: string }[]>}
    */
   async searchPeople(q) {
     const term = q.replace(/["\\]/g, '').trim().toLowerCase().slice(0, 64);
-    if (term.length < 2 || !this.c.userGroup) return [];
+    if (term.length < 2 || !this.c.userGroup || !this.directory) return [];
     const cached = this.peopleCache.get(term);
     if (cached && cached.until > Date.now()) return cached.people;
-    const params = new URLSearchParams({
-      $search: ['displayName', 'mail', 'userPrincipalName'].map((f) => `"${f}:${term}"`).join(' OR '),
-      $select: 'displayName,mail,userPrincipalName',
-      $top: '10',
-      $count: 'true',
-    });
-    const r = await this.graph(`/groups/${this.c.userGroup}/transitiveMembers/microsoft.graph.user?${params}`, {
-      headers: { ConsistencyLevel: 'eventual' },
-    });
     const people = [];
-    for (const u of Array.isArray(r.value) ? r.value : []) {
-      const upn = typeof u?.userPrincipalName === 'string' ? u.userPrincipalName.trim().toLowerCase() : '';
-      const mail = typeof u?.mail === 'string' ? u.mail.trim().toLowerCase() : '';
-      const user = upn.includes('#ext#') ? mail : upn;
-      if (!Auth.validEmail(user) || people.some((p) => p.user === user)) continue;
-      const name = typeof u.displayName === 'string' && u.displayName.trim() ? u.displayName.trim().slice(0, 100) : user;
+    for (const p of await this.directory.searchPeople(term)) {
+      const user = typeof p?.user === 'string' ? p.user.trim().toLowerCase() : '';
+      const mail = typeof p?.mail === 'string' ? p.mail.trim().toLowerCase() : '';
+      if (!Auth.validEmail(user) || people.some((x) => x.user === user)) continue;
+      if (this.c.domains.length && !this.domainAllowed(user)) continue;
+      const name = typeof p.name === 'string' && p.name.trim() ? p.name.trim().slice(0, 100) : user;
       people.push({ name, user, mail: Auth.validEmail(mail) ? mail : '' });
+      if (people.length === 10) break;
     }
     people.sort((a, b) => a.name.localeCompare(b.name));
     this.peopleCache.set(term, { people, until: Date.now() + 60000 });
@@ -261,7 +252,10 @@ export class Auth {
       .hSet(key, { v: verifier, n: nonce, r: RETURN.test(returnTo) ? returnTo : '/' })
       .expire(key, STATE_TTL)
       .exec();
+    // Google: hd preselects the Workspace domain (only a hint; identity() checks it).
+    const hd = this.c.provider === 'google' && this.c.allowedDomains.length === 1 ? { hd: this.c.allowedDomains[0] } : {};
     return client.buildAuthorizationUrl(cfg, {
+      ...hd,
       redirect_uri: this.c.redirectUri,
       scope: this.c.provider === 'entra' ? 'openid profile email' : this.c.scopes,
       code_challenge: await client.calculatePKCECodeChallenge(verifier),
@@ -371,12 +365,15 @@ export class Auth {
       const issuers = [meta.issuer];
       // Entra v1 access tokens (accessTokenAcceptedVersion 1) have the old issuer.
       if (this.c.provider === 'entra') issuers.push(`https://sts.windows.net/${this.c.tenant}/`);
+      // Cognito access tokens have no "aud"; their client_id is the audience.
+      const cognito = this.c.provider === 'cognito';
       const { payload } = await jwtVerify(token, this.jwks, {
         issuer: issuers,
-        audience: this.c.apiAudience,
+        ...(cognito ? {} : { audience: this.c.apiAudience }),
         algorithms: ['RS256', 'RS384', 'RS512', 'PS256', 'ES256'],
         clockTolerance: 60,
       });
+      if (cognito && (payload.token_use !== 'access' || payload.client_id !== this.c.apiAudience)) return null;
       // An app (client credentials) has no user: it may create, not open restricted secrets.
       if (payload.idtyp === 'app' || (!payload.preferred_username && !payload.upn && !payload.email && !payload.unique_name)) {
         if (this.c.provider === 'entra' && String(payload.tid || '').toLowerCase() !== this.c.tenant) return null;

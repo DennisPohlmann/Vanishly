@@ -173,8 +173,69 @@ test('sign-in settings: off by default, checked when on', () => {
   }).auth;
   assert.equal(o?.issuer, 'http://localhost:8080/default');
   assert.throws(() => loadConfig({ AUTH_PROVIDER: 'oidc', BASE_URL: 'https://a.example.com', OIDC_ISSUER: 'https://x.example.com', OIDC_CLIENT_ID: 'v', OIDC_CLIENT_SECRET: 's', AUTH_SECRET: 'z'.repeat(32), ENTRA_GRAPH: 'true' }), /does not apply/);
-  assert.throws(() => loadConfig({ AUTH_PROVIDER: 'oidc', BASE_URL: 'https://a.example.com', OIDC_ISSUER: 'https://x.example.com', OIDC_CLIENT_ID: 'v', OIDC_CLIENT_SECRET: 's', AUTH_SECRET: 'z'.repeat(32), RECIPIENT_USER_GROUP: 'ops' }), /needs AUTH_PROVIDER=entra/);
-  assert.throws(() => loadConfig({ AUTH_PROVIDER: 'okta' }), /none, entra or oidc/);
+  assert.throws(() => loadConfig({ AUTH_PROVIDER: 'oidc', BASE_URL: 'https://a.example.com', OIDC_ISSUER: 'https://x.example.com', OIDC_CLIENT_ID: 'v', OIDC_CLIENT_SECRET: 's', AUTH_SECRET: 'z'.repeat(32), RECIPIENT_USER_GROUP: 'ops' }), /needs a provider with a directory/);
+  assert.throws(() => loadConfig({ AUTH_PROVIDER: 'onelogin' }), /none, entra, oidc, keycloak/);
+});
+
+test('sign-in presets: issuer forms, groups claim, directory credentials', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vanishly-dir-'));
+  /** @param {string} provider @param {string} issuer @param {Record<string, string>} [more] */
+  const cfg = (provider, issuer, more = {}) =>
+    /** @type {NonNullable<ReturnType<typeof loadConfig>['auth']>} */ (
+      loadConfig({ AUTH_PROVIDER: provider, BASE_URL: 'https://ots.example.com', OIDC_ISSUER: issuer, OIDC_CLIENT_ID: 'vanishly', OIDC_CLIENT_SECRET: 'change-me', AUTH_SECRET: 'z'.repeat(32), ...more }).auth
+    );
+  // Keycloak: groups claim, directory with the sign-in client, group path or id.
+  const kc = cfg('keycloak', 'https://sso.example.com/realms/main', { DIRECTORY_API: 'true', RECIPIENT_USER_GROUP: '/staff', RECIPIENT_GROUPS: '*' });
+  assert.equal(kc.groupsClaim, 'groups');
+  assert.equal(kc.userGroup, '/staff');
+  assert.equal(kc.directory?.clientId, '');
+  assert.throws(() => cfg('keycloak', 'https://sso.example.com/auth'), /issuer of keycloak/);
+  assert.throws(() => cfg('keycloak', 'https://sso.example.com/realms/main', { RECIPIENT_USER_GROUP: '/staff' }), /DIRECTORY_API=true/);
+  assert.throws(() => cfg('keycloak', 'https://sso.example.com/realms/main', { DIRECTORY_API: 'true', RECIPIENT_USER_GROUP: 'staff' }), /path of a group/);
+  assert.throws(() => cfg('keycloak', 'https://sso.example.com/realms/main', { DIRECTORY_API: 'true', DIRECTORY_CLIENT_ID: 'search' }), /go together/);
+  assert.throws(() => cfg('keycloak', 'https://sso.example.com/realms/main', { DIRECTORY_URL: 'https://x.example.com' }), /needs DIRECTORY_API=true/);
+  assert.throws(() => cfg('keycloak', 'https://sso.example.com/realms/main', { DIRECTORY_API: 'true', DIRECTORY_API_TOKEN: 'change-me-token' }), /does not apply/);
+  // Okta: API token; group names with spaces.
+  const okta = cfg('okta', 'https://example.okta.com/oauth2/default', { DIRECTORY_API: 'true', DIRECTORY_API_TOKEN: 'change-me-token', RECIPIENT_GROUPS: 'IT=IT Admins' });
+  assert.deepEqual(okta.groups.list, [{ name: 'IT', id: 'IT Admins' }]);
+  assert.throws(() => cfg('okta', 'https://example.okta.com', { DIRECTORY_API: 'true' }), /DIRECTORY_API_TOKEN/);
+  // Auth0 and JumpCloud keep the trailing slash of their issuer; Auth0 has no groups claim by default.
+  assert.equal(cfg('auth0', 'https://example.eu.auth0.com/').issuer, 'https://example.eu.auth0.com/');
+  assert.equal(cfg('jumpcloud', 'https://oauth.id.jumpcloud.com').issuer, 'https://oauth.id.jumpcloud.com/');
+  assert.throws(() => cfg('auth0', 'https://example.eu.auth0.com/', { RECIPIENT_GROUPS: 'Ops=ops' }), /OIDC_GROUPS_CLAIM/);
+  assert.equal(cfg('auth0', 'https://example.eu.auth0.com/', { RECIPIENT_GROUPS: 'Ops=ops', OIDC_GROUPS_CLAIM: 'https://ots.example.com/groups' }).groupsClaim, 'https://ots.example.com/groups');
+  assert.throws(() => cfg('auth0', 'https://example.eu.auth0.com/', { DIRECTORY_API: 'true', RECIPIENT_GROUPS: '*' }), /not available with AUTH_PROVIDER=auth0/);
+  // Google: the Workspace domain is required; groups only through the directory.
+  assert.throws(() => cfg('google', 'https://accounts.google.com'), /AUTH_ALLOWED_DOMAINS is required/);
+  const gOk = { AUTH_ALLOWED_DOMAINS: 'example.com' };
+  assert.equal(cfg('google', 'https://accounts.google.com', gOk).groupsClaim, '');
+  assert.throws(() => cfg('google', 'https://accounts.google.com', { ...gOk, RECIPIENT_GROUPS: 'Ops=ops@example.com' }), /Google puts no groups/);
+  assert.throws(() => cfg('google', 'https://accounts.google.com', { ...gOk, DIRECTORY_API: 'true' }), /DIRECTORY_GOOGLE_CREDENTIALS_FILE/);
+  const key = join(dir, 'sa.json');
+  writeFileSync(key, JSON.stringify({ type: 'service_account', client_email: 'vanishly@example.iam.gserviceaccount.com', private_key: 'change-me', private_key_id: 'k1' }));
+  const goo = cfg('google', 'https://accounts.google.com', { ...gOk, DIRECTORY_API: 'true', DIRECTORY_GOOGLE_CREDENTIALS_FILE: key, DIRECTORY_GOOGLE_ADMIN: 'Admin@Example.com', RECIPIENT_GROUPS: 'Ops=Ops@Example.com', RECIPIENT_USER_GROUP: 'Staff@Example.com' });
+  assert.deepEqual(goo.groups.list, [{ name: 'Ops', id: 'ops@example.com' }]);
+  assert.equal(goo.userGroup, 'staff@example.com');
+  assert.equal(goo.directory?.google?.admin, 'admin@example.com');
+  writeFileSync(join(dir, 'bad.json'), '{"type":"authorized_user"}');
+  assert.throws(() => cfg('google', 'https://accounts.google.com', { ...gOk, DIRECTORY_API: 'true', DIRECTORY_GOOGLE_CREDENTIALS_FILE: join(dir, 'bad.json'), DIRECTORY_GOOGLE_ADMIN: 'a@example.com' }), /service account/);
+  assert.throws(() => cfg('google', 'https://evil.example.com', gOk), /issuer of google/);
+  // Ping: environment id in the issuer.
+  assert.throws(() => cfg('ping', 'https://auth.pingone.eu/as'), /issuer of ping/);
+  assert.equal(cfg('ping', 'https://auth.pingone.eu/11111111-2222-3333-4444-555555555555/as').groupsClaim, 'groups');
+  // Cognito: cognito:groups; AWS credentials from the usual variables.
+  const iss = 'https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_AbC123';
+  assert.equal(cfg('cognito', iss).groupsClaim, 'cognito:groups');
+  assert.throws(() => cfg('cognito', iss, { DIRECTORY_API: 'true' }), /AWS credentials/);
+  const cog = cfg('cognito', iss, { DIRECTORY_API: 'true', AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE', AWS_SECRET_ACCESS_KEY: 'change-me' });
+  assert.deepEqual([cog.directory?.aws?.region, cog.directory?.aws?.pool], ['eu-central-1', 'eu-central-1_AbC123']);
+  // Generic OIDC has no directory; Entra keeps ENTRA_GRAPH.
+  assert.throws(() => cfg('oidc', 'https://x.example.com', { DIRECTORY_API: 'true' }), /not oidc/);
+  assert.throws(
+    () => loadConfig({ AUTH_PROVIDER: 'entra', BASE_URL: 'https://a.example.com', ENTRA_TENANT_ID: '11111111-2222-3333-4444-555555555555', ENTRA_CLIENT_ID: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', ENTRA_CLIENT_SECRET: 's', AUTH_SECRET: 'z'.repeat(32), DIRECTORY_API: 'true' }),
+    /uses ENTRA_GRAPH/,
+  );
+  assert.throws(() => cfg('okta', 'https://example.okta.com', { AUTH_ALLOWED_DOMAINS: 'not a domain' }), /AUTH_ALLOWED_DOMAINS/);
 });
 
 test('external Redis: REDIS_URL_FILE and REDIS_TLS_CA_FILE', () => {

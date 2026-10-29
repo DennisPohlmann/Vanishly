@@ -191,9 +191,14 @@ networkPolicy:
             kubernetes.io/metadata.name: ingress-nginx
 ```
 
-With sign-in (`config.AUTH_PROVIDER` entra or oidc), Vanishly also talks to the
-identity provider (and Microsoft Graph with `ENTRA_GRAPH`): allow that with
-`networkPolicy.egress.extraRules`, port 443.
+With sign-in (`config.AUTH_PROVIDER`), Vanishly also talks to the identity
+provider (and its directory with `ENTRA_GRAPH` or `DIRECTORY_API`, e.g.
+Microsoft Graph, the Okta or Google Admin API, Cognito and, on EKS, STS):
+allow that with `networkPolicy.egress.extraRules`, port 443. Directory
+credentials go into `secretConfig` or `existingSecret`
+(`DIRECTORY_CLIENT_SECRET`, `DIRECTORY_API_TOKEN`, `AWS_SECRET_ACCESS_KEY`);
+the Google service account key as a file through `extraVolumes`. Setup per
+provider: [docs/providers](https://github.com/DennisPohlmann/Vanishly/blob/main/docs/providers/README.md).
 
 ## Values
 

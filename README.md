@@ -21,9 +21,10 @@ Vanishly runs as a small Node.js container next to Redis.
 - **Receipt link for the sender:** status, view times (no IPs), copy the
   share link again, burn the secret early.
 - **Only for chosen people (optional):** with sign-in via Microsoft Entra
-  ID or any OpenID Connect provider (`AUTH_PROVIDER`), the sender names the
-  people or groups who may open a secret (with Entra also by searching
-  names in a group). The server hands it out only to
+  ID, Keycloak, Okta, Auth0, Google Workspace, PingOne, JumpCloud, Cognito or
+  any OpenID Connect provider (`AUTH_PROVIDER`), the sender names the
+  people or groups who may open a secret (with a directory also by
+  searching names in a group). The server hands it out only to
   them after they signed in; others use no view. Off by default; a test
   login server for trying it is included.
 - **Click to reveal:** opening the link shows nothing yet, so chat and mail
@@ -145,6 +146,7 @@ curl -s -X POST http://127.0.0.1:3000/api/v1/share \
 | [docs/CONFIG.md](docs/CONFIG.md) | all environment variables, Redis, rate limits, languages |
 | [docs/USAGE.md](docs/USAGE.md) | pages, how sharing works, receipts, health and monitoring |
 | [docs/SECURITY.md](docs/SECURITY.md) | how a secret is protected: encryption in the browser, what Redis stores, passphrase, behaviour on Redis errors, limits |
+| [docs/providers/](docs/providers/README.md) | sign-in providers: what each supports, setup per provider |
 | [docs/INTERFACE.md](docs/INTERFACE.md) | REST API (OpenAPI), crypto format, Redis keys |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | local development, tests, CI and releases |
 | [templates/README.md](templates/README.md) | own templates: logo, CSS, pictures, views |

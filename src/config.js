@@ -106,7 +106,9 @@ export const SETTINGS = [
   'ENABLE_GITHUB_LINK', 'VANISHLY_VERSION',
   'AUTH_PROVIDER', 'ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET', 'ENTRA_CLIENT_SECRET_FILE',
   'ENTRA_AUTHORITY', 'ENTRA_GRAPH', 'ENTRA_GRAPH_URL', 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET',
-  'OIDC_CLIENT_SECRET_FILE', 'OIDC_SCOPES', 'AUTH_SECRET', 'AUTH_SECRET_FILE', 'AUTH_SESSION_TTL', 'AUTH_CREATE', 'AUTH_API_AUDIENCE', 'RECIPIENTS', 'RECIPIENTS_MAX', 'RECIPIENT_GROUPS',
+  'OIDC_CLIENT_SECRET_FILE', 'OIDC_SCOPES', 'OIDC_GROUPS_CLAIM', 'AUTH_ALLOWED_DOMAINS', 'DIRECTORY_API', 'DIRECTORY_URL',
+  'DIRECTORY_CLIENT_ID', 'DIRECTORY_CLIENT_SECRET', 'DIRECTORY_CLIENT_SECRET_FILE', 'DIRECTORY_API_TOKEN',
+  'DIRECTORY_API_TOKEN_FILE', 'DIRECTORY_GOOGLE_CREDENTIALS_FILE', 'DIRECTORY_GOOGLE_ADMIN', 'AUTH_SECRET', 'AUTH_SECRET_FILE', 'AUTH_SESSION_TTL', 'AUTH_CREATE', 'AUTH_API_AUDIENCE', 'RECIPIENTS', 'RECIPIENTS_MAX', 'RECIPIENT_GROUPS',
   'RECIPIENT_USER_GROUP', 'RECIPIENT_DOMAINS', 'RECEIPT_SHOW_VIEWER',
 ];
 const AUTH_SETTINGS = SETTINGS.slice(SETTINGS.indexOf('ENTRA_TENANT_ID'));
@@ -147,44 +149,215 @@ function secretValue(env, name) {
 }
 
 /**
- * RECIPIENT_GROUPS: empty (no groups), "*" (search the tenant via Graph) or
+ * AUTH_PROVIDER: the sign-in providers besides Entra. All use OpenID Connect
+ * (OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET); a preset adds what the
+ * provider needs: the groups claim, the issuer format and, with
+ * DIRECTORY_API=true, the people and group search in its directory.
+ *   groupsClaim  default of OIDC_GROUPS_CLAIM ('' = none: set it, or groups come from the directory)
+ *   example      an issuer, for the error message
+ *   issuer       the issuer's form (checked); slash: the issuer ends with "/"
+ *   access       what the directory needs: client (client credentials), token (API token), google, aws
+ *   userGroup    the form of RECIPIENT_USER_GROUP
+ *   groupSearch  RECIPIENT_GROUPS=* works (the directory lists groups by the claim's value)
+ *   lower        group values are compared in lower case
+ *   paths        group values are paths: "finance" (mapper without full path) counts as "/finance"
+ * @type {Record<string, { groupsClaim: string, example: string, issuer?: RegExp, slash?: boolean, access?: 'client' | 'token' | 'google' | 'aws', userGroup?: [RegExp, string], groupSearch?: boolean, lower?: boolean, paths?: boolean }>}
+ */
+const PRESETS = {
+  oidc: { groupsClaim: 'groups', example: 'https://login.example.com/realms/main' },
+  keycloak: {
+    groupsClaim: 'groups',
+    example: 'https://login.example.com/realms/main',
+    issuer: /\/realms\/[^/]+$/,
+    access: 'client',
+    userGroup: [/^((\/[^/]{1,100}){1,10}|[0-9a-f-]{36})$/i, 'the path of a group (/staff) or its id'],
+    groupSearch: true,
+    paths: true,
+  },
+  okta: {
+    groupsClaim: 'groups',
+    example: 'https://example.okta.com/oauth2/default',
+    access: 'token',
+    userGroup: [/^00g[A-Za-z0-9]{17}$/, 'the id of an Okta group (00g...)'],
+    groupSearch: true,
+  },
+  auth0: {
+    groupsClaim: '',
+    example: 'https://example.eu.auth0.com/',
+    slash: true,
+    access: 'client',
+    userGroup: [/^rol_[A-Za-z0-9]{16}$/, 'the id of an Auth0 role (rol_...)'],
+  },
+  google: {
+    groupsClaim: '',
+    example: 'https://accounts.google.com',
+    issuer: /^https:\/\/accounts\.google\.com$/,
+    access: 'google',
+    userGroup: [/^[^\s@]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$/i, 'the e-mail address of a Google group'],
+    groupSearch: true,
+    lower: true,
+  },
+  ping: {
+    groupsClaim: 'groups',
+    example: 'https://auth.pingone.eu/<environment id>/as',
+    issuer: /^https:\/\/auth\.pingone\.[a-z.]+\/[0-9a-f-]{36}\/as$/,
+    access: 'client',
+    userGroup: [/^[0-9a-f-]{36}$/i, 'the id of a PingOne group'],
+  },
+  jumpcloud: {
+    groupsClaim: 'groups',
+    example: 'https://oauth.id.jumpcloud.com/',
+    slash: true,
+    access: 'token',
+    userGroup: [/^[0-9a-f]{24}$/, 'the id of a JumpCloud user group'],
+  },
+  cognito: {
+    groupsClaim: 'cognito:groups',
+    example: 'https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_Example',
+    issuer: /^https:\/\/cognito-idp\.[a-z0-9-]+\.amazonaws\.com\/[a-z0-9-]+_[A-Za-z0-9]+$/,
+    access: 'aws',
+    userGroup: [/^[\p{L}\p{M}\p{S}\p{N}\p{P}]{1,128}$/u, 'the name of a Cognito group'],
+    groupSearch: true,
+  },
+};
+export const PROVIDERS = ['entra', ...Object.keys(PRESETS)];
+
+/**
+ * A group value as it is compared and hashed (the same in config, token and form).
+ * @param {string} v
+ * @param {boolean} lower Entra ids, Google addresses
+ * @param {boolean} paths Keycloak: "/" in front
+ */
+export function groupValue(v, lower, paths) {
+  const t = v.trim();
+  const l = lower ? t.toLowerCase() : t;
+  return paths && l && !l.startsWith('/') ? `/${l}` : l;
+}
+
+/**
+ * RECIPIENT_GROUPS: empty (no groups), "*" (search the directory) or
  * "Name=<group>,..." (the groups a sender may pick from): with Entra the
- * group object id, otherwise the value in the "groups" claim.
+ * group object id, otherwise the value in the groups claim.
  * @param {string} v
  * @param {boolean} entra
+ * @param {(id: string) => string} norm
  * @returns {{ any: boolean, list: { name: string, id: string }[] }}
  */
-function recipientGroups(v, entra) {
+function recipientGroups(v, entra, norm) {
   if (!v.trim()) return { any: false, list: [] };
   if (v.trim() === '*') return { any: true, list: [] };
   const list = [];
   for (const part of v.split(',').map((p) => p.trim()).filter(Boolean)) {
-    const m = /^([^=]{1,64})=([^=\s]{1,200})$/.exec(part);
-    if (!m || (entra && !GUID.test(m[2]))) {
+    // Group names may hold spaces (Okta, Cognito), not an Entra id.
+    const m = /^([^=]{1,64})=([^=]{1,200})$/.exec(part);
+    const id = m ? m[2].trim() : '';
+    if (!m || !id || /[\x00-\x1f]/.test(id) || (entra && !GUID.test(id))) {
       throw new Error(`"${part}" is not Name=${entra ? '<group object id> (a GUID)' : '<value of the groups claim>'}`);
     }
-    list.push({ name: m[1].trim(), id: entra ? m[2].toLowerCase() : m[2] });
+    list.push({ name: m[1].trim(), id: norm(id) });
   }
   if (!list.length) throw new Error('empty');
   return { any: false, list };
 }
 
 /**
- * Optional sign-in (AUTH_PROVIDER=entra or oidc); null = off.
+ * The directory of a preset (DIRECTORY_API=true): where it is and how
+ * Vanishly signs in to it. Credentials are checked here, used in src/directory/.
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} provider
+ * @param {string} issuer
+ * @param {(name: string, def: string, path?: boolean) => string} url
+ */
+function directoryConfig(env, provider, issuer, url) {
+  const preset = PRESETS[provider];
+  const dir = {
+    provider,
+    issuer,
+    url: env.DIRECTORY_URL ? url('DIRECTORY_URL', 'https://admin.example.com', true) : '',
+    clientId: '',
+    clientSecret: '',
+    token: '',
+    /** @type {{ clientEmail: string, privateKey: string, keyId: string, tokenUri: string, admin: string } | null} */
+    google: null,
+    /** @type {{ region: string, pool: string, accessKeyId: string, secretAccessKey: string, sessionToken: string, roleArn: string, tokenFile: string } | null} */
+    aws: null,
+  };
+  /** @param {string} name */
+  const notHere = (name) => {
+    if (env[name]) throw new Error(`${name} does not apply to AUTH_PROVIDER=${provider}`);
+  };
+  if (preset.access !== 'client') ['DIRECTORY_CLIENT_ID', 'DIRECTORY_CLIENT_SECRET', 'DIRECTORY_CLIENT_SECRET_FILE'].forEach(notHere);
+  if (preset.access !== 'token') ['DIRECTORY_API_TOKEN', 'DIRECTORY_API_TOKEN_FILE'].forEach(notHere);
+  if (preset.access !== 'google') ['DIRECTORY_GOOGLE_CREDENTIALS_FILE', 'DIRECTORY_GOOGLE_ADMIN'].forEach(notHere);
+  if (preset.access === 'client') {
+    // A client of its own (service account / worker app), or the sign-in client.
+    dir.clientId = env.DIRECTORY_CLIENT_ID || '';
+    if (dir.clientId && !/^[\w.:@/-]{1,200}$/.test(dir.clientId)) throw new Error('DIRECTORY_CLIENT_ID: letters, digits and _ . : @ / -');
+    dir.clientSecret = named('DIRECTORY_CLIENT_SECRET', () => secretValue(env, 'DIRECTORY_CLIENT_SECRET'));
+    if (Boolean(dir.clientId) !== Boolean(dir.clientSecret)) throw new Error('DIRECTORY_CLIENT_ID and DIRECTORY_CLIENT_SECRET go together');
+  } else if (preset.access === 'token') {
+    dir.token = named('DIRECTORY_API_TOKEN', () => secretValue(env, 'DIRECTORY_API_TOKEN'));
+    if (!dir.token) throw new Error(`DIRECTORY_API_TOKEN (or DIRECTORY_API_TOKEN_FILE) is required with AUTH_PROVIDER=${provider} and DIRECTORY_API=true`);
+    if (!/^[\x21-\x7e]{8,512}$/.test(dir.token)) throw new Error('DIRECTORY_API_TOKEN: the API token as issued, no spaces');
+  } else if (preset.access === 'google') {
+    const file = env.DIRECTORY_GOOGLE_CREDENTIALS_FILE || '';
+    if (!file) throw new Error('DIRECTORY_GOOGLE_CREDENTIALS_FILE (the key file of a service account) is required with AUTH_PROVIDER=google and DIRECTORY_API=true');
+    const admin = (env.DIRECTORY_GOOGLE_ADMIN || '').trim().toLowerCase();
+    if (!/^[^\s@]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(admin)) {
+      throw new Error('DIRECTORY_GOOGLE_ADMIN (the address of an admin the service account acts for) is required with AUTH_PROVIDER=google and DIRECTORY_API=true');
+    }
+    dir.google = named('DIRECTORY_GOOGLE_CREDENTIALS_FILE', () => {
+      /** @type {any} */ let key;
+      try {
+        key = JSON.parse(readFileSync(file, 'utf8'));
+      } catch (err) {
+        throw new Error(`cannot read ${file} as JSON (${/** @type {NodeJS.ErrnoException} */ (err).code || 'invalid'})`);
+      }
+      if (key?.type !== 'service_account' || typeof key.client_email !== 'string' || typeof key.private_key !== 'string') {
+        throw new Error('not the JSON key of a service account');
+      }
+      const tokenUri = typeof key.token_uri === 'string' ? key.token_uri : 'https://oauth2.googleapis.com/token';
+      if (!/^https:\/\/[^/\s]+\/\S*$/.test(tokenUri)) throw new Error('token_uri: an https:// address');
+      return { clientEmail: key.client_email, privateKey: key.private_key, keyId: String(key.private_key_id || ''), tokenUri, admin };
+    });
+  } else if (preset.access === 'aws') {
+    // The standard AWS variables: keys, or a role through a web identity token (EKS IRSA).
+    const m = /^https:\/\/cognito-idp\.([a-z0-9-]+)\.amazonaws\.com\/([a-z0-9-]+_[A-Za-z0-9]+)$/.exec(issuer);
+    if (!m) throw new Error('OIDC_ISSUER: the Cognito issuer, e.g. https://cognito-idp.<region>.amazonaws.com/<user pool id>');
+    const aws = {
+      region: m[1],
+      pool: m[2],
+      accessKeyId: env.AWS_ACCESS_KEY_ID || '',
+      secretAccessKey: env.AWS_SECRET_ACCESS_KEY || '',
+      sessionToken: env.AWS_SESSION_TOKEN || '',
+      roleArn: env.AWS_ROLE_ARN || '',
+      tokenFile: env.AWS_WEB_IDENTITY_TOKEN_FILE || '',
+    };
+    if (!(aws.accessKeyId && aws.secretAccessKey) && !(aws.roleArn && aws.tokenFile)) {
+      throw new Error('DIRECTORY_API=true with AUTH_PROVIDER=cognito needs AWS credentials: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE');
+    }
+    dir.aws = aws;
+  }
+  return dir;
+}
+
+/**
+ * Optional sign-in (AUTH_PROVIDER=entra, oidc or a preset); null = off.
  * @param {NodeJS.ProcessEnv} env
  * @param {string} baseUrl
  */
 function authConfig(env, baseUrl) {
   const provider = env.AUTH_PROVIDER || 'none';
-  if (!/^(none|entra|oidc)$/.test(provider)) throw new Error('AUTH_PROVIDER: none, entra or oidc');
+  if (provider !== 'none' && !PROVIDERS.includes(provider)) throw new Error(`AUTH_PROVIDER: none, ${PROVIDERS.join(', ')}`);
   if (provider === 'none') {
     const set = AUTH_SETTINGS.find((k) => env[k]);
-    if (set) throw new Error(`${set} needs AUTH_PROVIDER=entra or oidc`);
+    if (set) throw new Error(`${set} needs AUTH_PROVIDER (${PROVIDERS.join(', ')})`);
     return null;
   }
   const entra = provider === 'entra';
-  const other = AUTH_SETTINGS.find((k) => env[k] && k.startsWith(entra ? 'OIDC_' : 'ENTRA_'));
-  if (other) throw new Error(`${other} does not apply to AUTH_PROVIDER=${provider}`);
+  const preset = entra ? null : PRESETS[provider];
+  const other = AUTH_SETTINGS.find((k) => env[k] && (entra ? /^(OIDC|DIRECTORY)_/.test(k) : k.startsWith('ENTRA_')));
+  if (other) throw new Error(`${other} does not apply to AUTH_PROVIDER=${provider}${entra && other.startsWith('DIRECTORY_') ? ' (Entra uses ENTRA_GRAPH)' : ''}`);
   /** @param {string} name */
   const need = (name) => {
     if (!env[name]) throw new Error(`${name} is required with AUTH_PROVIDER=${provider}`);
@@ -211,7 +384,11 @@ function authConfig(env, baseUrl) {
     issuer = `${authority}/${tenant}/v2.0`;
   } else {
     need('OIDC_ISSUER');
-    issuer = url('OIDC_ISSUER', 'https://login.example.com/realms/main', true);
+    issuer = url('OIDC_ISSUER', preset?.example || '', true);
+    const local = issuer.startsWith('http:');
+    if (preset?.issuer && !local && !preset.issuer.test(issuer)) throw new Error(`OIDC_ISSUER: the issuer of ${provider}, e.g. ${preset.example}`);
+    // Auth0 and JumpCloud name their issuer with a trailing slash; the token must match it exactly.
+    if (preset?.slash) issuer += '/';
   }
   const clientId = need(`${prefix}_CLIENT_ID`);
   if (entra && !GUID.test(clientId)) throw new Error('ENTRA_CLIENT_ID: the application (client) id, a GUID');
@@ -221,20 +398,60 @@ function authConfig(env, baseUrl) {
   const secret = named('AUTH_SECRET', () => secretValue(env, 'AUTH_SECRET'));
   if (secret.length < 32) throw new Error('AUTH_SECRET: at least 32 characters (e.g. openssl rand -base64 48)');
   if (secret === clientSecret) throw new Error(`AUTH_SECRET must differ from ${prefix}_CLIENT_SECRET`);
-  const graph = entra && named('ENTRA_GRAPH', () => flag(env.ENTRA_GRAPH, false));
-  const groups = named('RECIPIENT_GROUPS', () => recipientGroups(env.RECIPIENT_GROUPS || '', entra));
-  if (groups.any && !graph) {
-    throw new Error(entra ? 'RECIPIENT_GROUPS=* needs ENTRA_GRAPH=true (the group search uses Microsoft Graph)' : 'RECIPIENT_GROUPS=* needs AUTH_PROVIDER=entra');
+  // Who may sign in at all, by the domain of the address (Google: also the hd claim).
+  const allowedDomains = (env.AUTH_ALLOWED_DOMAINS || '').toLowerCase().split(/[\s,;]+/).filter(Boolean);
+  for (const d of allowedDomains) if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d)) throw new Error(`AUTH_ALLOWED_DOMAINS: "${d}" is no domain`);
+  if (provider === 'google' && !allowedDomains.length) {
+    throw new Error('AUTH_ALLOWED_DOMAINS is required with AUTH_PROVIDER=google (the Workspace domains; otherwise every Google account could sign in)');
+  }
+  const groupsClaim = entra ? 'groups' : (env.OIDC_GROUPS_CLAIM || preset?.groupsClaim || '').trim();
+  if (groupsClaim && !/^[\w.:/-]{1,200}$/.test(groupsClaim)) throw new Error('OIDC_GROUPS_CLAIM: the name of a claim, e.g. groups');
+  const directoryOn = entra
+    ? named('ENTRA_GRAPH', () => flag(env.ENTRA_GRAPH, false))
+    : named('DIRECTORY_API', () => flag(env.DIRECTORY_API, false));
+  if (provider === 'oidc' && directoryOn) throw new Error('DIRECTORY_API needs a provider with a directory (keycloak, okta, auth0, google, ping, jumpcloud, cognito), not oidc');
+  if (!directoryOn) {
+    const set = ['DIRECTORY_URL', 'DIRECTORY_CLIENT_ID', 'DIRECTORY_CLIENT_SECRET', 'DIRECTORY_CLIENT_SECRET_FILE', 'DIRECTORY_API_TOKEN', 'DIRECTORY_API_TOKEN_FILE', 'DIRECTORY_GOOGLE_CREDENTIALS_FILE', 'DIRECTORY_GOOGLE_ADMIN'].find((k) => env[k]);
+    if (set) throw new Error(`${set} needs DIRECTORY_API=true`);
+  }
+  const directory = !entra && directoryOn ? directoryConfig(env, provider, issuer, url) : null;
+  const graph = entra && directoryOn;
+  const groupSearch = graph || Boolean(directory && preset?.groupSearch);
+  const lower = entra || Boolean(preset?.lower);
+  const groupPaths = Boolean(preset?.paths);
+  const groups = named('RECIPIENT_GROUPS', () => recipientGroups(env.RECIPIENT_GROUPS || '', entra, (id) => groupValue(id, lower, groupPaths)));
+  if (groups.any && !groupSearch) {
+    throw new Error(
+      entra
+        ? 'RECIPIENT_GROUPS=* needs ENTRA_GRAPH=true (the group search uses Microsoft Graph)'
+        : preset?.groupSearch
+          ? 'RECIPIENT_GROUPS=* needs DIRECTORY_API=true (the group search uses the directory)'
+          : `RECIPIENT_GROUPS=* is not available with AUTH_PROVIDER=${provider}; list the groups as Name=<value>`,
+    );
+  }
+  if ((groups.any || groups.list.length) && !groupsClaim && !directory) {
+    throw new Error(
+      provider === 'google'
+        ? 'RECIPIENT_GROUPS with AUTH_PROVIDER=google needs DIRECTORY_API=true (Google puts no groups into the token)'
+        : `RECIPIENT_GROUPS needs OIDC_GROUPS_CLAIM (the claim your ${provider} setup puts the groups into)`,
+    );
   }
   const recipients = env.RECIPIENTS || 'optional';
   if (!/^(off|optional|required)$/.test(recipients)) throw new Error('RECIPIENTS: off, optional or required');
   if (recipients === 'off' && (groups.any || groups.list.length)) throw new Error('RECIPIENT_GROUPS needs RECIPIENTS=optional or required');
-  // The people search of the form: the members of one group (Microsoft Graph).
-  const userGroup = (env.RECIPIENT_USER_GROUP || '').trim().toLowerCase();
+  // The people search of the form: the members of one group in the directory.
+  let userGroup = (env.RECIPIENT_USER_GROUP || '').trim();
   if (userGroup) {
-    if (!entra) throw new Error('RECIPIENT_USER_GROUP needs AUTH_PROVIDER=entra');
-    if (!GUID.test(userGroup)) throw new Error('RECIPIENT_USER_GROUP: the object id of a group, a GUID');
-    if (!graph) throw new Error('RECIPIENT_USER_GROUP needs ENTRA_GRAPH=true (the people search uses Microsoft Graph)');
+    if (entra) {
+      userGroup = userGroup.toLowerCase();
+      if (!GUID.test(userGroup)) throw new Error('RECIPIENT_USER_GROUP: the object id of a group, a GUID');
+      if (!graph) throw new Error('RECIPIENT_USER_GROUP needs ENTRA_GRAPH=true (the people search uses Microsoft Graph)');
+    } else {
+      if (!preset?.userGroup) throw new Error('RECIPIENT_USER_GROUP needs a provider with a directory (entra, keycloak, okta, auth0, google, ping, jumpcloud, cognito)');
+      if (!preset.userGroup[0].test(userGroup)) throw new Error(`RECIPIENT_USER_GROUP: ${preset.userGroup[1]}`);
+      if (!directory) throw new Error('RECIPIENT_USER_GROUP needs DIRECTORY_API=true (the people search uses the directory)');
+      if (preset.lower) userGroup = userGroup.toLowerCase();
+    }
     if (recipients === 'off') throw new Error('RECIPIENT_USER_GROUP needs RECIPIENTS=optional or required');
   }
   const create = env.AUTH_CREATE || 'signed-in';
@@ -250,7 +467,7 @@ function authConfig(env, baseUrl) {
   /** @param {string} name @param {number} def @param {number} min @param {number} max */
   const num = (name, def, min, max) => named(name, () => int(env[name], def, min, max));
   return {
-    provider: /** @type {'entra' | 'oidc'} */ (provider),
+    provider,
     tenant,
     issuer,
     clientId,
@@ -259,6 +476,11 @@ function authConfig(env, baseUrl) {
     scopes,
     redirectUri: `${baseUrl}/auth/callback`,
     graph,
+    directory,
+    groupsClaim,
+    lowerGroups: lower,
+    groupPaths,
+    allowedDomains,
     graphUrl: entra ? url('ENTRA_GRAPH_URL', 'https://graph.microsoft.com') : '',
     sessionTtl: num('AUTH_SESSION_TTL', 8 * 3600, 300, 7 * 86400),
     createNeedsLogin: create === 'signed-in',

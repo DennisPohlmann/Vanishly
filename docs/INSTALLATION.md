@@ -221,7 +221,7 @@ are gone). tar.gz: `systemctl disable --now vanishly`, then remove
 ## 10. Sign-in with Entra ID or OIDC
 
 Optional; [CONFIG.md](CONFIG.md#sign-in-and-recipients) explains what it
-does. Vanishly must be served via HTTPS with `BASE_URL` set.
+does, [providers/](providers/README.md) what each provider supports. Vanishly must be served via HTTPS with `BASE_URL` set.
 
 ### Microsoft Entra ID
 
@@ -261,14 +261,21 @@ The whole site behind **Entra Application Proxy** (pre-authentication)
 works as well, alone or together with this: the proxy keeps everybody
 outside the tenant away, the built-in sign-in decides per secret.
 
+### Keycloak, Okta, Auth0, Google Workspace, PingOne, JumpCloud, Cognito
+
+These have presets (`AUTH_PROVIDER=keycloak`, `okta`, ...): one page per
+provider with the client setup, the groups claim, the directory access for
+the people search and an example is in [providers/](providers/README.md).
+
 ### Another OpenID Connect provider
 
 Create a confidential client with the redirect URI
 `https://ots.example.com/auth/callback` and the "authorization code" flow,
 then set `AUTH_PROVIDER=oidc`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
 `OIDC_CLIENT_SECRET` and `AUTH_SECRET`. For groups, let the provider put a
-`groups` claim (a list of strings) into the ID token and list the values in
-`RECIPIENT_GROUPS` (`Ops=ops`).
+`groups` claim (a list of strings; another name with `OIDC_GROUPS_CLAIM`)
+into the ID token and list the values in `RECIPIENT_GROUPS` (`Ops=ops`).
+There is no people search with `oidc`.
 
 ### Try it locally with a test login server
 

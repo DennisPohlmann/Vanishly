@@ -8,7 +8,7 @@
 {{- if or .Values.config.REDIS_URL .Values.config.REDIS_URL_FILE -}}
 {{- fail "vanishly: set the Redis address with redis.external.url (or redis.external.existingSecret), not config.REDIS_URL" -}}
 {{- end -}}
-{{- range $k := list "ENTRA_CLIENT_SECRET" "OIDC_CLIENT_SECRET" "AUTH_SECRET" -}}
+{{- range $k := list "ENTRA_CLIENT_SECRET" "OIDC_CLIENT_SECRET" "AUTH_SECRET" "DIRECTORY_CLIENT_SECRET" "DIRECTORY_API_TOKEN" "AWS_SECRET_ACCESS_KEY" "AWS_SESSION_TOKEN" -}}
 {{- if index $.Values.config $k -}}
 {{- fail (printf "vanishly: %s is a credential; set it through secretConfig or existingSecret, not config (which becomes a ConfigMap)" $k) -}}
 {{- end -}}

@@ -171,7 +171,7 @@ config:
   ENABLE_THEME_TOGGLE: ""
   ENABLE_GITHUB_LINK: ""
   # == Sign-in and recipients (docs/CONFIG.md); needs BASE_URL
-  # none, entra or oidc (none: no login, leave the rest empty).
+  # none, entra, keycloak, okta, auth0, google, ping, jumpcloud, cognito or oidc (none: no login, leave the rest empty).
   AUTH_PROVIDER: ""
   # Entra ID: directory (tenant) id, a GUID.
   ENTRA_TENANT_ID: ""
@@ -195,6 +195,25 @@ config:
   OIDC_CLIENT_SECRET_FILE: ""
   # OIDC: space-separated scopes including openid (openid profile email).
   OIDC_SCOPES: ""
+  # OIDC and presets: ID token claim with the groups (groups; cognito: cognito:groups).
+  OIDC_GROUPS_CLAIM: ""
+  # Only these e-mail domains sign in, e.g. example.com (any; required for google).
+  AUTH_ALLOWED_DOMAINS: ""
+  # Presets: people/group search in the provider's directory, see docs/providers (false).
+  DIRECTORY_API: ""
+  # Presets: directory API address where it differs from the issuer (Auth0 custom domain, JumpCloud EU).
+  DIRECTORY_URL: ""
+  # keycloak, auth0, ping: own client for the directory (the sign-in client).
+  DIRECTORY_CLIENT_ID: ""
+  # DIRECTORY_CLIENT_SECRET and DIRECTORY_API_TOKEN are credentials: set them through secretConfig or existingSecret, not here.
+  # keycloak, auth0, ping: file with the directory client secret instead.
+  DIRECTORY_CLIENT_SECRET_FILE: ""
+  # okta, jumpcloud: file with the API token instead.
+  DIRECTORY_API_TOKEN_FILE: ""
+  # google: JSON key file of the service account (mount it with extraVolumes).
+  DIRECTORY_GOOGLE_CREDENTIALS_FILE: ""
+  # google: admin address the service account acts for.
+  DIRECTORY_GOOGLE_ADMIN: ""
   # AUTH_SECRET (at least 32 random characters) is a credential: set it through secretConfig or existingSecret, not here.
   # File with AUTH_SECRET instead.
   AUTH_SECRET_FILE: ""
@@ -208,9 +227,9 @@ config:
   RECIPIENTS: ""
   # Most recipients per secret, 1-50 (10).
   RECIPIENTS_MAX: ""
-  # Groups to choose from: Name=<group id>,... or * for a search (Entra, ENTRA_GRAPH=true) (none).
+  # Groups to choose from: Name=<group id>,... or * for a search in the directory (none).
   RECIPIENT_GROUPS: ""
-  # People search in the form: object id of the group whose members are suggested (Entra, ENTRA_GRAPH=true) (off).
+  # People search in the form: the group whose members are suggested, needs ENTRA_GRAPH or DIRECTORY_API (off).
   RECIPIENT_USER_GROUP: ""
   # Allowed e-mail domains of recipients, e.g. example.com,example.de (any).
   RECIPIENT_DOMAINS: ""

@@ -40,6 +40,14 @@ tests:
       - failedTemplate:
           errorPattern: "AUTH_SECRET is a credential"
 
+  - it: rejects directory credentials in config
+    set:
+      config:
+        DIRECTORY_API_TOKEN: change-me
+    asserts:
+      - failedTemplate:
+          errorPattern: "DIRECTORY_API_TOKEN is a credential"
+
   - it: rejects template paths outside TEMPLATES_DIR
     set:
       templates:

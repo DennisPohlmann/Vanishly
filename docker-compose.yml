@@ -100,25 +100,35 @@ services:
       ENABLE_GITHUB_LINK: ${ENABLE_GITHUB_LINK:-true}          # "Powered by Vanishly" link to GitHub in the footer
       # --- Sign-in and recipients (docs/CONFIG.md); off with AUTH_PROVIDER=none,
       # then the others must stay empty
-      AUTH_PROVIDER: ${AUTH_PROVIDER:-none}       # none, entra or oidc (needs BASE_URL)
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-none}       # none, entra, keycloak, okta, auth0, google, ping, jumpcloud, cognito or oidc (needs BASE_URL; docs/providers)
       ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}       # entra: directory (tenant) id
       ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}       # entra: application (client) id
       ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}            # or ENTRA_CLIENT_SECRET_FILE (Docker secret)
       ENTRA_AUTHORITY: ${ENTRA_AUTHORITY:-}       # empty: https://login.microsoftonline.com
       ENTRA_GRAPH: ${ENTRA_GRAPH:-}               # true: Graph (GroupMember.Read.All): group search, >200 groups
       ENTRA_GRAPH_URL: ${ENTRA_GRAPH_URL:-}       # empty: https://graph.microsoft.com
-      OIDC_ISSUER: ${OIDC_ISSUER:-}               # oidc: issuer URL
+      OIDC_ISSUER: ${OIDC_ISSUER:-}               # oidc and presets: issuer URL
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-} # or OIDC_CLIENT_SECRET_FILE
       OIDC_SCOPES: ${OIDC_SCOPES:-}               # empty: openid profile email
+      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}   # empty: the preset's (groups; cognito:groups)
+      AUTH_ALLOWED_DOMAINS: ${AUTH_ALLOWED_DOMAINS:-}          # only these domains sign in (required for google)
+      DIRECTORY_API: ${DIRECTORY_API:-}           # presets, true: people/group search in the directory
+      DIRECTORY_URL: ${DIRECTORY_URL:-}           # empty: from the issuer
+      DIRECTORY_CLIENT_ID: ${DIRECTORY_CLIENT_ID:-}            # keycloak, auth0, ping: own client (empty: the sign-in client)
+      DIRECTORY_CLIENT_SECRET: ${DIRECTORY_CLIENT_SECRET:-}    # or DIRECTORY_CLIENT_SECRET_FILE
+      DIRECTORY_API_TOKEN: ${DIRECTORY_API_TOKEN:-}            # okta, jumpcloud; or DIRECTORY_API_TOKEN_FILE
+      DIRECTORY_GOOGLE_CREDENTIALS_FILE: ${DIRECTORY_GOOGLE_CREDENTIALS_FILE:-} # google: service account key file
+      DIRECTORY_GOOGLE_ADMIN: ${DIRECTORY_GOOGLE_ADMIN:-}      # google: admin the service account acts for
+      # cognito: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in .env (passed through env_file)
       AUTH_SECRET: ${AUTH_SECRET:-}               # 32+ random characters (openssl rand -base64 48), or AUTH_SECRET_FILE
       AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-}     # seconds a sign-in lasts (empty: 28800)
       AUTH_CREATE: ${AUTH_CREATE:-}               # signed-in (default) or anyone
       AUTH_API_AUDIENCE: ${AUTH_API_AUDIENCE:-}   # accept bearer tokens with this audience, e.g. api://<client id>
       RECIPIENTS: ${RECIPIENTS:-}                 # off, optional (default) or required
       RECIPIENTS_MAX: ${RECIPIENTS_MAX:-}         # empty: 10
-      RECIPIENT_GROUPS: ${RECIPIENT_GROUPS:-}     # Name=<group id>,... or * (search, needs ENTRA_GRAPH)
-      RECIPIENT_USER_GROUP: ${RECIPIENT_USER_GROUP:-} # group object id: people search in the form (needs ENTRA_GRAPH)
+      RECIPIENT_GROUPS: ${RECIPIENT_GROUPS:-}     # Name=<group id>,... or * (search, needs ENTRA_GRAPH or DIRECTORY_API)
+      RECIPIENT_USER_GROUP: ${RECIPIENT_USER_GROUP:-} # group whose members the form suggests (needs ENTRA_GRAPH or DIRECTORY_API)
       RECIPIENT_DOMAINS: ${RECIPIENT_DOMAINS:-}   # allowed e-mail domains, e.g. example.com
       RECEIPT_SHOW_VIEWER: ${RECEIPT_SHOW_VIEWER:-}           # true: show who opened it on the status page
     ports:

@@ -120,33 +120,43 @@ For the web form only, without any scripts, also set
 `ENABLE_CREATE_API=false` and `ENABLE_REVEAL_API=false`, or `ENABLE_API=false`
 for the whole API.
 
-### Sign-in and recipients (`AUTH_*`, `ENTRA_*`, `OIDC_*`, `RECIPIENT*`)
+### Sign-in and recipients (`AUTH_*`, `ENTRA_*`, `OIDC_*`, `DIRECTORY_*`, `RECIPIENT*`)
 
 Off by default (`AUTH_PROVIDER=none`): no login anywhere, and setting any
 of the others then stops the start. With a provider, senders sign in and
 can name the people who may open a secret; see
 [Sign-in and recipients](#sign-in-and-recipients) below and the
-[app registration](INSTALLATION.md#10-sign-in-with-entra-id-or-oidc).
+[app registration](INSTALLATION.md#10-sign-in-with-entra-id-or-oidc). Setup
+per provider and what each supports (groups, group search, people search):
+[providers/README.md](providers/README.md).
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AUTH_PROVIDER` | `none` | `none`, `entra` (Microsoft Entra ID) or `oidc` (any OpenID Connect provider: Keycloak, Authentik, ...). Needs `BASE_URL`: the redirect URI is `<BASE_URL>/auth/callback` |
+| `AUTH_PROVIDER` | `none` | `none`, `entra` (Microsoft Entra ID), a preset (`keycloak`, `okta`, `auth0`, `google`, `ping`, `jumpcloud`, `cognito`) or `oidc` (any other OpenID Connect provider). The presets use the `OIDC_*` settings and know the provider's issuer format, groups claim and directory ([providers](providers/README.md)). Needs `BASE_URL`: the redirect URI is `<BASE_URL>/auth/callback` |
 | `ENTRA_TENANT_ID` | (required for `entra`) | Directory (tenant) id, a GUID; tokens of other tenants are refused |
 | `ENTRA_CLIENT_ID` | (required for `entra`) | Application (client) id of the app registration |
 | `ENTRA_CLIENT_SECRET` | (required for `entra`) | Client secret; or `ENTRA_CLIENT_SECRET_FILE` with a file that holds it (Docker secrets) |
 | `ENTRA_AUTHORITY` | `https://login.microsoftonline.com` | Only for national clouds, e.g. `https://login.microsoftonline.us` |
 | `ENTRA_GRAPH` | `false` | `true`: use Microsoft Graph (application permission `GroupMember.Read.All`, for the people search also `User.Read.All`) for the group and people search and for users in more than 200 groups |
 | `ENTRA_GRAPH_URL` | `https://graph.microsoft.com` | Only for national clouds |
-| `OIDC_ISSUER` | (required for `oidc`) | Issuer URL, e.g. `https://sso.example.com/realms/main`; its `/.well-known/openid-configuration` must be reachable |
-| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | (required for `oidc`) | The confidential client; `OIDC_CLIENT_SECRET_FILE` instead of the secret |
-| `OIDC_SCOPES` | `openid profile email` | Scopes to ask for (must include `openid`); add the scope that puts `groups` into the ID token if you use groups |
+| `OIDC_ISSUER` | (required for `oidc` and the presets) | Issuer URL, e.g. `https://sso.example.com/realms/main`; its `/.well-known/openid-configuration` must be reachable. Auth0 and JumpCloud keep their trailing `/` |
+| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | (required for `oidc` and the presets) | The confidential client; `OIDC_CLIENT_SECRET_FILE` instead of the secret |
+| `OIDC_SCOPES` | `openid profile email` | Scopes to ask for (must include `openid`); add the scope that puts the groups into the ID token if your provider needs one |
+| `OIDC_GROUPS_CLAIM` | `groups` (`cognito:groups` for `cognito`, none for `auth0` and `google`) | The ID token claim with the user's groups, e.g. a namespaced claim of an Auth0 Action |
+| `AUTH_ALLOWED_DOMAINS` | (any) | Only accounts with an address of these domains sign in, e.g. `example.com`. Required for `google` (also checks the Workspace domain, `hd`) |
+| `DIRECTORY_API` | `false` | `true`: use the provider's directory for the people search, the group search and (Google) the groups of a user. Presets only; Entra uses `ENTRA_GRAPH`. Access per provider: [providers](providers/README.md) |
+| `DIRECTORY_CLIENT_ID`, `DIRECTORY_CLIENT_SECRET` | the sign-in client | `keycloak`, `auth0`, `ping`: a client of its own for the directory (service account, machine-to-machine app, worker); `DIRECTORY_CLIENT_SECRET_FILE` instead of the secret |
+| `DIRECTORY_API_TOKEN` | (required for `okta`, `jumpcloud` with `DIRECTORY_API`) | The API token (Okta) or API key (JumpCloud); `DIRECTORY_API_TOKEN_FILE` instead |
+| `DIRECTORY_GOOGLE_CREDENTIALS_FILE`, `DIRECTORY_GOOGLE_ADMIN` | (required for `google` with `DIRECTORY_API`) | The JSON key file of a service account with domain-wide delegation, and the admin address it acts for |
+| `DIRECTORY_URL` | from the issuer | The directory API's address, where it differs: Auth0 with a custom domain, JumpCloud EU (`https://console.eu.jumpcloud.com`), an internal Keycloak admin address |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_ROLE_ARN`, `AWS_WEB_IDENTITY_TOKEN_FILE` | (none) | `cognito` with `DIRECTORY_API`: the standard AWS credentials, keys or a role through a web identity token (EKS) |
 | `AUTH_SECRET` | (required) | At least 32 random characters (`openssl rand -base64 48`); or `AUTH_SECRET_FILE`. Keys the hashes of the recipients: changing it locks every open restricted secret |
 | `AUTH_SESSION_TTL` | `28800` | Lifetime of a sign-in in seconds (5 minutes to 7 days) |
 | `AUTH_CREATE` | `signed-in` | Who may create secrets: `signed-in` or `anyone` (restricting a secret always needs a sign-in) |
 | `RECIPIENTS` | `optional` | `off` (no recipients field), `optional`, or `required` (every secret must name someone) |
 | `RECIPIENTS_MAX` | `10` | Most recipients (addresses and groups) per secret, 1 to 50 |
-| `RECIPIENT_GROUPS` | (none) | Groups a sender may pick: `Name=<id>,...` (Entra: the group's object id; `oidc`: the value in the `groups` claim), or `*` for a search over all groups of the tenant (Entra with `ENTRA_GRAPH=true`) |
-| `RECIPIENT_USER_GROUP` | (none) | People search in the form: the object id of an Entra group; while typing a name the form suggests its members (also from nested groups). Needs `ENTRA_GRAPH=true` ([details](#people-search)) |
+| `RECIPIENT_GROUPS` | (none) | Groups a sender may pick: `Name=<id>,...` (Entra: the group's object id; otherwise the value in the groups claim), or `*` for a search over all groups in the directory (Entra with `ENTRA_GRAPH=true`; `keycloak`, `okta`, `google`, `cognito` with `DIRECTORY_API=true`) |
+| `RECIPIENT_USER_GROUP` | (none) | People search in the form: the group whose members the form suggests while typing a name (Entra: object id; Keycloak: path or id; Okta, PingOne, JumpCloud: group id; Auth0: role id; Google: group address; Cognito: group name). Needs `ENTRA_GRAPH=true` or `DIRECTORY_API=true` ([details](#people-search)) |
 | `RECIPIENT_DOMAINS` | (any) | Allowed e-mail domains of recipients, e.g. `example.com,example.de` |
 | `AUTH_API_AUDIENCE` | (none) | Accept bearer tokens on the API with this audience, e.g. `api://<client id>` ([details](#api-with-sign-in)) |
 | `RECEIPT_SHOW_VIEWER` | `false` | `true`: the status page shows the name of the signed-in person who opened the secret (stored with the view time) |
@@ -218,7 +228,7 @@ for the recipients.
 
 ## Sign-in and recipients
 
-With `AUTH_PROVIDER=entra` or `oidc`:
+With any `AUTH_PROVIDER`:
 
 - **Senders** sign in with the "Sign in" link (`AUTH_CREATE=signed-in`, the
   default), then see the field "Only for these people". They add e-mail
@@ -236,15 +246,20 @@ With `AUTH_PROVIDER=entra` or `oidc`:
 - The server compares the addresses case-insensitively with names the
   account cannot pick itself: with Entra the `preferred_username` / `upn`
   (the sign-in name), and `email` only when Entra verified its domain
-  (optional claim `xms_edov`); with `oidc` the `email` claim, unless the
-  provider marks it `email_verified: false`. A sign-in without such an
+  (optional claim `xms_edov`); with the other providers the `email` claim,
+  unless the provider marks it `email_verified: false`. A sign-in without such an
   address is refused. With Entra, the groups come from the `groups` claim of the ID
   token (set "Group claims" in the app registration, as group ids). Users
   in more than 200 groups get no `groups` claim: Vanishly then asks
   Microsoft Graph when `ENTRA_GRAPH=true`, otherwise such a user cannot
-  open secrets for a group.
+  open secrets for a group. The other providers send the claim named by
+  `OIDC_GROUPS_CLAIM`; Google sends none, so with `DIRECTORY_API=true`
+  Vanishly asks its directory at sign-in. Keycloak groups count as paths:
+  `finance` and `/finance` are the same group.
+- `AUTH_ALLOWED_DOMAINS` limits who may sign in at all, by the domain of
+  the address (Google: and the Workspace domain).
 - With `RECIPIENT_GROUPS=*` the form offers a search over the groups of
-  the tenant, and every signed-in sender can see the group names.
+  the directory, and every signed-in sender can see the group names.
 - With `RECIPIENT_USER_GROUP` the address field also searches people, see
   [People search](#people-search).
 - Redis stores the recipients only as keyed hashes (HMAC with
@@ -253,34 +268,40 @@ With `AUTH_PROVIDER=entra` or `oidc`:
 
 ### People search
 
-With `RECIPIENT_USER_GROUP=<group object id>` (Entra, `ENTRA_GRAPH=true`)
-the field "Name or e-mail address" suggests people while the sender types
-(from 2 letters on): the members of that group, also through nested
-groups, whose name, e-mail or user name starts with the text. Arrow keys
-and Enter or a click add a person; several people can be added, and a full
-e-mail address still works. A group with the whole company makes the
+With `RECIPIENT_USER_GROUP` and a directory (Entra with `ENTRA_GRAPH=true`,
+a preset with `DIRECTORY_API=true`) the field "Name or e-mail address"
+suggests people while the sender types (from 2 letters on): the members of
+that group whose name, e-mail or user name starts with the text. Arrow
+keys and Enter or a click add a person; several people can be added, and a
+full e-mail address still works. A group with the whole company makes the
 whole company searchable.
 
-- The person is added with the address they sign in with (the UPN; for
-  guests their e-mail), so it matches their sign-in.
-- The search runs in Microsoft Graph with the app's own token
-  (application permissions `GroupMember.Read.All` and `User.Read.All`,
-  admin consent), only for signed-in users, at most 10 hits per search.
-  Vanishly keeps the answers in memory for a minute and stores nothing in
+- The person is added with the address they sign in with (Entra: the UPN,
+  for guests their e-mail; otherwise the verified e-mail), so it matches
+  their sign-in.
+- Entra and Google search the directory for each query. The other
+  providers list the group's members once (at most 5000, kept 5 minutes in
+  memory) and Vanishly searches that list. Answers are kept for a minute,
+  at most 10 hits per search, only for signed-in users; nothing goes to
   Redis.
+- The directory access is read-only and differs per provider (Graph
+  application permissions `GroupMember.Read.All` and `User.Read.All`, a
+  Keycloak service account, an Okta API token, ...): see
+  [providers](providers/README.md).
 - Privacy: every signed-in sender can look up names and addresses of that
   group's members. Pick a group that may be visible to all senders.
 - The API keeps taking e-mail addresses in `recipients`; the search
   (`GET /api/v1/people?q=`) is meant for the form.
-- Other providers (`AUTH_PROVIDER=oidc`, e.g. Keycloak) have no people
-  search yet; senders type the address.
+- Generic `oidc` has no people search; senders type the address.
 
 ### API with sign-in
 
 Pages use the session cookie. For scripts, set `AUTH_API_AUDIENCE`: the API
 then accepts an access token of your provider as `Authorization: Bearer
 <token>`, checked against the provider's keys, issuer, audience, expiry
-and (Entra) tenant. With Entra, expose an API in the app registration
+and (Entra) tenant. Cognito access tokens have no audience: there
+`AUTH_API_AUDIENCE` is the app client id, checked against `client_id`.
+With Entra, expose an API in the app registration
 ("Application ID URI" `api://<client id>`) and use that as the audience.
 A token for a user can create restricted secrets and open those meant for
 that user; a token of an app (client credentials) can create secrets, but

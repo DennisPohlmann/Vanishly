@@ -72,9 +72,19 @@ second lock next to the link, enforced by the server:
   new person could open it; keep expiries short.
 - The people search (`RECIPIENT_USER_GROUP`) shows every signed-in sender
   names and addresses of that group's members (at most 10 per search, from
-  2 characters on, rate limited). It uses an app-only Graph token
-  (`GroupMember.Read.All`, `User.Read.All`); the token and the answers stay
-  in memory (answers for one minute), nothing goes to Redis or the logs.
+  2 characters on, rate limited). It uses read-only directory access of
+  the app itself (Graph application permissions, a Keycloak service
+  account, an Okta API token, ... see [providers](providers/README.md));
+  tokens, member lists (5 minutes) and answers (one minute) stay in
+  memory, nothing goes to Redis or the logs. Errors are logged with the
+  provider and the HTTP status only. Paging links from a directory are
+  followed only on the same server, so its token never goes elsewhere.
+- Directory credentials (API tokens, client secrets, the Google service
+  account key, AWS keys) can be read from files (`*_FILE`, Docker or
+  Kubernetes secrets); give them read access only.
+- `AUTH_ALLOWED_DOMAINS` limits sign-in by domain. With Google it is
+  required and the Workspace domain (`hd`) must match too: without it any
+  Google account could sign in and create secrets.
 
 ## Passphrase
 

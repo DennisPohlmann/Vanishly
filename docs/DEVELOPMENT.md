@@ -41,7 +41,8 @@ npx playwright install chromium && npm run test:a11y   # accessibility, needs Re
 Without Redis the API tests are skipped (and say so); CI always runs them
 against a Redis service. The sign-in tests (`tests/auth.test.js`, and the
 sign-in flow in `tests/a11y.e2e.js`) run against `tests/oidc-mock.js`, a
-small stand-in for Entra ID / an OpenID provider with Microsoft Graph; no
+small stand-in for Entra ID / an OpenID provider with Microsoft Graph
+(the other directories: stand-ins in `tests/directory.test.js`); no
 tenant is needed. To click through the sign-in by hand, use the test login
 server of `docker-compose.auth-test.yml`
 ([INSTALLATION.md](INSTALLATION.md#try-it-locally-with-a-test-login-server)).
