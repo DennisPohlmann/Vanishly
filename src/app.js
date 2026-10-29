@@ -793,7 +793,10 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       return `<a class="nav-login" data-login href="/auth/login?return=${encodeURIComponent(back)}">${escapeHtml(t['nav.signIn'])}</a>`;
     }
     return (
-      `<span class="nav-user" title="${escapeHtml(u.user)}">${escapeHtml(u.name || u.user)}</span>` +
+      // The full name, and the address below it (only once when there is no name).
+      `<span class="nav-user"><span class="nav-user-name">${escapeHtml(u.name || u.user)}</span>` +
+      (u.name && u.user && u.name !== u.user ? `<span class="nav-user-mail">${escapeHtml(u.user)}</span>` : '') +
+      `</span>` +
       `<form class="nav-logout" method="post" action="/auth/logout"><button type="submit" class="btn btn-small btn-ghost">${escapeHtml(t['nav.signOut'])}</button></form>`
     );
   };

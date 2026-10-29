@@ -645,3 +645,12 @@ test('the form: a folded "Responsible" section with the same picker, open when r
   const off = await startApp({});
   assert.doesNotMatch(String((await off.call('/', { cookie: (await off.login(ALICE)).cookie })).data), /responsible-wrap/);
 });
+
+test('header: the full name and below it the address of the signed-in user, escaped', opts, async () => {
+  const { call, login } = await startApp({});
+  const a = (await login({ ...ALICE, name: 'Alice <b>Example</b>' })).cookie;
+  const html = String((await call('/', { cookie: a })).data);
+  assert.match(html, /<span class="nav-user"><span class="nav-user-name">Alice &lt;b&gt;Example&lt;\/b&gt;<\/span><span class="nav-user-mail">alice@example.com<\/span><\/span><form class="nav-logout"/);
+  const noName = (await login({ ...BOB, name: '' })).cookie;
+  assert.match(String((await call('/', { cookie: noName })).data), /<span class="nav-user"><span class="nav-user-name">bob@example.com<\/span><\/span>/);
+});

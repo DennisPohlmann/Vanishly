@@ -199,7 +199,14 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible, .mode-toggle:focu
 .suggestion-status:empty { display: none; }
 
 /* Signed-in user in the header */
-.nav-user { color: var(--muted); font-size: .9rem; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-user { display: inline-flex; flex-direction: column; align-items: flex-end; max-width: 16rem; line-height: 1.25; text-align: right; }
+.nav-user-name, .nav-user-mail { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-user-name { font-size: .9rem; font-weight: 600; color: var(--header-text, var(--text)); }
+.nav-user-mail { font-size: .8rem; color: var(--muted); }
+@media (max-width: 30rem) {
+  .nav-user { max-width: 10rem; }
+  .nav-user-mail { font-size: .75rem; }
+}
 .nav-logout { display: inline; margin: 0; }
 
 /* Notices and status */
