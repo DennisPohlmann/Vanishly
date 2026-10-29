@@ -114,9 +114,10 @@ is not enough.
 | ciphertext, IV, salt, iteration count | the secret in plain text |
 | SHA-256 of the passphrase check value | the key (it is only in the link) |
 | views left, wrong passphrase count, created, expires | the passphrase |
-| receipt: state, view times, burn time | IP addresses, user agents, names (except `RECEIPT_SHOW_VIEWER`) |
+| receipt: state, view times, burn time | IP addresses, user agents, names (except `RECEIPT_SHOW_VIEWER` and `STATUS_ACCESS=signed-in`, below) |
+| with `STATUS_ACCESS=signed-in`: creator, responsible people and openers as keyed hashes (who may see the status), and the names and addresses of creator and responsible to show on the status page | |
 | rate limit counters, keyed by a truncated SHA-256 of the IP | |
-| with sign-in: recipients as keyed hashes (HMAC with `AUTH_SECRET`) | the addresses or groups a secret is for |
+| with sign-in: recipients and responsible people as keyed hashes (HMAC with `AUTH_SECRET`) | the addresses or groups a secret is for |
 | with sign-in: sessions (name, user name, recipient hashes) under a hash of the cookie | access or refresh tokens of the provider |
 
 The Compose file runs Redis **without persistence** (`--save ""
@@ -211,6 +212,10 @@ code, the dependencies and both images on every build and every night
   on a server you trust, behind HTTPS (`HSTS=true`).
 - **The receipt link** contains the key as well (unless
   `ENABLE_RECEIPT_SHARE_LINK=false`). Keep it as private as the share link.
+  With `STATUS_ACCESS=signed-in` the status page needs a sign-in and shows
+  only to the creator, the responsible people and those who opened the
+  secret; with `STATUS_ACCESS=link` whoever has the link sees it and may
+  burn the secret.
 - **Weak passphrases** can be guessed offline by someone with a copy of
   Redis, by testing them against the stored check value. That alone still
   decrypts nothing without the link, and the 600,000 PBKDF2 iterations

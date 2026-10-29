@@ -6,14 +6,16 @@
 |---|---|
 | `/` | Create a secret: text, optional passphrase, expiry, number of views, password generator |
 | `/s/<id>#<key>` | The recipient's link: shows a button; the secret is fetched and decrypted only after the click |
-| `/r/<id>#<key>` | The sender's receipt: status, created, expires, views left, view times, share link, burn button |
+| `/r/<id>#<key>` | The status page (receipt): state, created, expires, views left, the history (created, opened, burned), share link, burn button. With `STATUS_ACCESS=signed-in` only after a sign-in, see below |
 | `/api/docs` | API documentation (Scalar API reference) |
 | `/api/openapi.json` | OpenAPI 3.1 document |
 | `/healthz` | `ok` (200) when Redis answers and accepts writes, otherwise 503 |
 | `/auth/login`, `/auth/logout`, `/auth/logged-out` | Sign in and out; `/auth/logged-out` is where the provider returns after a sign-out (only with `AUTH_PROVIDER`) |
 
 The header has the language switch and the light/dark switch (remembered in
-the browser).
+the browser) and, with sign-in, "Sign in", or the full name with the
+e-mail address below it and "Sign out". "Sign out" also signs out at the
+provider (`AUTH_LOGOUT=provider`, the default except with Entra ID).
 
 ## How sharing works
 
@@ -43,8 +45,19 @@ click) and repeat for more people. Then the recipient has to sign in, and only t
 can open the secret; for anybody else it stays closed and no view is used.
 The link with its key is still needed, as before.
 
-**Keep the receipt link private:** it contains the key too, so it can show
-the share link again.
+With `RESPONSIBLE`, the folded section **"Responsible"** names the people
+or groups who look after the secret, with the same picker
+(`RESPONSIBLE=required`: at least one).
+
+**Who sees the status page.** With `STATUS_ACCESS=link` (without sign-in
+the only choice) whoever has the receipt link: **keep it private**, it
+contains the key too, so it can show the share link again. With
+`STATUS_ACCESS=signed-in` (the default with sign-in) the page asks for a
+sign-in and shows the status only to you (the creator), the responsible
+people and those who opened the secret; only you and the responsible
+people may burn it. It then also shows who created it and who is
+responsible, and with `RECEIPT_SHOW_VIEWER=true` the name and address of
+each person who opened it. Details: [CONFIG.md](CONFIG.md#status-page).
 
 ## Receipt states
 
@@ -57,7 +70,9 @@ the share link again.
 | Expired | the expiry passed before all views were used |
 
 Receipts stay `RECEIPT_KEEP` seconds after the expiry, then they are gone
-too. They hold times only, no IPs or browsers.
+too. They hold times, no IPs or browsers; with sign-in the names and
+addresses shown on the status page (`RECEIPT_SHOW_VIEWER`,
+`STATUS_ACCESS=signed-in`).
 
 ## Operation
 

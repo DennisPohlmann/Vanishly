@@ -29,8 +29,8 @@ and `rule` give the rule of the form's checkbox in the language of the request:
 | `POST /api/v1/open` | open a secret link, with its passphrase, on the server (for scripts) |
 | `GET /api/v1/secrets/{id}` | check a secret without using a view; passphrase parameters (`ENABLE_SECRET_META_API`) |
 | `POST /api/v1/secrets/{id}/reveal` | take one view, get the ciphertext |
-| `GET /api/v1/receipts/{id}` | status for the sender |
-| `POST /api/v1/receipts/{id}/burn` | destroy the secret now |
+| `GET /api/v1/receipts/{id}` | status for the sender (`STATUS_ACCESS=signed-in`: creator, responsible, openers after sign-in; `ENABLE_RECEIPT_API`) |
+| `POST /api/v1/receipts/{id}/burn` | destroy the secret now (`STATUS_ACCESS=signed-in`: creator and responsible only) |
 | `GET /api/v1/me` | who is signed in (sign-in on; `ENABLE_ME_API`) |
 | `GET /api/v1/groups?q=` | search groups for recipients (`RECIPIENT_GROUPS=*`) |
 | `GET /api/v1/people?q=` | search people for recipients (`RECIPIENT_USER_GROUP`, in the provider's directory): `{ people: [{ name, user, mail }] }`, put `user` into `recipients` |
@@ -58,7 +58,14 @@ curl -s -X POST https://ots.example.com/api/v1/share \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"secret":"s3cret","recipients":["bob@example.com"],"recipientGroups":["<group id>"]}'
 
-# Status and burn with the receipt id from the answer
+# The same with responsible people (RESPONSIBLE): they may see the status
+# and burn it (STATUS_ACCESS=signed-in).
+curl -s -X POST https://ots.example.com/api/v1/share \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"secret":"s3cret","recipients":["bob@example.com"],"responsibleGroups":["<group id>"]}'
+
+# Status and burn with the receipt id from the answer (with
+# STATUS_ACCESS=signed-in also with the token of an allowed person)
 curl -s https://ots.example.com/api/v1/receipts/<receiptId>
 curl -s -X POST https://ots.example.com/api/v1/receipts/<receiptId>/burn
 ```

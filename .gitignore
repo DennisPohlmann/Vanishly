@@ -3,6 +3,7 @@ dist/
 *.tsbuildinfo
 .env
 .env.local
-/custom-templates/*
-!/custom-templates/README.md
+/docker-compose/*/custom-templates/*
+!/docker-compose/standalone/custom-templates/README.md
+/docker-compose/*/.env
 vendor/

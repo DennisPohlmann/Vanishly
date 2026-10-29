@@ -524,7 +524,7 @@ redis:
     registry: docker.io
     # -- Image repository.
     repository: redis
-    # -- Image tag (the latest Redis 8 on Alpine, as in docker-compose.yml).
+    # -- Image tag (the latest Redis 8 on Alpine, as in docker-compose/standalone/docker-compose.yml).
     tag: 8-alpine
     # -- Image digest (`sha256:...`); wins over the tag.
     digest: ""

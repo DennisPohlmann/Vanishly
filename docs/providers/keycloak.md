@@ -1,5 +1,9 @@
 # Keycloak
 
+A ready example with Keycloak 26, a realm with both clients, groups and
+demo users (alice, bob, carol) is in
+[docker-compose/keycloak](../../docker-compose/keycloak/README.md).
+
 `AUTH_PROVIDER=keycloak`. Issuer: `https://<host>/realms/<realm>` (older
 versions with `/auth`: `https://<host>/auth/realms/<realm>`).
 

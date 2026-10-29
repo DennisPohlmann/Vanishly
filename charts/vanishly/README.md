@@ -40,7 +40,7 @@ Uninstall: `helm uninstall vanishly -n vanishly`.
 - **Redis** (`redis.enabled`, default) as one pod, `redis:8-alpine` as uid
   999, read-only, without snapshots or append-only file: secrets live only
   in memory, and a Redis restart drops open secrets (as with
-  docker-compose.yml). A password is generated on the first install and
+  docker-compose/standalone/docker-compose.yml). A password is generated on the first install and
   kept across upgrades. Vanishly pods wait in an init container until
   Redis answers.
 - Optional: Ingress, Gateway API HTTPRoute, HorizontalPodAutoscaler,
@@ -301,7 +301,7 @@ provider: [docs/providers](https://github.com/DennisPohlmann/Vanishly/blob/main/
 | redis.image.pullPolicy | string | `"IfNotPresent"` | Pull policy. |
 | redis.image.registry | string | `"docker.io"` | Image registry. |
 | redis.image.repository | string | `"redis"` | Image repository. |
-| redis.image.tag | string | `"8-alpine"` | Image tag (the latest Redis 8 on Alpine, as in docker-compose.yml). |
+| redis.image.tag | string | `"8-alpine"` | Image tag (the latest Redis 8 on Alpine, as in docker-compose/standalone/docker-compose.yml). |
 | redis.livenessProbe | object | `{"enabled":true,"failureThreshold":3,"periodSeconds":10,"tcpSocket":{"port":"redis"},"timeoutSeconds":3}` | Liveness probe. |
 | redis.maxmemory | string | `"200mb"` | Memory limit of Redis (maxmemory); keep it below resources.limits.memory. |
 | redis.maxmemoryPolicy | string | `"volatile-ttl"` | Eviction policy when maxmemory is reached. |

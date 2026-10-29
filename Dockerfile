@@ -4,7 +4,7 @@
 #   docker run -d --name vanishly -p 127.0.0.1:3000:3000 \
 #     -e REDIS_URL=redis://redis:6379 vanishly
 #
-# Or everything with Redis: docker compose up -d (docker-compose.yml).
+# Or everything with Redis: docker compose up -d (docker-compose/standalone/).
 # All settings are environment variables, see .env.example.
 
 # Base image (Node.js LTS on Alpine) written out in both FROM lines, pinned by

@@ -47,7 +47,8 @@ written by semantic-release in CI. Never edit them by hand, never tag.
 - `npm outdated`, `npm audit --omit=dev` (after `npm ci`).
 - Node.js: compare `engines.node` in `package.json`, the Node version in
   `.github/workflows/build.yml` and the `Dockerfile` base image with the
-  current Node LTS. Redis: the image in `docker-compose.yml`.
+  current Node LTS. Redis: the image in `docker-compose/standalone/docker-compose.yml`
+  and `docker-compose/keycloak/docker-compose.yml`; Keycloak there too.
 - GitHub Actions in `.github/workflows/*.yml`: note newer major versions.
 - Report available updates as a short list (name, current → newest,
   patch/minor/major, advisories) and recommend. Do not change versions

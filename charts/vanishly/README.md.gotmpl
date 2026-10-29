@@ -40,7 +40,7 @@ Uninstall: `helm uninstall vanishly -n vanishly`.
 - **Redis** (`redis.enabled`, default) as one pod, `redis:8-alpine` as uid
   999, read-only, without snapshots or append-only file: secrets live only
   in memory, and a Redis restart drops open secrets (as with
-  docker-compose.yml). A password is generated on the first install and
+  docker-compose/standalone/docker-compose.yml). A password is generated on the first install and
   kept across upgrades. Vanishly pods wait in an init container until
   Redis answers.
 - Optional: Ingress, Gateway API HTTPRoute, HorizontalPodAutoscaler,

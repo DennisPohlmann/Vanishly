@@ -18,15 +18,19 @@ Vanishly runs as a small Node.js container next to Redis.
   an expiry from 5 minutes to `MAX_TTL`.
 - **Optional passphrase:** checked by the server before the secret is handed
   out; a wrong one does not use a view, too many destroy the secret.
-- **Receipt link for the sender:** status, view times (no IPs), copy the
-  share link again, burn the secret early.
+- **Status page for the sender:** state, a history of who opened it and
+  when (no IPs), copy the share link again, burn the secret early. With
+  sign-in it can be limited to the creator, the responsible people and those
+  who opened it (`STATUS_ACCESS`); only creator and responsible may burn.
 - **Only for chosen people (optional):** with sign-in via Microsoft Entra
   ID, Keycloak, Okta, Auth0, Google Workspace, PingOne, JumpCloud, Cognito or
   any OpenID Connect provider (`AUTH_PROVIDER`), the sender names the
   people or groups who may open a secret (with a directory also by
   searching names in a group). The server hands it out only to
-  them after they signed in; others use no view. Off by default; a test
-  login server for trying it is included.
+  them after they signed in; others use no view. A secret can also name
+  responsible people or groups who look after it (`RESPONSIBLE`). Off by
+  default; a Keycloak example with demo users and a test login server for
+  trying it are included ([docker-compose/](docker-compose/)).
 - **Click to reveal:** opening the link shows nothing yet, so chat and mail
   link previews cannot burn a secret.
 - **Password generator** (in the browser, `crypto.getRandomValues`), with
@@ -34,7 +38,8 @@ Vanishly runs as a small Node.js container next to Redis.
 - **OpenAPI 3.1 API** (`/api/openapi.json`, API reference at `/api/docs`,
   linked in the footer), including `POST /api/v1/share` and
   `POST /api/v1/open` (open a link with its passphrase) for scripts and
-  `curl`; or switch the public API off.
+  `curl`. Every endpoint can be switched off on its own (e.g. create and
+  reveal only); the docs then show only what is on.
 - **Templates for your branding:** logo, favicon, colours, fonts, pictures,
   footer links, texts and, if you like, own HTML views. Two designs are
   built in, each with light and dark mode and made for phones: `default`
@@ -43,10 +48,11 @@ Vanishly runs as a small Node.js container next to Redis.
   the design, `DEFAULT_MODE` whether it starts light, dark or like the
   visitor's system.
 - **Switch off what you do not need:** passphrase, views, receipts, burn,
-  view log, generator, language and light/dark buttons, the API, its docs
-  and its footer link, the GitHub link (`ENABLE_*`).
+  view log, generator, language and light/dark buttons, each API endpoint,
+  its docs and its footer link, the GitHub link (`ENABLE_*`); languages
+  (`LANGUAGES=en`).
 - **Configured with environment variables only:** all of them with their
-  defaults in `docker-compose.yml` and `.env.example`; a wrong value or a
+  defaults in `docker-compose/standalone/docker-compose.yml` and `.env.example`; a wrong value or a
   misspelt name stops the start with a clear message.
 - **Rules for your organisation (optional):** minimum secret length,
   required passphrase with minimum length and character classes, a
@@ -101,21 +107,31 @@ How a secret is protected, step by step and with its limits:
 
 - Docker with Docker Compose (the image brings Node.js 24 LTS on Alpine
   Linux), or Node.js 22 or newer
-- Redis 7 or newer (included in `docker-compose.yml` and in the Helm chart)
+- Redis 7 or newer (included in the Compose files and in the Helm chart), or an
+  external one (`REDIS_URL`, also `rediss://` with an own CA)
 - Or Kubernetes 1.25 or newer with Helm: [charts/vanishly](charts/vanishly/README.md)
 - A reverse proxy with TLS (nginx, Caddy, Traefik) in front of port 3000
 
 ## Quick start
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/docker-compose.yml
+curl -fsSLO https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/docker-compose/standalone/docker-compose.yml
 curl -fsSL https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/.env.example -o .env
 # edit .env: BASE_URL, TRUST_PROXY=1 behind a proxy
 docker compose up -d          # or: podman-compose up -d
 ```
 
+The Compose files live in [`docker-compose/`](docker-compose/) (until 1.2.1
+`docker-compose.yml` was at the top of the repository):
+
+| Folder | What |
+|---|---|
+| [`docker-compose/standalone/`](docker-compose/standalone/) | Vanishly with its own Redis; the file above. `docker-compose.build.yml` builds from a checkout, `docker-compose.auth-test.yml` adds a test login server |
+| [`docker-compose/keycloak/`](docker-compose/keycloak/README.md) | Example with Keycloak and demo users: sign-in, recipients, responsible groups, people search |
+
 `docker-compose.yml` pulls the published image, so it needs nothing else
-from the repository. To build from a checkout instead:
+from the repository. To build from a checkout instead, in
+`docker-compose/standalone/`:
 `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
 
 Then open `http://127.0.0.1:3000`. Every setting is listed with its default

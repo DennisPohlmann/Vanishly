@@ -1,6 +1,6 @@
 # Configuration
 
-All settings are environment variables. `docker-compose.yml` lists every
+All settings are environment variables. `docker-compose/standalone/docker-compose.yml` lists every
 one with its default under `environment:` (change it there, or put
 `NAME=value` into `.env` next to it); `.env.example` lists them too, with a
 comment each, and is the template for `/etc/vanishly/vanishly.env`
@@ -187,7 +187,7 @@ expiry first if memory runs out; raise `--maxmemory` for heavy use.
 `rediss://app:change-me@redis.example.com:6380/0`, with `REDIS_TLS_CA_FILE`
 for an own CA and `REDIS_PREFIX` to share it with other apps. With Docker
 Compose, remove the `redis` service and the `depends_on: [redis]` line of
-`vanishly` from your copy of `docker-compose.yml` and set `REDIS_URL` in
+`vanishly` from your copy of `docker-compose/standalone/docker-compose.yml` and set `REDIS_URL` in
 `.env`. With Helm: `redis.enabled=false` and `redis.external.url` or
 `redis.external.existingSecret` (see the chart README). The Redis user needs
 the commands `GET`, `SET`, `HSET`, `HGETALL`, `HMGET`, `EXPIRE`/`PEXPIREAT`,

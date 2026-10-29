@@ -112,7 +112,7 @@ test('every wrong setting stops the start', () => {
     assert.throws(() => loadConfig({ [name]: value }), msg, `${name}=${value}`);
   }
   assert.throws(() => loadConfig({ ENABLE_PASSPHRASE: 'false', MIN_PASSPHRASE_LENGTH: '8' }), /ENABLE_PASSPHRASE/);
-  // empty values (as in docker-compose.yml) mean the default; other variables are left alone
+  // empty values (as in docker-compose/standalone/docker-compose.yml) mean the default; other variables are left alone
   const c = loadConfig({ PORT: '', HSTS: '', TTL_OPTIONS: '', PASSPHRASE_COMPLEXITY: '', PATH: '/bin', HOSTNAME: 'x', NODE_VERSION: '24' });
   assert.equal(c.port, 3000);
   assert.deepEqual(c.generatorClasses, ['upper', 'lower', 'digit', 'symbol']);

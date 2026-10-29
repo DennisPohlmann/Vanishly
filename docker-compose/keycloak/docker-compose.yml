@@ -1,0 +1,92 @@
+# Vanishly with sign-in through Keycloak: an example to try sign-in,
+# recipients, responsible groups, the protected status page and the people
+# search on your own machine. Demo users and plain http: NOT for a server.
+#
+#   cp .env.example .env      # then set real values, see README.md
+#   docker compose up -d      # or: podman-compose up -d
+#   open http://localhost:3000 and sign in as alice, bob or carol
+#   docker compose down
+#
+# Vanishly runs in Keycloak's network (network_mode below), so the browser
+# and Vanishly both reach Keycloak as http://localhost:<KEYCLOAK_PORT>,
+# which the sign-in needs. Inside, both use the same ports as outside.
+name: vanishly-keycloak-example
+
+x-podman:
+  in_pod: false
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm", "--http-port=${KEYCLOAK_PORT:-8080}"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?set KC_ADMIN_PASSWORD in .env}
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8080}
+      # Filled into realm-vanishly.json on import.
+      VANISHLY_URL: http://localhost:${VANISHLY_PORT:-3000}
+      KC_CLIENT_SECRET: ${KC_CLIENT_SECRET:?set KC_CLIENT_SECRET in .env}
+      KC_DIRECTORY_CLIENT_SECRET: ${KC_DIRECTORY_CLIENT_SECRET:?set KC_DIRECTORY_CLIENT_SECRET in .env}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:?set DEMO_PASSWORD in .env}
+    volumes:
+      - ./realm-vanishly.json:/opt/keycloak/data/import/realm-vanishly.json:ro
+    ports:
+      # Vanishly shares this container's network, so its port is published here.
+      - "127.0.0.1:${VANISHLY_PORT:-3000}:${VANISHLY_PORT:-3000}"
+      - "127.0.0.1:${KEYCLOAK_PORT:-8080}:${KEYCLOAK_PORT:-8080}"
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    user: "999:1000"
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "volatile-ttl"]
+    read_only: true
+    tmpfs:
+      - /data:mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  vanishly:
+    image: ${VANISHLY_IMAGE:-ghcr.io/dennispohlmann/vanishly:latest}
+    network_mode: "service:keycloak"
+    depends_on: [keycloak, redis]
+    restart: unless-stopped
+    environment:
+      PORT: ${VANISHLY_PORT:-3000}
+      BASE_URL: http://localhost:${VANISHLY_PORT:-3000}
+      REDIS_URL: redis://redis:6379
+      # Sign-in with the Keycloak preset.
+      AUTH_PROVIDER: keycloak
+      OIDC_ISSUER: http://localhost:${KEYCLOAK_PORT:-8080}/realms/vanishly
+      OIDC_CLIENT_ID: vanishly
+      OIDC_CLIENT_SECRET: ${KC_CLIENT_SECRET}
+      AUTH_SECRET: ${VANISHLY_AUTH_SECRET:?set VANISHLY_AUTH_SECRET in .env}
+      # Recipients: addresses, and the groups Finance and IT (Keycloak group names).
+      RECIPIENTS: optional
+      RECIPIENT_GROUPS: Finance=finance,IT=it
+      # People search: the members of /staff, read with the service-account
+      # client vanishly-directory.
+      DIRECTORY_API: "true"
+      DIRECTORY_CLIENT_ID: vanishly-directory
+      DIRECTORY_CLIENT_SECRET: ${KC_DIRECTORY_CLIENT_SECRET}
+      RECIPIENT_USER_GROUP: /staff
+      # Responsible people/groups and the status page only for those who need it.
+      RESPONSIBLE: optional
+      STATUS_ACCESS: signed-in
+      RECEIPT_SHOW_VIEWER: "true"
+      REQUIRE_PASSPHRASE: unless-recipients
+      CONFIRM_CHECKBOX: "true"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true

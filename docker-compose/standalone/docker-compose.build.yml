@@ -1,0 +1,9 @@
+# Builds the Vanishly image from the checkout instead of pulling it, in
+# docker-compose/standalone/:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#   (or, from the top of the checkout: make up)
+services:
+  vanishly:
+    image: vanishly:local
+    build: ../..

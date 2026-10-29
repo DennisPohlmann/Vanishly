@@ -13,13 +13,14 @@
 
 ## 1. Docker Compose (recommended)
 
-`docker-compose.yml` starts Vanishly and Redis. Redis is reachable only
-inside the Compose network and keeps secrets in memory only.
+`docker-compose/standalone/docker-compose.yml` starts Vanishly and Redis
+(until 1.2.1 the file was at the top of the repository). Redis is reachable
+only inside the Compose network and keeps secrets in memory only.
 
 ```bash
-git clone https://github.com/DennisPohlmann/Vanishly.git /opt/vanishly-compose
-cd /opt/vanishly-compose
-cp .env.example .env
+mkdir -p /opt/vanishly && cd /opt/vanishly
+curl -fsSLO https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/docker-compose/standalone/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/.env.example -o .env
 ```
 
 Edit `.env`: at least `BASE_URL` (your public address) and, behind a reverse
@@ -32,12 +33,16 @@ docker compose ps                # vanishly "healthy", redis "running"
 ```
 
 `docker-compose.yml` only pulls images, so the file works on its own in any
-folder, and with `podman-compose` too. To build the image from this folder
-instead, add the build override:
+folder, and with `podman-compose` too. To build the image from a checkout
+instead, add the build override in `docker-compose/standalone/`:
 
 ```bash
+cd docker-compose/standalone
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
+
+An example with sign-in through Keycloak and demo users is in
+[docker-compose/keycloak](../docker-compose/keycloak/README.md).
 
 The app listens on `127.0.0.1:3000`.
 
@@ -151,7 +156,8 @@ with `TRUST_PROXY=false` behind a proxy all clients share one limit.
 
 ## 6. Own templates
 
-With Compose, next to `docker-compose.yml`:
+With Compose, next to `docker-compose.yml` (in `docker-compose/standalone/`
+of a checkout that is the folder `custom-templates` already there):
 
 ```bash
 mkdir -p custom-templates && cp -r /path/to/my-brand custom-templates/
@@ -282,13 +288,18 @@ There is no people search with `oidc`.
 
 ### Try it locally with a test login server
 
-`docker-compose.auth-test.yml` adds a test login server
-([mock-oauth2-server](https://github.com/navikt/mock-oauth2-server)) where
-you can sign in as anybody. Only for your own machine:
+`docker-compose/standalone/docker-compose.auth-test.yml` adds a test login
+server ([mock-oauth2-server](https://github.com/navikt/mock-oauth2-server))
+where you can sign in as anybody. Only for your own machine:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.auth-test.yml up -d --build
+cd docker-compose/standalone
+docker compose -f docker-compose.yml -f docker-compose.auth-test.yml up -d
 ```
+
+With real users, groups, the people search and responsible groups:
+[docker-compose/keycloak](../docker-compose/keycloak/README.md) (Keycloak
+with demo users alice, bob and carol).
 
 Open `http://localhost:3000` and click "Sign in". On the test server's page
 type any user name and, as claims,

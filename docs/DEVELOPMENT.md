@@ -44,7 +44,7 @@ sign-in flow in `tests/a11y.e2e.js`) run against `tests/oidc-mock.js`, a
 small stand-in for Entra ID / an OpenID provider with Microsoft Graph
 (the other directories: stand-ins in `tests/directory.test.js`); no
 tenant is needed. To click through the sign-in by hand, use the test login
-server of `docker-compose.auth-test.yml`
+server of `docker-compose/standalone/docker-compose.auth-test.yml`
 ([INSTALLATION.md](INSTALLATION.md#try-it-locally-with-a-test-login-server)).
 
 ## CI (`.github/workflows/build.yml`)
@@ -130,7 +130,7 @@ of this check. Own templates: keep the contrast and check them with
 | `trivy fs` (secrets, `package-lock.json`, misconfigurations) | build.yml, image-scan | committed secrets, fixable HIGH/CRITICAL |
 | `trivy config` (Dockerfile) | build.yml, image-scan | HIGH/CRITICAL misconfigurations |
 | `trivy image` (the built image) | build.yml, image-scan | fixable HIGH/CRITICAL vulnerabilities |
-| `trivy image` (the Redis image of `docker-compose.yml`) | build.yml, image-scan | fixable HIGH/CRITICAL vulnerabilities |
+| `trivy image` (the Redis image of `docker-compose/standalone/docker-compose.yml`) | build.yml, image-scan | fixable HIGH/CRITICAL vulnerabilities |
 | nightly `trivy image` of `latest` and `edge` | image-scan.yml | opens/updates an issue labelled `security` |
 | Dependabot | dependabot.yml | PRs for npm, actions, base image, Redis image |
 | `trivy fs` misconfigurations of the Helm chart, kubeconform, `ct install` | build.yml, chart.yml | HIGH/CRITICAL findings, invalid manifests, a failing `helm test` |

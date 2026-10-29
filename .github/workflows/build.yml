@@ -91,10 +91,10 @@ jobs:
         run: >-
           trivy fs --scanners vuln,secret,misconfig --skip-dirs node_modules
           --severity HIGH,CRITICAL --exit-code 1 .
-      # The Redis image of docker-compose.yml is part of what users run.
-      - name: scan the Redis image of docker-compose.yml
+      # The Redis image of the Compose files is part of what users run.
+      - name: scan the Redis image of docker-compose/standalone/docker-compose.yml
         run: |
-          redis=$(sed -n 's/^ *image: *\(redis:[^ ]*\).*/\1/p' docker-compose.yml)
+          redis=$(sed -n 's/^ *image: *\(redis:[^ ]*\).*/\1/p' docker-compose/standalone/docker-compose.yml)
           trivy image --scanners vuln --ignore-unfixed \
             --severity HIGH,CRITICAL --exit-code 1 "$redis"
       - uses: docker/setup-buildx-action@v4

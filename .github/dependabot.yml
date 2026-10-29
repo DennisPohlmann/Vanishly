@@ -41,7 +41,7 @@ updates:
       actions:
         patterns: ["*"]
 
-  # Base images in the Dockerfile and docker-compose.yml, pinned by digest: a new digest behind the
+  # Base images in the Dockerfile, pinned by digest: a new digest behind the
   # same tag is an Alpine or Node patch, so it is checked daily with a short
   # cooldown. Node majors stay a manual decision.
   - package-ecosystem: docker
@@ -62,7 +62,9 @@ updates:
         update-types: [version-update:semver-major]
 
   - package-ecosystem: docker-compose
-    directory: /
+    directories:
+      - /docker-compose/standalone
+      - /docker-compose/keycloak
     schedule:
       interval: weekly
       day: monday

@@ -1,7 +1,10 @@
 # Try the sign-in without Entra ID: a local test login server where you can
 # sign in as anybody. ONLY FOR TESTS on your own machine, never on a server.
 #
-#   docker compose -f docker-compose.yml -f docker-compose.auth-test.yml up -d --build
+#   cd docker-compose/standalone
+#   docker compose -f docker-compose.yml -f docker-compose.auth-test.yml up -d
+#
+# For a real login server with users and groups see ../keycloak/.
 #
 # Open http://localhost:3000, click "Sign in". On the test server's page type
 # any user name, and as claims e.g.

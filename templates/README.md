@@ -39,8 +39,9 @@ templates/
    `--accent` and `--bad-on` on `--bad`.
 3. Put your pictures into `assets/` and name them in `template.json`.
 4. Put the folder where Vanishly finds it and restart:
-   - **Docker Compose:** `./custom-templates/` (mounted read-only at
-     `/var/lib/vanishly/templates`).
+   - **Docker Compose:** `custom-templates/` next to `docker-compose.yml`
+     (in a checkout `docker-compose/standalone/custom-templates/`), mounted
+     read-only at `/var/lib/vanishly/templates`.
    - **Container:** mount a folder at `/var/lib/vanishly/templates`:
      `-v /srv/vanishly-templates:/var/lib/vanishly/templates:ro`.
    - **tar.gz:** `/var/lib/vanishly/templates/` (`TEMPLATES_DIR`).
