@@ -6,7 +6,9 @@
 
 1. **SSO Applications → Add New Application → Custom Application**, with
    **Manage Single Sign-On (SSO)** → **OIDC**.
-2. **Redirect URIs**: `https://ots.example.com/auth/callback`; client
+2. **Redirect URIs**: `https://ots.example.com/auth/callback` (JumpCloud
+   lists no logout endpoint: "Sign out" ends only the Vanishly session,
+   "another account" still asks again); client
    authentication **Client Secret Basic**; scopes `openid profile email`.
 3. **User Groups**: the groups who may use Vanishly.
 4. Copy client id and secret (shown once).

@@ -27,7 +27,10 @@ one group while the sender types a name.
 
 1. A **confidential client** (web application) with the authorization code
    flow and PKCE, redirect URI `<BASE_URL>/auth/callback`, scopes `openid
-   profile email`.
+   profile email`, and the post logout (sign-out) redirect URI
+   `<BASE_URL>/auth/logged-out` (`AUTH_LOGOUT=provider`, the default except
+   for Entra; Google and Cognito have no logout endpoint in their discovery,
+   there only Vanishly signs out).
 2. A **verified e-mail address** in the ID token (`email`, not
    `email_verified: false`): Vanishly matches recipients by it. User names
    people can choose themselves are not used.

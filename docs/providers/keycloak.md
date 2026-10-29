@@ -9,7 +9,9 @@ versions with `/auth`: `https://<host>/auth/realms/<realm>`).
 2. **Client authentication** on (confidential), **Standard flow** on,
    **Direct access grants** off.
 3. **Valid redirect URIs**: `https://ots.example.com/auth/callback`;
-   **Web origins**: `https://ots.example.com`.
+   **Valid post logout redirect URIs**:
+   `https://ots.example.com/auth/logged-out`; **Web origins**:
+   `https://ots.example.com`.
 4. **Advanced → Proof Key for Code Exchange Code Challenge Method**: `S256`.
 5. **Credentials**: copy the client secret.
 6. Users need an e-mail address with **Email verified** on.

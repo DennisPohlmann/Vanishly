@@ -82,6 +82,12 @@ second lock next to the link, enforced by the server:
 - Directory credentials (API tokens, client secrets, the Google service
   account key, AWS keys) can be read from files (`*_FILE`, Docker or
   Kubernetes secrets); give them read access only.
+- Sign-out with `AUTH_LOGOUT=provider` sends the browser to the provider's
+  end-session endpoint with the ID token as `id_token_hint`; the ID token is
+  kept in the session hash for that only and deleted with it. The page CSP
+  allows the provider's origin in `form-action` (the sign-out and "another
+  account" forms redirect there), nothing else. The way back
+  (`/auth/logged-out`) only leads to `/`, `/s/<id>` or `/r/<id>`.
 - `AUTH_ALLOWED_DOMAINS` limits sign-in by domain. With Google it is
   required and the Workspace domain (`hd`) must match too: without it any
   Google account could sign in and create secrets.

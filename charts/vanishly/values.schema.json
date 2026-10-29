@@ -874,6 +874,14 @@
             }
           ]
         },
+        "AUTH_LOGOUT": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(provider|local)$"
+            }
+          ]
+        },
         "AUTH_CREATE": {
           "anyOf": [
             {

@@ -10,7 +10,7 @@
 | `/api/docs` | API documentation (Scalar API reference) |
 | `/api/openapi.json` | OpenAPI 3.1 document |
 | `/healthz` | `ok` (200) when Redis answers and accepts writes, otherwise 503 |
-| `/auth/login`, `/auth/logout` | Sign in and out (only with `AUTH_PROVIDER`) |
+| `/auth/login`, `/auth/logout`, `/auth/logged-out` | Sign in and out; `/auth/logged-out` is where the provider returns after a sign-out (only with `AUTH_PROVIDER`) |
 
 The header has the language switch and the light/dark switch (remembered in
 the browser).

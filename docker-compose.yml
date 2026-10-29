@@ -123,6 +123,7 @@ services:
       # cognito: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in .env (passed through env_file)
       AUTH_SECRET: ${AUTH_SECRET:-}               # 32+ random characters (openssl rand -base64 48), or AUTH_SECRET_FILE
       AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-}     # seconds a sign-in lasts (empty: 28800)
+      AUTH_LOGOUT: ${AUTH_LOGOUT:-}               # provider (default; entra: local): sign out at the provider too
       AUTH_CREATE: ${AUTH_CREATE:-}               # signed-in (default) or anyone
       AUTH_API_AUDIENCE: ${AUTH_API_AUDIENCE:-}   # accept bearer tokens with this audience, e.g. api://<client id>
       RECIPIENTS: ${RECIPIENTS:-}                 # off, optional (default) or required

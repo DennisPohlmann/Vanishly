@@ -241,9 +241,12 @@ does, [providers/](providers/README.md) what each provider supports. Vanishly mu
    `api://<client id>`, add a scope (e.g. `Secrets.Use`), and set
    `AUTH_API_AUDIENCE=api://<client id>`. Set "accessTokenAcceptedVersion"
    to 2 in the manifest.
-6. Optional: in **Enterprise applications** → Vanishly → Properties, set
+6. Optional, to sign out of Microsoft too (`AUTH_LOGOUT=provider`): add
+   `https://ots.example.com/auth/logged-out` as a second **Web** redirect
+   URI (Authentication). By default (`local`) only Vanishly signs out.
+7. Optional: in **Enterprise applications** → Vanishly → Properties, set
    "Assignment required" to limit who can sign in at all.
-7. Settings (`.env`):
+8. Settings (`.env`):
 
    ```sh
    BASE_URL=https://ots.example.com

@@ -3,7 +3,8 @@
 // and the recipient check. People and group search: src/directory/.
 //
 // Keys (below REDIS_PREFIX):
-//   sess:<sha256 of the cookie>  hash  name user ids created; expires with the session
+//   sess:<sha256 of the cookie>  hash  name user ids created, it (the ID token, only
+//                                      with AUTH_LOGOUT=provider); expires with the session
 //   oidc:<state>                 hash  PKCE verifier, nonce, return path; 10 minutes
 // Recipients are stored as HMAC-SHA256(AUTH_SECRET, "u:<address>" | "g:<group>"),
 // so Redis holds neither the addresses nor the groups a secret is for. A
@@ -59,6 +60,8 @@ export class Auth {
     /** @type {ReturnType<typeof createRemoteJWKSet> | null} */
     this.jwks = null;
     this.directory = createDirectory(cfg, { fetch: this.fetch, oidc: () => this.oidc() });
+    /** @type {string} origins of the provider for form-action (see csp()) */
+    this.formOrigins = '';
     /** @type {Map<string, { ids: string[], until: number }>} groups of API callers, 5 minutes */
     this.groupCache = new Map();
     /** @type {Map<string, { people: { name: string, user: string, mail: string }[], until: number }>} people search, 1 minute */
@@ -96,6 +99,27 @@ export class Auth {
    */
   group(g) {
     return groupValue(g, this.c.lowerGroups, this.c.groupPaths);
+  }
+
+  /**
+   * The page CSP with the provider in form-action: "Sign out" and "another
+   * account" are forms whose answer redirects to the provider, and browsers
+   * check form-action on those redirects too.
+   * @param {string} csp
+   */
+  csp(csp) {
+    if (!this.formOrigins) {
+      this.formOrigins = new URL(this.c.issuer).origin;
+      this.oidc()
+        .then((cfg) => {
+          const end = cfg.serverMetadata().end_session_endpoint;
+          const authz = cfg.serverMetadata().authorization_endpoint;
+          const extra = [end, authz].filter((u) => typeof u === 'string' && /^https?:\/\//.test(u)).map((u) => new URL(String(u)).origin);
+          this.formOrigins = [...new Set([this.formOrigins, ...extra])].join(' ');
+        })
+        .catch(() => {});
+    }
+    return csp.replace("form-action 'self'", `form-action 'self' ${this.formOrigins}`);
   }
 
   /** @param {string} v */
@@ -240,8 +264,10 @@ export class Auth {
    * Starts a login: remembers state, nonce and PKCE verifier, returns the
    * provider's address to send the browser to.
    * @param {string} returnTo
+   * @param {boolean} [fresh] "another account": the provider asks again
+   *   instead of signing in the account it remembers
    */
-  async loginUrl(returnTo) {
+  async loginUrl(returnTo, fresh = false) {
     const cfg = await this.oidc();
     const state = client.randomState();
     const nonce = client.randomNonce();
@@ -263,6 +289,8 @@ export class Auth {
       state,
       nonce,
       response_mode: 'query',
+      // Entra and Google offer an account picker; elsewhere the login form.
+      ...(fresh ? { prompt: this.c.provider === 'entra' || this.c.provider === 'google' ? 'select_account' : 'login' } : {}),
     }).href;
   }
 
@@ -290,16 +318,18 @@ export class Auth {
     if (!claims) throw new Error('no ID token');
     const who = await this.identity(claims);
     if (!who.ids.length) throw new Error('the account has no e-mail address or user name');
-    return { sid: await this.createSession(who), returnTo: saved.r || '/' };
+    // The ID token is kept only as id_token_hint for the logout at the provider.
+    const idToken = this.c.logout === 'provider' && typeof tokens.id_token === 'string' && tokens.id_token.length < 8192 ? tokens.id_token : '';
+    return { sid: await this.createSession(who, idToken), returnTo: saved.r || '/' };
   }
 
-  /** @param {User} who */
-  async createSession(who) {
+  /** @param {User} who @param {string} [idToken] */
+  async createSession(who, idToken = '') {
     const sid = randomBytes(32).toString('base64url');
     const key = `${this.p}sess:${sha256(sid)}`;
     await this.redis
       .multi()
-      .hSet(key, { name: who.name, user: who.user, ids: who.ids.join(' '), created: String(Date.now()) })
+      .hSet(key, { name: who.name, user: who.user, ids: who.ids.join(' '), created: String(Date.now()), ...(idToken ? { it: idToken } : {}) })
       .expire(key, this.c.sessionTtl)
       .exec();
     return sid;
@@ -322,11 +352,39 @@ export class Auth {
     });
   }
 
-  /** @param {import('express').Request} req @param {import('express').Response} res */
+  /**
+   * Ends the session here; returns its ID token (for the logout at the provider).
+   * @param {import('express').Request} req @param {import('express').Response} res
+   */
   async logout(req, res) {
     const sid = this.sid(req);
-    if (sid) await this.redis.del(`${this.p}sess:${sha256(sid)}`);
+    let idToken = '';
+    if (sid) {
+      const key = `${this.p}sess:${sha256(sid)}`;
+      const [it] = /** @type {[string | null]} */ (/** @type {unknown} */ (await this.redis.multi().hGet(key, 'it').del(key).exec()));
+      idToken = typeof it === 'string' ? it : '';
+    }
     res.clearCookie(this.cookie, { httpOnly: true, secure: this.secure, sameSite: 'lax', path: '/' });
+    return idToken;
+  }
+
+  /**
+   * AUTH_LOGOUT=provider: the provider's end-session address (RP-initiated
+   * logout), back to <BASE_URL>/auth/logged-out. "" when the provider has
+   * none (Google) or the logout stays local. state carries the return path.
+   * @param {string} idToken
+   * @param {string} returnTo a path that matches RETURN, or ""
+   */
+  async endSessionUrl(idToken, returnTo) {
+    if (this.c.logout !== 'provider') return '';
+    const cfg = await this.oidc();
+    if (!cfg.serverMetadata().end_session_endpoint) return '';
+    return client.buildEndSessionUrl(cfg, {
+      post_logout_redirect_uri: `${new URL(this.c.redirectUri).origin}/auth/logged-out`,
+      client_id: this.c.clientId,
+      ...(idToken ? { id_token_hint: idToken } : {}),
+      ...(RETURN.test(returnTo) ? { state: Buffer.from(returnTo).toString('base64url') } : {}),
+    }).href;
   }
 
   /**

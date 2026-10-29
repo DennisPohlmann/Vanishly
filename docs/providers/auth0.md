@@ -6,7 +6,10 @@ your custom domain, with the trailing slash (Vanishly adds it).
 ## Sign-in application
 
 1. **Applications → Create Application → Regular Web Application**.
-2. **Allowed Callback URLs**: `https://ots.example.com/auth/callback`.
+2. **Allowed Callback URLs**: `https://ots.example.com/auth/callback`;
+   **Allowed Logout URLs**: `https://ots.example.com/auth/logged-out`
+   (and switch on **RP-Initiated Logout** under the tenant's advanced
+   settings, so Auth0 lists its logout endpoint).
 3. Copy domain, client id and client secret.
 4. With social or database connections anyone could sign up: switch
    sign-ups off, or set `AUTH_ALLOWED_DOMAINS`.

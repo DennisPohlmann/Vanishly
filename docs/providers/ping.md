@@ -8,7 +8,8 @@ id>/as` (`.com`, `.eu`, `.ca`, `.asia`, `.com.au`).
 1. **Applications → Applications → +**: **OIDC Web App**.
 2. **Configuration**: response type **Code**, grant type **Authorization
    Code**, PKCE **S256 required**, token endpoint authentication **Client
-   Secret Basic**, redirect URI `https://ots.example.com/auth/callback`.
+   Secret Basic**, redirect URI `https://ots.example.com/auth/callback`,
+   signoff URL `https://ots.example.com/auth/logged-out`.
 3. Enable the application and copy client id and secret.
 
 ## Groups

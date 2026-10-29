@@ -470,6 +470,60 @@ test('AUTH_CREATE=anyone: anonymous secrets, restricting still needs a sign-in',
   assert.equal((await create(call, '', { recipients: ['a@example.com'] })).status, 401);
 });
 
+test('sign-out at the provider; "another account" asks the provider again', opts, async () => {
+  const kc = await startMock({ clientId: 'vanishly', clientSecret: SECRET, path: '/realms/test', logout: true });
+  closers.push(() => kc.close());
+  const saved = mock;
+  mock = kc;
+  try {
+    const off = { ENTRA_TENANT_ID: '', ENTRA_CLIENT_ID: '', ENTRA_CLIENT_SECRET: '', ENTRA_AUTHORITY: '', ENTRA_GRAPH_URL: '' };
+    const { base, login } = await startApp({ ...off, AUTH_PROVIDER: 'keycloak', OIDC_ISSUER: kc.issuer, OIDC_CLIENT_ID: 'vanishly', OIDC_CLIENT_SECRET: SECRET });
+    /** @param {string} cookie @param {string} body */
+    const logout = (cookie, body = '') =>
+      fetch(`${base}/auth/logout`, { method: 'POST', redirect: 'manual', headers: { cookie, 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+    // Sign out: to the provider's end-session endpoint with the ID token, back to /auth/logged-out.
+    const a = (await login({ sub: 'a', email: 'alice@example.org', name: 'Alice' })).cookie;
+    const out = await logout(a);
+    const to = new URL(String(out.headers.get('location')));
+    assert.equal(`${to.origin}${to.pathname}`, `${kc.base}/logout`);
+    assert.equal(to.searchParams.get('post_logout_redirect_uri'), `${base}/auth/logged-out`);
+    assert.equal(to.searchParams.get('client_id'), 'vanishly');
+    assert.ok((to.searchParams.get('id_token_hint') || '').split('.').length === 3);
+    assert.equal(to.searchParams.get('state'), null);
+    const back = await fetch(`${base}/auth/logged-out`, { redirect: 'manual' });
+    assert.equal(back.headers.get('location'), '/');
+    // "Another account" on a secret: the return path rides in state, then a sign-in with prompt=login.
+    const b = (await login({ sub: 'b', email: 'bert@example.org' })).cookie;
+    const sw = new URL(String((await logout(b, 'return=%2Fs%2FAAAAAAAAAAAAAAAAAAAAAA')).headers.get('location')));
+    const state = String(sw.searchParams.get('state'));
+    const next = await fetch(`${base}/auth/logged-out?state=${state}`, { redirect: 'manual' });
+    assert.equal(next.headers.get('location'), '/auth/login?fresh=1&return=%2Fs%2FAAAAAAAAAAAAAAAAAAAAAA');
+    const start = await fetch(`${base}${next.headers.get('location')}`, { redirect: 'manual' });
+    assert.equal(new URL(String(start.headers.get('location'))).searchParams.get('prompt'), 'login');
+    // A forged state never leads off the site.
+    const evil = Buffer.from('//evil.example.net').toString('base64url');
+    assert.equal((await fetch(`${base}/auth/logged-out?state=${evil}`, { redirect: 'manual' })).headers.get('location'), '/');
+    // AUTH_LOGOUT=local: no provider logout, no ID token kept.
+    const local = await startApp({ ...off, AUTH_PROVIDER: 'keycloak', OIDC_ISSUER: kc.issuer, OIDC_CLIENT_ID: 'vanishly', OIDC_CLIENT_SECRET: SECRET, AUTH_LOGOUT: 'local' });
+    const c = (await local.login({ sub: 'c', email: 'carl@example.org' })).cookie;
+    const lo = await fetch(`${local.base}/auth/logout`, { method: 'POST', redirect: 'manual', headers: { cookie: c, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'return=%2F' });
+    assert.equal(lo.headers.get('location'), '/auth/login?fresh=1&return=%2F');
+  } finally {
+    mock = saved;
+  }
+});
+
+test('Entra: sign-out stays local by default; another account gets the account picker', opts, async () => {
+  const { base, login } = await startApp();
+  const a = (await login(ALICE)).cookie;
+  const out = await fetch(`${base}/auth/logout`, { method: 'POST', redirect: 'manual', headers: { cookie: a, 'Content-Type': 'application/x-www-form-urlencoded' }, body: '' });
+  assert.equal(out.headers.get('location'), '/');
+  const start = await fetch(`${base}/auth/login?fresh=1&return=%2F`, { redirect: 'manual' });
+  assert.equal(new URL(String(start.headers.get('location'))).searchParams.get('prompt'), 'select_account');
+  const plain = await fetch(`${base}/auth/login?return=%2F`, { redirect: 'manual' });
+  assert.equal(new URL(String(plain.headers.get('location'))).searchParams.get('prompt'), null);
+});
+
 test('generic OIDC provider: issuer with a path, groups claim values', opts, async () => {
   const oidc = await startMock({ clientId: 'vanishly', clientSecret: SECRET, path: '/realms/test' });
   closers.push(() => oidc.close());

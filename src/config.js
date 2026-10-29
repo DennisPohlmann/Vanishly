@@ -108,7 +108,7 @@ export const SETTINGS = [
   'ENTRA_AUTHORITY', 'ENTRA_GRAPH', 'ENTRA_GRAPH_URL', 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET',
   'OIDC_CLIENT_SECRET_FILE', 'OIDC_SCOPES', 'OIDC_GROUPS_CLAIM', 'AUTH_ALLOWED_DOMAINS', 'DIRECTORY_API', 'DIRECTORY_URL',
   'DIRECTORY_CLIENT_ID', 'DIRECTORY_CLIENT_SECRET', 'DIRECTORY_CLIENT_SECRET_FILE', 'DIRECTORY_API_TOKEN',
-  'DIRECTORY_API_TOKEN_FILE', 'DIRECTORY_GOOGLE_CREDENTIALS_FILE', 'DIRECTORY_GOOGLE_ADMIN', 'AUTH_SECRET', 'AUTH_SECRET_FILE', 'AUTH_SESSION_TTL', 'AUTH_CREATE', 'AUTH_API_AUDIENCE', 'RECIPIENTS', 'RECIPIENTS_MAX', 'RECIPIENT_GROUPS',
+  'DIRECTORY_API_TOKEN_FILE', 'DIRECTORY_GOOGLE_CREDENTIALS_FILE', 'DIRECTORY_GOOGLE_ADMIN', 'AUTH_SECRET', 'AUTH_SECRET_FILE', 'AUTH_SESSION_TTL', 'AUTH_LOGOUT', 'AUTH_CREATE', 'AUTH_API_AUDIENCE', 'RECIPIENTS', 'RECIPIENTS_MAX', 'RECIPIENT_GROUPS',
   'RECIPIENT_USER_GROUP', 'RECIPIENT_DOMAINS', 'RECEIPT_SHOW_VIEWER',
 ];
 const AUTH_SETTINGS = SETTINGS.slice(SETTINGS.indexOf('ENTRA_TENANT_ID'));
@@ -454,6 +454,10 @@ function authConfig(env, baseUrl) {
     }
     if (recipients === 'off') throw new Error('RECIPIENT_USER_GROUP needs RECIPIENTS=optional or required');
   }
+  // Sign out also at the provider (RP-initiated logout), so the next sign-in
+  // asks again. Not for Entra by default: that ends the Microsoft 365 session too.
+  const logout = env.AUTH_LOGOUT || (entra ? 'local' : 'provider');
+  if (!/^(provider|local)$/.test(logout)) throw new Error('AUTH_LOGOUT: provider or local');
   const create = env.AUTH_CREATE || 'signed-in';
   if (!/^(signed-in|anyone)$/.test(create)) throw new Error('AUTH_CREATE: signed-in or anyone');
   const domains = (env.RECIPIENT_DOMAINS || '').toLowerCase().split(/[\s,;]+/).filter(Boolean);
@@ -490,6 +494,7 @@ function authConfig(env, baseUrl) {
     groups,
     userGroup,
     domains,
+    logout: /** @type {'provider' | 'local'} */ (logout),
     showViewer: named('RECEIPT_SHOW_VIEWER', () => flag(env.RECEIPT_SHOW_VIEWER, false)),
   };
 }

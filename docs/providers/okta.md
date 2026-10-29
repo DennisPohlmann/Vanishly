@@ -8,7 +8,8 @@
 
 1. **Applications → Create App Integration**: OIDC, **Web Application**.
 2. Grant type **Authorization Code**; **Sign-in redirect URI**
-   `https://ots.example.com/auth/callback`.
+   `https://ots.example.com/auth/callback`; **Sign-out redirect URI**
+   `https://ots.example.com/auth/logged-out`.
 3. **Assignments**: the people or groups who may use Vanishly.
 4. Copy client id and client secret. Okta requires PKCE for this flow only
    if you switch it on; Vanishly always sends it.

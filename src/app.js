@@ -112,7 +112,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   // Security headers on everything; no caching of pages or API answers.
   app.use((req, res, next) => {
     res.set({
-      'Content-Security-Policy': req.path.startsWith('/api/docs') ? CSP_DOCS : CSP,
+      'Content-Security-Policy': req.path.startsWith('/api/docs') ? CSP_DOCS : auth ? auth.csp(CSP) : CSP,
       'Referrer-Policy': 'no-referrer',
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
@@ -752,7 +752,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       if (!(await authLimit(req))) return errorPage(req, res, 429, theme.strings[lang(res)]['error.ratelimit']);
       const back = typeof req.query.return === 'string' ? req.query.return : '/';
       try {
-        res.redirect(303, await auth.loginUrl(back));
+        res.redirect(303, await auth.loginUrl(back, req.query.fresh === '1'));
       } catch (err) {
         console.error(`auth: sign-in provider not reachable: ${/** @type {Error} */ (err).message}`);
         errorPage(req, res, 502, theme.strings[lang(res)]['auth.unavailable']);
@@ -779,9 +779,27 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     app.post('/auth/logout', express.urlencoded({ extended: false, limit: '1kb' }), async (req, res) => {
       const site = req.get('sec-fetch-site');
       if (site && site !== 'same-origin') return errorPage(req, res, 403, theme.strings[lang(res)]['error.generic']);
-      await auth.logout(req, res);
+      const idToken = await auth.logout(req, res);
       const back = typeof req.body?.return === 'string' && RETURN.test(req.body.return) ? req.body.return : '';
-      res.redirect(303, back ? `/auth/login?return=${encodeURIComponent(back)}` : '/');
+      // AUTH_LOGOUT=provider: end the provider's session too, or it signs the same account in again.
+      try {
+        const out = await auth.endSessionUrl(idToken, back);
+        if (out) return res.redirect(303, out);
+      } catch (err) {
+        console.error(`auth: sign-out at the provider not possible: ${/** @type {Error} */ (err).message}`);
+      }
+      res.redirect(303, back ? `/auth/login?fresh=1&return=${encodeURIComponent(back)}` : '/');
+    });
+
+    // Back from the provider's logout; "another account" goes on to the sign-in.
+    app.get('/auth/logged-out', (req, res) => {
+      let back = '';
+      try {
+        back = typeof req.query.state === 'string' ? Buffer.from(req.query.state.slice(0, 200), 'base64url').toString() : '';
+      } catch {
+        back = '';
+      }
+      res.redirect(303, RETURN.test(back) && back !== '/' ? `/auth/login?fresh=1&return=${encodeURIComponent(back)}` : '/');
     });
   }
 

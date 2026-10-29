@@ -152,6 +152,7 @@ per provider and what each supports (groups, group search, people search):
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_ROLE_ARN`, `AWS_WEB_IDENTITY_TOKEN_FILE` | (none) | `cognito` with `DIRECTORY_API`: the standard AWS credentials, keys or a role through a web identity token (EKS) |
 | `AUTH_SECRET` | (required) | At least 32 random characters (`openssl rand -base64 48`); or `AUTH_SECRET_FILE`. Keys the hashes of the recipients: changing it locks every open restricted secret |
 | `AUTH_SESSION_TTL` | `28800` | Lifetime of a sign-in in seconds (5 minutes to 7 days) |
+| `AUTH_LOGOUT` | `provider` (Entra: `local`) | `provider`: "Sign out" also ends the session at the provider, which then asks again at the next sign-in; needs `<BASE_URL>/auth/logged-out` as post logout redirect URI there. `local`: only Vanishly signs out (with Entra the default, as the Microsoft session is shared with Microsoft 365) |
 | `AUTH_CREATE` | `signed-in` | Who may create secrets: `signed-in` or `anyone` (restricting a secret always needs a sign-in) |
 | `RECIPIENTS` | `optional` | `off` (no recipients field), `optional`, or `required` (every secret must name someone) |
 | `RECIPIENTS_MAX` | `10` | Most recipients (addresses and groups) per secret, 1 to 50 |
@@ -264,7 +265,14 @@ With any `AUTH_PROVIDER`:
   [People search](#people-search).
 - Redis stores the recipients only as keyed hashes (HMAC with
   `AUTH_SECRET`), the sessions under a hash of the cookie, with the name,
-  the user name and these hashes. No access or refresh tokens are kept.
+  the user name and these hashes, with `AUTH_LOGOUT=provider` also the ID
+  token (for the sign-out at the provider). No access or refresh tokens are kept.
+- **Sign out** ends the session in Vanishly and, with `AUTH_LOGOUT=provider`,
+  at the provider (OpenID Connect RP-initiated logout), so the next sign-in
+  asks for the account again. Register `<BASE_URL>/auth/logged-out` as post
+  logout redirect URI at the provider. "Sign in with another account" always
+  asks the provider again (`prompt=login`; Entra and Google: the account
+  picker). Google has no logout endpoint: there only Vanishly signs out.
 
 ### People search
 

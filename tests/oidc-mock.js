@@ -6,8 +6,8 @@ import { createServer } from 'node:http';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 
 /**
- * @param {{ tenant?: string, clientId: string, clientSecret: string, path?: string }} opts
- *   path: the issuer path (default "/<tenant>/v2.0", like Entra)
+ * @param {{ tenant?: string, clientId: string, clientSecret: string, path?: string, logout?: boolean }} opts
+ *   path: the issuer path (default "/<tenant>/v2.0", like Entra); logout: offer an end_session_endpoint
  */
 export async function startMock(opts) {
   const { privateKey, publicKey } = await generateKeyPair('RS256');
@@ -29,6 +29,8 @@ export async function startMock(opts) {
     lastAuthorize: null,
     /** @type {URLSearchParams | null} */
     lastSearch: null,
+    /** @type {URLSearchParams | null} */
+    lastLogout: null,
     graphCalls: 0,
     /**
      * @param {Record<string, any>} claims
@@ -68,9 +70,14 @@ export async function startMock(opts) {
         id_token_signing_alg_values_supported: ['RS256'],
         token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],
         code_challenge_methods_supported: ['S256'],
+        ...(opts.logout ? { end_session_endpoint: `${mock.base}/logout` } : {}),
       });
     }
     if (p === '/keys') return json(res, 200, { keys: [jwk] });
+    if (p === '/logout') {
+      mock.lastLogout = url.searchParams;
+      return json(res, 200, {});
+    }
     if (p === '/authorize') {
       mock.lastAuthorize = url.searchParams;
       const q = url.searchParams;
