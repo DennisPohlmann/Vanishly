@@ -244,6 +244,18 @@ config:
   # Who sees the status page: link or signed-in (signed-in with sign-in, else link).
   STATUS_ACCESS: ""
   # == Audit log (docs/CONFIG.md#audit-log)
+  # In Kubernetes the cluster's log collector is enough (no exporter needed),
+  # see docs/INSTALLATION.md#kubernetes. A typical setup:
+  #   config:
+  #     AUDIT_LOG: "true"
+  #     AUDIT_LOG_STDOUT: "true"   # shipped by the collector; filter event.dataset=vanishly.audit
+  #     AUDIT_LOG_REDIS: "true"    # fail-closed copy; admin view across pods
+  #     AUDIT_LOG_REDIS_MAXLEN: "200000"  # the built-in Redis is memory only: bound it,
+  #                                       # or use an external persistent Redis
+  #   secretConfig:
+  #     AUDIT_LOG_HMAC_KEY: <at least 32 random characters>
+  # Each pod keeps its own hash chain (instance = pod name); keep the shipped
+  # lines unchanged (Loki raw line, or event.original in Elasticsearch).
   # Audit events (who, what, when, for whom), hash-chained (false).
   AUDIT_LOG: ""
   # Field names: ecs, otel or plain (ecs).

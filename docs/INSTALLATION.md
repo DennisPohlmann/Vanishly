@@ -289,9 +289,7 @@ scrape_configs:
       - timestamp: { source: ts, format: RFC3339Nano }
 ```
 
-In Kubernetes the pod logs (`AUDIT_LOG_STDOUT=true`) reach Loki through
-Promtail / Grafana Alloy as usual; select them with
-`{app="vanishly"} | json | event_dataset="vanishly.audit"`.
+In Kubernetes see [below](#kubernetes): the pod logs are enough.
 
 **Elastic (Filebeat)** with `AUDIT_LOG_FORMAT=ecs`:
 
@@ -345,3 +343,64 @@ service:
 The exporters (syslog, OTLP, webhook) are best effort: they retry for
 about two minutes and keep up to 10 000 events in memory; the file, stdout
 and Redis copies are written before the action goes on.
+
+### Kubernetes
+
+In a cluster with a log collector (Fluent Bit, Promtail / Grafana Alloy,
+Filebeat, the OpenTelemetry Collector's `filelog` receiver) no exporter is
+needed: with `AUDIT_LOG_STDOUT=true` every pod writes one JSON line per
+event to stdout and the collector ships it like any other pod log.
+Settings for the chart (`helm upgrade --install vanishly ... -f audit.yaml`):
+
+```yaml
+# audit.yaml
+config:
+  AUDIT_LOG: "true"
+  AUDIT_LOG_FORMAT: ecs          # field names for Elastic, Loki, Splunk
+  AUDIT_LOG_STDOUT: "true"       # the copy the cluster's collector ships
+  AUDIT_LOG_REDIS: "true"        # the durable copy: fail-closed, admin view across all pods
+  AUDIT_COMMENT: optional
+  ADMIN_GROUPS: /vanishly-admins
+secretConfig:
+  AUDIT_LOG_HMAC_KEY: change-me  # at least 32 random characters, e.g. openssl rand -base64 48
+```
+
+(Or put `AUDIT_LOG_HMAC_KEY` into the Secret named by `existingSecret`.)
+
+- **Pick the audit events.** stdout also carries the access log
+  (`GET / 200 3.1ms`) and error messages. Treat only JSON lines with
+  `event.dataset = vanishly.audit` (ECS; `Attributes["event.name"]`
+  starting with `vanishly.` for `otel`) as audit events, e.g. in Loki
+  `{app="vanishly"} | json | event_dataset="vanishly.audit"`, or switch the
+  access log off (`ACCESS_LOG=false`).
+- **stdout alone is not fail-closed.** Vanishly cannot tell whether the
+  collector got a line: when it lags or is down while the kubelet rotates
+  the container logs (by default about 10 MiB × 5 files per container),
+  events are lost unnoticed. Hence `AUDIT_LOG_REDIS=true` (written before
+  the action goes on; with `AUDIT_LOG_FAIL=closed` the action is refused
+  when that fails) and the HMAC key: a gap in the shipped copy then shows
+  as a broken chain, and the `audit.checkpoint` events and the Redis copy
+  tell what is missing. The chart's own Redis keeps everything in memory
+  only (no volume; `maxmemory` 200 MB): its audit copy is gone after a
+  Redis restart, and a full memory makes every write fail, which with
+  `AUDIT_LOG_FAIL=closed` stops all actions. For audit use either an
+  external Redis with persistence (`redis.enabled=false`,
+  `redis.external.url`) or bound the stream with `AUDIT_LOG_REDIS_MAXLEN`
+  (e.g. `200000`) and treat the collector's copy as the archive.
+- **One chain per pod.** The instance name defaults to the host name, in
+  Kubernetes the pod name, so every new pod (rollout, rescheduling) starts
+  a chain of its own (`seq` 1). That is expected: `audit:verify` checks
+  several chains in one file. For chains that survive restarts use stable
+  names (`AUDIT_LOG_INSTANCE` from a StatefulSet pod name).
+- **Keep the line as written.** Only the unchanged JSON can be verified
+  later. Loki stores the line as it came (export with
+  `logcli query --output=raw ... > audit.jsonl`). Elasticsearch builds a
+  new document from it: keep the original line too, as `event.original`
+  (e.g. an ingest pipeline that copies `message` to `event.original`
+  before its `json` processor, instead of Filebeat's `ndjson` parser with
+  `expand_keys`). Verify an export per instance in `seq` order:
+
+  ```sh
+  jq -c -s 'sort_by(.vanishly.audit.instance, .vanishly.audit.seq)[]' export.jsonl > sorted.jsonl
+  npm run audit:verify -- sorted.jsonl --key-file hmac.key
+  ```
