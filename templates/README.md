@@ -141,4 +141,7 @@ for the "Sign in" / "Sign out" links, an own `home.html`
 `{{{ recipientsBlock }}}` and `#created-restricted`, and an own
 `secret.html` the `#locked` block with `data-locked` on `#reveal-card`
 (copy them from `views/`). Without them the sign-in still protects the
-secrets, but the page lacks the buttons.
+secrets, but the page lacks the buttons. The body classes `no-new-link`
+(nobody signed in, creating needs a sign-in: base.css hides `.nav-new` and
+a `.site-nav > a[href="/"]`) and `auto-login` (`AUTH_AUTO_LOGIN`) come
+with `{{ featureClasses }}` on `<body>`.

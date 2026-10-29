@@ -807,7 +807,16 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
    * @param {import('express').Response} res
    * @param {Record<string, any>} ctx
    */
-  const page = (view, req, res, ctx) => theme.page(view, lang(res), { authNav: authNav(req, res), ...ctx }, COMMON);
+  const page = (view, req, res, ctx) => {
+    const signedOut = Boolean(auth) && !userOf(res);
+    const bodyClasses = [
+      // "New secret" in the header only for those who may create one.
+      signedOut && auth?.c.createNeedsLogin ? 'no-new-link' : '',
+      // AUTH_AUTO_LOGIN: the page script tries a silent sign-in once per tab.
+      signedOut && auth?.c.autoLogin ? 'auto-login' : '',
+    ].filter(Boolean);
+    return theme.page(view, lang(res), { authNav: authNav(req, res), bodyClasses, ...ctx }, COMMON);
+  };
 
   /**
    * @param {import('express').Request} req
@@ -829,7 +838,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       if (!(await authLimit(req))) return errorPage(req, res, 429, theme.strings[lang(res)]['error.ratelimit']);
       const back = typeof req.query.return === 'string' ? req.query.return : '/';
       try {
-        res.redirect(303, await auth.loginUrl(back, req.query.fresh === '1'));
+        res.redirect(303, await auth.loginUrl(back, req.query.fresh === '1', auth.c.autoLogin && req.query.silent === '1'));
       } catch (err) {
         console.error(`auth: sign-in provider not reachable: ${/** @type {Error} */ (err).message}`);
         errorPage(req, res, 502, theme.strings[lang(res)]['auth.unavailable']);
@@ -842,6 +851,9 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       const search = i < 0 ? '' : req.originalUrl.slice(i);
       const providerError = typeof req.query.error === 'string' ? req.query.error.replace(/[^\w.-]/g, '').slice(0, 40) : '';
       try {
+        // AUTH_AUTO_LOGIN: nobody signed in at the provider, so back to the page, no error.
+        const declined = providerError ? await auth.silentDeclined(search) : null;
+        if (declined) return res.redirect(303, declined);
         if (providerError) throw new Error(`the provider answered ${providerError}`);
         const { sid, returnTo } = await auth.callback(search);
         auth.setCookie(res, sid);

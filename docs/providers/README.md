@@ -117,4 +117,5 @@ Problems of one provider are on its page. For all of them:
 | Log `auth: sign-in failed: account of a domain that may not sign in` | The address is not in `AUTH_ALLOWED_DOMAINS` |
 | A recipient gets "not shared with your account" | Signed in with another address than the one in the list, or the group is not in the token: compare the values in `RECIPIENT_GROUPS` with the groups claim |
 | The form says the people search is not available, log `auth: people search failed: <provider> answered 401/403` | The directory access lacks a right from the provider's page, or its secret is wrong |
+| `AUTH_AUTO_LOGIN=true`, but nobody is signed in automatically | The provider has no session in this browser (sign in once by hand), or it answered with an error other than `login_required` (then the log has `auth: sign-in failed`); each tab tries once |
 | "Sign out" does not ask again at the next sign-in | `AUTH_LOGOUT=local`, or `<BASE_URL>/auth/logged-out` is not registered as post logout redirect URI |

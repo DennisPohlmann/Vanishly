@@ -882,6 +882,17 @@
             }
           ]
         },
+        "AUTH_AUTO_LOGIN": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
         "AUTH_CREATE": {
           "anyOf": [
             {

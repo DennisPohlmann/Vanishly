@@ -289,4 +289,7 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible, .mode-toggle:focu
 .no-lang-switch .lang-switch,
 .no-theme-toggle #mode-toggle,
 .no-api-link .api-link,
-.no-github-link .github-link { display: none !important; }
+.no-github-link .github-link,
+/* Not signed in where creating needs a sign-in: no "New secret" link (also in own layouts). */
+.no-new-link .nav-new,
+.no-new-link .site-nav > a[href="/"] { display: none !important; }

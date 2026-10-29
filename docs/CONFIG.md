@@ -146,6 +146,7 @@ only that provider has) and what each supports:
 | `AUTH_SECRET` | (required) | At least 32 random characters (`openssl rand -base64 48`); or `AUTH_SECRET_FILE`. Keys the hashes of the recipients: changing it locks every open restricted secret |
 | `AUTH_SESSION_TTL` | `28800` | Lifetime of a sign-in in seconds (5 minutes to 7 days) |
 | `AUTH_LOGOUT` | `provider` (Entra: `local`) | `provider`: "Sign out" also ends the session at the provider, which then asks again at the next sign-in; needs `<BASE_URL>/auth/logged-out` as post logout redirect URI there. `local`: only Vanishly signs out (with Entra the default, as the Microsoft session is shared with Microsoft 365) |
+| `AUTH_AUTO_LOGIN` | `false` | `true`: a visitor who is not signed in is signed in automatically when the provider still knows them (silent sign-in, `prompt=none`, once per browser tab); otherwise the page stays as it is. A sign-out in that tab is not undone |
 | `AUTH_CREATE` | `signed-in` | Who may create secrets: `signed-in` or `anyone` (restricting a secret always needs a sign-in) |
 | `RECIPIENTS` | `optional` | `off` (no recipients field), `optional`, or `required` (every secret must name someone) |
 | `RECIPIENTS_MAX` | `10` | Most recipients (addresses and groups) per secret, 1 to 50 |
@@ -186,6 +187,24 @@ Compose, remove the `redis` service and the `depends_on: [redis]` line of
 the commands `GET`, `SET`, `HSET`, `HGETALL`, `HMGET`, `EXPIRE`/`PEXPIREAT`,
 `DEL`, `EVAL`/`EVALSHA` (the view script) and `PING` on keys with the prefix;
 `+@all ~vanishly:*` is the simple ACL.
+
+## Outgoing proxy
+
+With sign-in, Vanishly calls the provider (discovery, token, keys) and,
+with a directory, its API. Behind an outgoing HTTP(S) proxy set the
+standard variables; Node.js uses them only with `NODE_USE_ENV_PROXY=1`:
+
+```sh
+NODE_USE_ENV_PROXY=1
+HTTPS_PROXY=http://proxy.example.com:3128
+HTTP_PROXY=http://proxy.example.com:3128
+NO_PROXY=localhost,127.0.0.1,redis
+```
+
+Compose passes them from `.env`; with Helm put them into `extraEnv`. Redis
+is reached directly (not through the proxy). A reverse proxy in front of
+Vanishly is a different matter: `TRUST_PROXY` and `BASE_URL`, see
+[INSTALLATION.md](INSTALLATION.md).
 
 ## Minimum lengths and passphrase rules
 
@@ -262,6 +281,14 @@ With any `AUTH_PROVIDER`:
   asks the provider again (`prompt=login`; Entra and Google: the account
   picker). Providers without a logout endpoint (Google, Cognito,
   JumpCloud): there only Vanishly signs out.
+- **Automatic sign-in** (`AUTH_AUTO_LOGIN=true`): on the first page in a
+  browser tab the page asks the provider without showing anything
+  (`prompt=none`). Whoever is signed in there (e.g. in Microsoft 365 or the
+  company Keycloak) is signed in to Vanishly and lands on the same page, a
+  secret link keeps its key; everybody else sees the page as before and
+  can use "Sign in".
+- While nobody is signed in and creating needs a sign-in
+  (`AUTH_CREATE=signed-in`), the header shows no "New secret" link.
 
 ### People search
 

@@ -31,6 +31,8 @@ export async function startMock(opts) {
     lastSearch: null,
     /** @type {URLSearchParams | null} */
     lastLogout: null,
+    /** false: nobody is signed in at the provider, prompt=none answers login_required */
+    session: true,
     graphCalls: 0,
     /**
      * @param {Record<string, any>} claims
@@ -82,6 +84,13 @@ export async function startMock(opts) {
       mock.lastAuthorize = url.searchParams;
       const q = url.searchParams;
       if (q.get('client_id') !== opts.clientId || q.get('code_challenge_method') !== 'S256') return json(res, 400, { error: 'invalid_request' });
+      if (q.get('prompt') === 'none' && !mock.session) {
+        const to = new URL(q.get('redirect_uri') || '');
+        to.searchParams.set('error', 'login_required');
+        to.searchParams.set('state', q.get('state') || '');
+        res.writeHead(302, { Location: to.href });
+        return res.end();
+      }
       const code = randomBytes(16).toString('hex');
       codes.set(code, {
         claims: { ...mock.user },

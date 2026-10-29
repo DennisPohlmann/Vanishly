@@ -66,7 +66,9 @@ second lock next to the link, enforced by the server:
   the secret page keeps the key in the browser tab's `sessionStorage` for
   the round trip and removes it when the page comes back. It never goes to
   the server. This is the only place Vanishly stores the key, and only in
-  the recipient's own tab.
+  the recipient's own tab. The automatic sign-in (`AUTH_AUTO_LOGIN`) uses
+  the same round trip, at most once per tab (a `sessionStorage` flag), and
+  goes back only to `/`, `/s/<id>` or `/r/<id>`.
 - Addresses are matched on the user name / e-mail claims. If an address is
   given to a new person while a secret for the old one is still open, the
   new person could open it; keep expiries short.

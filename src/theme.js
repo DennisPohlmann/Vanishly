@@ -223,13 +223,13 @@ export function loadTheme(config, version) {
         footerLinks: footerLinks(lang),
         otherLang: next,
         otherLangName: strings[next]['lang.name'] || next,
-        featureClasses,
+        featureClasses: [featureClasses, ...(Array.isArray(ctx.bodyClasses) ? ctx.bodyClasses : [])].filter(Boolean).join(' '),
         modeToggle: f.themeToggle === false ? '0' : '1',
         apiHref,
         ...ctx,
       };
       const body = render(views[view], base, t);
-      return render(
+      const html = render(
         views.layout,
         {
           ...base,
@@ -240,6 +240,9 @@ export function loadTheme(config, version) {
         },
         t,
       );
+      // Signed out where creating needs a sign-in: the "New secret" link is
+      // left out of the page (base.css hides it too, for layouts without the class).
+      return base.featureClasses.split(' ').includes('no-new-link') ? html.replace(/<a class="nav-new" href="\/">[^<]*<\/a>\s*/, '') : html;
     },
   };
 }

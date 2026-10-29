@@ -513,6 +513,42 @@ test('sign-out at the provider; "another account" asks the provider again', opts
   }
 });
 
+test('"New secret" hidden while signed out; AUTH_AUTO_LOGIN signs in silently or quietly returns', opts, async () => {
+  const plain = await startApp();
+  assert.match((await plain.call('/', {})).data, /<body[^>]*class="[^"]*no-new-link/);
+  assert.doesNotMatch((await plain.call('/', {})).data, /class="nav-new"/);
+  const a = (await plain.login(ALICE)).cookie;
+  assert.doesNotMatch((await plain.call('/', { cookie: a })).data, /no-new-link|auto-login/);
+  assert.match((await plain.call('/', { cookie: a })).data, /class="nav-new"/);
+  assert.doesNotMatch((await (await startApp({ AUTH_CREATE: 'anyone' })).call('/', {})).data, /no-new-link/);
+
+  const { base, call } = await startApp({ AUTH_AUTO_LOGIN: 'true' });
+  assert.match((await call('/s/AAAAAAAAAAAAAAAAAAAAAA', {})).data, /<body[^>]*class="[^"]*auto-login/);
+  const start = await fetch(`${base}/auth/login?silent=1&return=%2Fs%2FAAAAAAAAAAAAAAAAAAAAAA`, { redirect: 'manual' });
+  const at = new URL(String(start.headers.get('location')));
+  assert.equal(at.searchParams.get('prompt'), 'none');
+  // Nobody signed in at the provider: straight back to the page, no error, no session.
+  mock.session = false;
+  try {
+    const back = await fetch(String((await fetch(at, { redirect: 'manual' })).headers.get('location')), { redirect: 'manual' });
+    assert.equal(back.status, 303);
+    assert.equal(back.headers.get('location'), '/s/AAAAAAAAAAAAAAAAAAAAAA');
+    assert.equal(back.headers.get('set-cookie'), null);
+  } finally {
+    mock.session = true;
+  }
+  // Still signed in there: a session.
+  mock.user = ALICE;
+  const s2 = await fetch(`${base}/auth/login?silent=1&return=%2F`, { redirect: 'manual' });
+  const cb = String((await fetch(String(s2.headers.get('location')), { redirect: 'manual' })).headers.get('location'));
+  const done = await fetch(cb, { redirect: 'manual' });
+  assert.match(String(done.headers.get('set-cookie')), /vanishly-session=/);
+  // An unrelated provider error still is an error; silent=1 without the setting is a normal login.
+  assert.equal((await fetch(`${base}/auth/callback?error=login_required&state=${'x'.repeat(20)}`, { redirect: 'manual' })).status, 400);
+  const off = await fetch(`${plain.base}/auth/login?silent=1&return=%2F`, { redirect: 'manual' });
+  assert.equal(new URL(String(off.headers.get('location'))).searchParams.get('prompt'), null);
+});
+
 test('Entra: sign-out stays local by default; another account gets the account picker', opts, async () => {
   const { base, login } = await startApp();
   const a = (await login(ALICE)).cookie;

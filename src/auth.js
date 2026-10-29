@@ -266,8 +266,10 @@ export class Auth {
    * @param {string} returnTo
    * @param {boolean} [fresh] "another account": the provider asks again
    *   instead of signing in the account it remembers
+   * @param {boolean} [silent] AUTH_AUTO_LOGIN: prompt=none, the provider
+   *   shows nothing and answers login_required when nobody is signed in there
    */
-  async loginUrl(returnTo, fresh = false) {
+  async loginUrl(returnTo, fresh = false, silent = false) {
     const cfg = await this.oidc();
     const state = client.randomState();
     const nonce = client.randomNonce();
@@ -290,7 +292,7 @@ export class Auth {
       nonce,
       response_mode: 'query',
       // Entra and Google offer an account picker; elsewhere the login form.
-      ...(fresh ? { prompt: this.c.provider === 'entra' || this.c.provider === 'google' ? 'select_account' : 'login' } : {}),
+      ...(fresh ? { prompt: this.c.provider === 'entra' || this.c.provider === 'google' ? 'select_account' : 'login' } : silent ? { prompt: 'none' } : {}),
     }).href;
   }
 
@@ -321,6 +323,22 @@ export class Auth {
     // The ID token is kept only as id_token_hint for the logout at the provider.
     const idToken = this.c.logout === 'provider' && typeof tokens.id_token === 'string' && tokens.id_token.length < 8192 ? tokens.id_token : '';
     return { sid: await this.createSession(who, idToken), returnTo: saved.r || '/' };
+  }
+
+  /**
+   * A silent sign-in the provider declined (nobody signed in there): forgets
+   * the login and returns where the visitor came from; null for any other answer.
+   * @param {string} search the query string of the callback
+   */
+  async silentDeclined(search) {
+    const params = new URLSearchParams(search);
+    const state = params.get('state') || '';
+    const error = params.get('error') || '';
+    if (!/^(login_required|interaction_required|consent_required|account_selection_required)$/.test(error)) return null;
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(state)) return null;
+    const key = `${this.p}oidc:${state}`;
+    const [saved] = /** @type {[Record<string, string>]} */ (/** @type {unknown} */ (await this.redis.multi().hGetAll(key).del(key).exec()));
+    return saved?.v && RETURN.test(saved.r || '') ? saved.r : null;
   }
 
   /** @param {User} who @param {string} [idToken] */

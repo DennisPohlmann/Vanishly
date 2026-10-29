@@ -153,6 +153,26 @@ function remember(el) {
   } catch {}
 }
 
+// AUTH_AUTO_LOGIN: once per tab, a silent sign-in (prompt=none). The
+// provider signs in whoever is still signed in there, or sends the visitor
+// straight back; the flag in sessionStorage stops a loop and keeps a
+// sign-out in this tab from being undone.
+let leaving = false;
+if (document.body.classList.contains('auto-login')) {
+  let tried = true;
+  try {
+    tried = sessionStorage.getItem('vanishly-auto-login') === '1';
+    if (!tried) sessionStorage.setItem('vanishly-auto-login', '1');
+  } catch {}
+  const path = location.pathname;
+  if (!tried && /^\/((s|r)\/[A-Za-z0-9_-]{22})?$/.test(path)) {
+    remember(document.body);
+    // The page is left at once: its own setup would take the kept key back.
+    leaving = true;
+    location.replace(`/auth/login?silent=1&return=${encodeURIComponent(path)}`);
+  }
+}
+
 /**
  * The "Only for" field: e-mail addresses and groups as a list of chips.
  * @returns {{ users: () => string[], groups: () => string[], flush: () => string, clear: () => void } | null}
@@ -753,7 +773,7 @@ async function initReceipt() {
   await load();
 }
 
-const page = document.body.dataset.page;
+const page = leaving ? '' : document.body.dataset.page;
 if (page === 'home') initHome();
 else if (page === 'secret') initSecret();
 else if (page === 'receipt') initReceipt();

@@ -221,6 +221,8 @@ config:
   AUTH_SESSION_TTL: ""
   # Sign out also at the provider: provider or local (provider; entra: local).
   AUTH_LOGOUT: ""
+  # Sign in automatically when the provider still knows the visitor (false).
+  AUTH_AUTO_LOGIN: ""
   # Who may create secrets: signed-in or anyone (signed-in).
   AUTH_CREATE: ""
   # Accept bearer tokens on the API with this audience, e.g. api://<client id> (off).
