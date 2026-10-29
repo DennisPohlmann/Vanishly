@@ -134,5 +134,19 @@
   "receipt.recipients": "Empfänger",
   "receipt.viewedBy": "{time}, von {name}",
   "reveal.introRestricted": "Jemand hat dir ein Geheimnis geschickt, das nur bestimmte Personen öffnen können.",
-  "api.confirmHint": "Bestätigen Sie mit \"confirmed\": true."
+  "api.confirmHint": "Bestätigen Sie mit \"confirmed\": true.",
+  "home.responsible": "Verantwortlich (optional)",
+  "home.responsibleRequired": "Verantwortlich (Pflicht)",
+  "home.responsibleHint": "Wer sich um dieses Geheimnis kümmert: darf den Status sehen (wer es wann geöffnet hat) und es vernichten.",
+  "error.responsibleRequired": "Nenne mindestens eine verantwortliche Person oder Gruppe: Sie darf den Status sehen und das Geheimnis vernichten.",
+  "receipt.loginText": "Melde dich an, um den Status dieses Geheimnisses zu sehen.",
+  "receipt.notAllowed": "Dieser Status ist nur für die Person, die es erstellt hat, die Verantwortlichen und wer es geöffnet hat.",
+  "receipt.creator": "Erstellt von",
+  "receipt.responsible": "Verantwortlich",
+  "receipt.timeline": "Verlauf",
+  "receipt.event.created": "Erstellt",
+  "receipt.event.viewed": "Geöffnet",
+  "receipt.event.burned": "Vernichtet",
+  "receipt.event.expires": "Läuft ab",
+  "receipt.burnNotAllowed": "Nur wer es erstellt hat und die Verantwortlichen dürfen es vernichten."
 }

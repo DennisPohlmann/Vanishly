@@ -100,8 +100,9 @@ All keys start with `REDIS_PREFIX` (default `vanishly:`).
 | Key | Type | Content | Lifetime |
 |---|---|---|---|
 | `s:<id>` | hash | `ct`, `iv`, `salt`, `it`, `vh` (verifier hash), `views` left, `attempts`, `rid`, `created`, `expires`, `to` (recipients as HMAC-SHA256 with `AUTH_SECRET`, only when restricted) | until expiry, last view or burn |
-| `r:<rid>` | hash | `sid`, `created`, `expires`, `maxViews`, `viewsLeft`, `state`, `pass`, `burned`, `rc` (number of recipients) | expiry + `RECEIPT_KEEP` |
-| `r:<rid>:v` | list | view times (ms); with `RECEIPT_SHOW_VIEWER` `time<TAB>name` of the signed-in viewer | like the receipt |
+| `r:<rid>` | hash | `sid`, `created`, `expires`, `maxViews`, `viewsLeft`, `state`, `pass`, `burned`, `rc` (number of recipients), with `STATUS_ACCESS=signed-in` `cr` (creator), `rs` (responsible, HMAC-SHA256 like `to`) and `who` (names and addresses of creator and responsible, to show) | expiry + `RECEIPT_KEEP` |
+| `r:<rid>:o` | set | HMACs of who opened the secret signed in (`STATUS_ACCESS=signed-in`: they may see the status) | like `r:<rid>` |
+| `r:<rid>:v` | list | view times (ms); with `RECEIPT_SHOW_VIEWER` `time<TAB>name<TAB>address` of the signed-in viewer | like the receipt |
 | `sess:<hash>` | hash | a sign-in: `name`, `user`, `ids` (the recipient hashes of the user's addresses and groups), `created`, with `AUTH_LOGOUT=provider` `it` (the ID token, only sent back to the provider as `id_token_hint` at sign-out); the key is the SHA-256 of the cookie | `AUTH_SESSION_TTL` |
 | `oidc:<state>` | hash | a sign-in in progress: PKCE verifier, nonce, return path | 10 minutes, used once |
 | `rl:<bucket>:<hash>` | string | request counter; the IP is stored only as a truncated SHA-256 | `RATE_LIMIT_WINDOW` |

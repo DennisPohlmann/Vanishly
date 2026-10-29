@@ -139,7 +139,7 @@
             }
           },
           "400": {
-            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short` (below MIN_SECRET_CHARS, judged from the ciphertext size) or `passphrase_required` (REQUIRE_PASSPHRASE=true and no verifier, or REQUIRE_PASSPHRASE=unless-recipients with neither verifier nor recipients) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
+            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short` (below MIN_SECRET_CHARS, judged from the ciphertext size) or `passphrase_required` (REQUIRE_PASSPHRASE=true and no verifier, or REQUIRE_PASSPHRASE=unless-recipients with neither verifier nor recipients) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `responsibles_disabled`, `responsibles_required`, `invalid_responsible`, `responsible_domain`, `too_many_responsibles`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
             "content": {
               "application/json": {
                 "schema": {
@@ -243,7 +243,7 @@
             }
           },
           "400": {
-            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short`, `passphrase_required` (REQUIRE_PASSPHRASE=true without passphrase, or unless-recipients with neither passphrase nor recipients), `passphrase_too_short` (MIN_PASSPHRASE_LENGTH) or `passphrase_too_weak` (PASSPHRASE_COMPLEXITY; `missing` lists the classes) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
+            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short`, `passphrase_required` (REQUIRE_PASSPHRASE=true without passphrase, or unless-recipients with neither passphrase nor recipients), `passphrase_too_short` (MIN_PASSPHRASE_LENGTH) or `passphrase_too_weak` (PASSPHRASE_COMPLEXITY; `missing` lists the classes) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `responsibles_disabled`, `responsibles_required`, `invalid_responsible`, `responsible_domain`, `too_many_responsibles`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
             "content": {
               "application/json": {
                 "schema": {
@@ -563,9 +563,29 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "description": "ENABLE_RECEIPT_API=false: only this server's status page may call it (404 for scripts)."
+        "description": "ENABLE_RECEIPT_API=false: only this server's status page may call it (404 for scripts). With STATUS_ACCESS=signed-in only for the creator, the responsible people and who opened the secret (signed in)."
       }
     },
     "/v1/receipts/{id}/burn": {
@@ -640,9 +660,29 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "description": "ENABLE_RECEIPT_API=false: only this server's status page may call it (404 for scripts)."
+        "description": "ENABLE_RECEIPT_API=false: only this server's status page may call it (404 for scripts). With STATUS_ACCESS=signed-in only the creator and the responsible people (signed in) may burn it."
       }
     },
     "/v1/open": {
@@ -1104,6 +1144,23 @@
               "maxLength": 200
             },
             "description": "Only with sign-in on: groups whose members may open the secret, from RECIPIENT_GROUPS (Entra: group object ids; with RECIPIENT_GROUPS=* any group id from GET /v1/groups)"
+          },
+          "responsible": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "email",
+              "maxLength": 254
+            },
+            "description": "Only with sign-in and RESPONSIBLE=optional or required: e-mail addresses of the people who look after the secret. With STATUS_ACCESS=signed-in they may see the status and burn it. Checked like recipients (RECIPIENT_DOMAINS, RECIPIENTS_MAX); stored only as keyed hashes. RESPONSIBLE=required: at least one responsible person or group, otherwise 400 responsibles_required"
+          },
+          "responsibleGroups": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Groups whose members are responsible (like recipientGroups)"
           }
         }
       },
@@ -1368,6 +1425,55 @@
               ]
             },
             "description": "Per view (same order as views): the name of the signed-in viewer with RECEIPT_SHOW_VIEWER, else null"
+          },
+          "viewedByUser": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Per view: the address of the signed-in viewer with RECEIPT_SHOW_VIEWER, else null"
+          },
+          "creator": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "user": {
+                "type": "string",
+                "description": "e-mail / user name"
+              }
+            },
+            "description": "STATUS_ACCESS=signed-in: who created the secret (null otherwise or when created without sign-in)"
+          },
+          "responsible": {
+            "type": "object",
+            "properties": {
+              "users": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "groups": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "group names"
+              }
+            },
+            "description": "STATUS_ACCESS=signed-in: the responsible people and groups"
+          },
+          "mayBurn": {
+            "type": "boolean",
+            "description": "Whether the caller may burn it (STATUS_ACCESS=signed-in: the creator and the responsible people)"
           }
         }
       },

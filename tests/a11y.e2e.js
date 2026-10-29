@@ -171,6 +171,7 @@ test('WCAG 2.2 AA and flow: sign-in and recipients', async () => {
     RECIPIENT_USER_GROUP: IT,
     RECEIPT_SHOW_VIEWER: 'true',
     REQUIRE_PASSPHRASE: 'unless-recipients',
+    RESPONSIBLE: 'optional',
   });
   const store = await Store.connect(redisUrl, config);
   handler = createApp({ config, store, theme: loadTheme(config, 'test'), version: 'test' });
@@ -218,6 +219,12 @@ test('WCAG 2.2 AA and flow: sign-in and recipients', async () => {
         await page.click('#recipient-group-add');
         assert.equal(await page.locator('#recipient-list li').count(), 2);
         problems.push(...(await scan(page, at('home-recipients'))));
+        // RESPONSIBLE: the folded section with its own picker.
+        await page.click('.responsible-box > summary');
+        await page.selectOption('#responsible-group', IT);
+        await page.click('#responsible-group-add');
+        assert.equal(await page.locator('#responsible-list li').count(), 1);
+        problems.push(...(await scan(page, at('home-responsible'))));
         await page.click('#create-submit');
         await page.waitForFunction(() => !document.getElementById('created-card')?.hidden);
         assert.equal(await page.isVisible('#created-restricted'), true);
@@ -240,10 +247,16 @@ test('WCAG 2.2 AA and flow: sign-in and recipients', async () => {
         await page.goto(receipt);
         await page.waitForFunction(() => !document.getElementById('receipt-facts')?.hidden);
         assert.match(await page.textContent('#r-log') || '', /Bob Example/);
+        assert.match(await page.textContent('#r-timeline') || '', /Opened/);
         problems.push(...(await scan(page, at('receipt'))));
         // Not signed in: the sign-in prompt on a restricted secret.
         await page.click('.nav-logout button');
         await page.waitForURL(`${base}/`);
+        // STATUS_ACCESS=signed-in: the status page asks for a sign-in.
+        await page.goto(receipt);
+        await page.waitForSelector('#r-locked:not([hidden])');
+        problems.push(...(await scan(page, at('receipt-login'))));
+        await page.goto(`${base}/`);
         mock.user = alice;
         await page.click('#login-card [data-login]');
         await page.waitForSelector('#create-form');

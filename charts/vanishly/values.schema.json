@@ -953,6 +953,22 @@
               "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
             }
           ]
+        },
+        "RESPONSIBLE": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(off|optional|required)$"
+            }
+          ]
+        },
+        "STATUS_ACCESS": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(link|signed-in)$"
+            }
+          ]
         }
       },
       "propertyNames": {

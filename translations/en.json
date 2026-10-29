@@ -134,5 +134,19 @@
   "receipt.recipients": "Recipients",
   "receipt.viewedBy": "{time}, by {name}",
   "reveal.introRestricted": "Someone sent you a secret that only certain people can open.",
-  "api.confirmHint": "Send \"confirmed\": true to confirm."
+  "api.confirmHint": "Send \"confirmed\": true to confirm.",
+  "home.responsible": "Responsible (optional)",
+  "home.responsibleRequired": "Responsible (required)",
+  "home.responsibleHint": "Who looks after this secret: may see its status (who opened it, when) and burn it.",
+  "error.responsibleRequired": "Name at least one responsible person or group: who may see the status and burn the secret.",
+  "receipt.loginText": "Sign in to see the status of this secret.",
+  "receipt.notAllowed": "This status is only for the creator, the responsible people and who opened the secret.",
+  "receipt.creator": "Created by",
+  "receipt.responsible": "Responsible",
+  "receipt.timeline": "History",
+  "receipt.event.created": "Created",
+  "receipt.event.viewed": "Opened",
+  "receipt.event.burned": "Burned",
+  "receipt.event.expires": "Expires",
+  "receipt.burnNotAllowed": "Only the creator and the responsible people may burn it."
 }

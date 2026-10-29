@@ -145,7 +145,7 @@ document.addEventListener('click', (e) => remember(/** @type {HTMLElement} */ (e
 document.addEventListener('submit', (e) => remember(/** @type {HTMLElement} */ (e.target).closest('form[data-login]')));
 /** @param {Element | null} el */
 function remember(el) {
-  const id = $('reveal-card')?.dataset.id;
+  const id = $('reveal-card')?.dataset.id || $('receipt-card')?.dataset.id;
   const key = location.hash.slice(1);
   if (!el || !id || !/^[A-Za-z0-9_-]{43}$/.test(key)) return;
   try {
@@ -163,10 +163,11 @@ function remember(el) {
  * @param {HTMLInputElement} input
  * @param {(kind: 'user' | 'group', id: string, name: string) => boolean} add
  * @param {() => void} clearError
+ * @param {{ results: string, status: string, opt: string }} [ids] the element ids (responsible: prefixed)
  */
-function initPeople(input, add, clearError) {
-  const box = $('people-results');
-  const status = $('people-status');
+function initPeople(input, add, clearError, ids = { results: 'people-results', status: 'people-status', opt: 'people-opt' }) {
+  const box = $(ids.results);
+  const status = $(ids.status);
   /** @type {{ name: string, user: string, mail: string }[]} */
   let found = [];
   let active = -1;
@@ -184,7 +185,7 @@ function initPeople(input, add, clearError) {
     active = i;
     [...box.children].forEach((li, n) => li.setAttribute('aria-selected', n === i ? 'true' : 'false'));
     if (i < 0) return input.removeAttribute('aria-activedescendant');
-    input.setAttribute('aria-activedescendant', `people-opt-${i}`);
+    input.setAttribute('aria-activedescendant', `${ids.opt}-${i}`);
     box.children[i]?.scrollIntoView({ block: 'nearest' });
   };
   /** @param {number} i */
@@ -222,7 +223,7 @@ function initPeople(input, add, clearError) {
       box.replaceChildren(
         ...found.map((p, i) => {
           const li = document.createElement('li');
-          li.id = `people-opt-${i}`;
+          li.id = `${ids.opt}-${i}`;
           li.className = 'suggestion';
           li.setAttribute('role', 'option');
           li.setAttribute('aria-selected', 'false');
@@ -272,11 +273,32 @@ function initPeople(input, add, clearError) {
   };
 }
 
-function initRecipients() {
-  const wrap = $('recipients-wrap');
+/** The element ids of a picker; src/app.js (pickerIds) builds the same. @param {'recipients' | 'responsible'} kind */
+function pickerIds(kind) {
+  const p = kind === 'recipients' ? '' : 'responsible-';
+  const r = kind === 'recipients';
+  return {
+    wrap: r ? 'recipients-wrap' : 'responsible-wrap',
+    email: r ? 'recipient-email' : 'responsible-email',
+    add: r ? 'recipient-add' : 'responsible-add',
+    results: `${p}people-results`,
+    status: `${p}people-status`,
+    list: r ? 'recipient-list' : 'responsible-list',
+    group: r ? 'recipient-group' : 'responsible-group',
+    groupAdd: r ? 'recipient-group-add' : 'responsible-group-add',
+    groupSearch: `${p}group-search`,
+    groupResults: `${p}group-results`,
+    opt: r ? 'people-opt' : 'responsible-opt',
+  };
+}
+
+/** @param {'recipients' | 'responsible'} [kind] */
+function initRecipients(kind = 'recipients') {
+  const ids = pickerIds(kind);
+  const wrap = $(ids.wrap);
   if (!wrap) return null;
-  const list = $('recipient-list');
-  const email = $('recipient-email');
+  const list = $(ids.list);
+  const email = $(ids.email);
   const err = $('create-error');
   const max = Number(wrap.dataset.max || 10);
   /** @type {{ kind: 'user' | 'group', id: string, name: string }[]} */
@@ -310,7 +332,7 @@ function initRecipients() {
       }),
     );
     // REQUIRE_PASSPHRASE=unless-recipients: the form follows the list.
-    wrap.dispatchEvent(new CustomEvent('recipients-change', { detail: items.length }));
+    if (kind === 'recipients') wrap.dispatchEvent(new CustomEvent('recipients-change', { detail: items.length }));
   };
   /** @param {'user' | 'group'} kind @param {string} id @param {string} name */
   const add = (kind, id, name) => {
@@ -339,8 +361,8 @@ function initRecipients() {
     if (e) showError(err, e, email);
     email.focus();
   };
-  $('recipient-add').addEventListener('click', addEmail);
-  const people = wrap.dataset.people === '1' ? initPeople(email, add, () => showError(err, '')) : null;
+  $(ids.add).addEventListener('click', addEmail);
+  const people = wrap.dataset.people === '1' ? initPeople(email, add, () => showError(err, ''), ids) : null;
   email.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => {
     if (people?.key(e)) return;
     if (e.key === 'Enter') {
@@ -348,15 +370,15 @@ function initRecipients() {
       addEmail();
     }
   });
-  const groupSelect = $('recipient-group');
-  $('recipient-group-add')?.addEventListener('click', () => {
+  const groupSelect = $(ids.group);
+  $(ids.groupAdd)?.addEventListener('click', () => {
     const o = groupSelect.selectedOptions[0];
     if (o?.value) add('group', o.value, o.textContent || o.value);
     groupSelect.value = '';
   });
-  const search = $('group-search');
+  const search = $(ids.groupSearch);
   if (search) {
-    const results = $('group-results');
+    const results = $(ids.groupResults);
     /** @type {any} */ let timer;
     search.addEventListener('input', () => {
       clearTimeout(timer);
@@ -406,6 +428,7 @@ function initRecipients() {
 function initHome() {
   const form = $('create-form');
   const recipients = initRecipients();
+  const responsible = initRecipients('responsible');
   const secret = $('secret');
   const count = $('char-count');
   const err = $('create-error');
@@ -449,6 +472,14 @@ function initHome() {
         return showError(err, t('error.recipientsRequired'), $('recipient-email'));
       }
     }
+    if (responsible) {
+      const e = responsible.flush();
+      if (e) return showError(err, e, $('responsible-email'));
+      if ($('responsible-wrap').dataset.required === '1' && !responsible.users().length && !responsible.groups().length) {
+        /** @type {HTMLDetailsElement} */ ($('responsible-wrap').closest('details')).open = true;
+        return showError(err, t('error.responsibleRequired'), $('responsible-email'));
+      }
+    }
     if (passRequired && !pass) {
       return showError(err, t(form.dataset.passRequired === 'unless-recipients' ? 'error.passRequiredNoRecipients' : 'error.passRequired'), passField);
     }
@@ -469,6 +500,7 @@ function initHome() {
         views: off('views') ? 1 : Number($('views').value),
         ...(confirmBox ? { confirmed: true } : {}),
         ...(recipients ? { recipients: recipients.users(), recipientGroups: recipients.groups() } : {}),
+        ...(responsible ? { responsible: responsible.users(), responsibleGroups: responsible.groups() } : {}),
       });
       if (status !== 201) {
         if (status === 401) return showError(err, t('error.loginRequired'));
@@ -476,6 +508,10 @@ function initHome() {
         if (data.error === 'recipient_domain') return showError(err, t('error.recipientDomain', { list: data.domains.join(', ') }), $('recipient-email'));
         if (data.error === 'recipients_required') return showError(err, t('error.recipientsRequired'), $('recipient-email'));
         if (data.error === 'too_many_recipients') return showError(err, t('error.recipientsMax', { n: data.max }), $('recipient-email'));
+        if (data.error === 'responsibles_required') return showError(err, t('error.responsibleRequired'), $('responsible-email'));
+        if (data.error === 'invalid_responsible') return showError(err, t('error.recipientInvalid', { name: data.responsible }), $('responsible-email'));
+        if (data.error === 'responsible_domain') return showError(err, t('error.recipientDomain', { list: data.domains.join(', ') }), $('responsible-email'));
+        if (data.error === 'too_many_responsibles') return showError(err, t('error.recipientsMax', { n: data.max }), $('responsible-email'));
         if (data.error === 'too_short') return showError(err, t('error.tooShort', { n: minChars }), secret);
         if (data.error === 'confirmation_required') return showError(err, t('error.confirm'), confirmBox);
         if (data.error === 'passphrase_required') {
@@ -497,6 +533,7 @@ function initHome() {
       const restricted = $('created-restricted');
       if (restricted) restricted.hidden = !data.restricted;
       recipients?.clear();
+      responsible?.clear();
       secret.value = '';
       if (confirmBox) confirmBox.checked = false;
       $('passphrase').value = '';
@@ -610,20 +647,50 @@ function initSecret() {
   }
 }
 
+/** "Name · address" of a person, or one of them. @param {string | null | undefined} name @param {string | null | undefined} user */
+function person(name, user) {
+  return name && user && name !== user ? `${name} · ${user}` : name || user || '';
+}
+
 async function initReceipt() {
   const card = $('receipt-card');
   const id = card.dataset.id;
+  // Back from the sign-in: the key of the share link was kept (see remember()).
+  try {
+    const kept = sessionStorage.getItem(keySlot(id));
+    if (kept) {
+      sessionStorage.removeItem(keySlot(id));
+      if (!location.hash) history.replaceState(null, '', `${location.pathname}#${kept}`);
+    }
+  } catch {}
   const key = location.hash.slice(1);
   const err = $('receipt-error');
   const load = async () => {
     const { status, data } = await api(`/api/v1/receipts/${id}`);
+    $('r-locked').hidden = true;
     if (status !== 200) {
       $('receipt-facts').hidden = true;
+      $('r-people').hidden = true;
+      $('r-timeline-box').hidden = true;
       $('burn').hidden = true;
       $('r-share').hidden = true;
+      // STATUS_ACCESS=signed-in: sign in, or not for this account.
+      if (status === 401 || status === 403) {
+        $('r-locked').hidden = false;
+        $('r-locked-text').textContent = status === 401 ? t('receipt.loginText') : t('receipt.notAllowed');
+        $('r-login').hidden = status !== 401;
+        return showError(err, '');
+      }
       return showError(err, status === 404 ? t('receipt.notfound') : errorText(status));
     }
     showError(err, '');
+    // Who created it and who is responsible (STATUS_ACCESS=signed-in).
+    const resp = [...(data.responsible?.users || []), ...(data.responsible?.groups || [])];
+    $('r-creator-row').hidden = !data.creator;
+    if (data.creator) $('r-creator').textContent = person(data.creator.name, data.creator.user);
+    $('r-responsible-row').hidden = !resp.length;
+    $('r-responsible').textContent = resp.join(', ');
+    $('r-people').hidden = !data.creator && !resp.length;
     $('receipt-facts').hidden = false;
     const state = $('r-state');
     state.textContent = t(`receipt.state.${data.state}`);
@@ -641,12 +708,39 @@ async function initReceipt() {
       ...(data.views.length ? data.views : [null]).map((/** @type {string | null} */ v, /** @type {number} */ i) => {
         const li = document.createElement('li');
         const by = data.viewedBy?.[i];
-        li.textContent = v ? (by ? t('receipt.viewedBy', { time: fmt(v), name: by }) : fmt(v)) : t('receipt.none');
+        li.textContent = v ? (by ? t('receipt.viewedBy', { time: fmt(v), name: person(by, data.viewedByUser?.[i]) }) : fmt(v)) : t('receipt.none');
         return li;
       }),
     );
+    // The history: created, each opening (with name and address), burned, expiry.
+    /** @type {[string, string, string][]} time, what, who */
+    const events = [[data.created, t('receipt.event.created'), data.creator ? person(data.creator.name, data.creator.user) : '']];
+    data.views.forEach((/** @type {string} */ v, /** @type {number} */ i) => events.push([v, t('receipt.event.viewed'), person(data.viewedBy?.[i], data.viewedByUser?.[i])]));
+    if (data.burned) events.push([data.burned, t('receipt.event.burned'), '']);
+    const timeline = $('r-timeline');
+    timeline.replaceChildren(
+      ...events.map(([time, what, who]) => {
+        const li = document.createElement('li');
+        const tm = document.createElement('time');
+        tm.dateTime = time;
+        tm.textContent = fmt(time);
+        const w = document.createElement('span');
+        w.className = 'tl-what';
+        w.textContent = what;
+        li.append(tm, w);
+        if (who) {
+          const p = document.createElement('span');
+          p.className = 'tl-who';
+          p.textContent = who;
+          li.append(p);
+        }
+        return li;
+      }),
+    );
+    $('r-timeline-box').hidden = false;
     const alive = data.state === 'new' || data.state === 'viewed';
-    $('burn').hidden = !alive || off('burn');
+    $('burn').hidden = !alive || off('burn') || data.mayBurn === false;
+    $('burn-not-allowed').hidden = !alive || off('burn') || data.mayBurn !== false;
     $('r-share').hidden = !(alive && data.secretPath && /^[A-Za-z0-9_-]{43}$/.test(key));
     if (!$('r-share').hidden) $('r-share-link').value = `${location.origin}${data.secretPath}#${key}`;
   };

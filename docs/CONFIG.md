@@ -160,7 +160,9 @@ per provider and what each supports (groups, group search, people search):
 | `RECIPIENT_USER_GROUP` | (none) | People search in the form: the group whose members the form suggests while typing a name (Entra: object id; Keycloak: path or id; Okta, PingOne, JumpCloud: group id; Auth0: role id; Google: group address; Cognito: group name). Needs `ENTRA_GRAPH=true` or `DIRECTORY_API=true` ([details](#people-search)) |
 | `RECIPIENT_DOMAINS` | (any) | Allowed e-mail domains of recipients, e.g. `example.com,example.de` |
 | `AUTH_API_AUDIENCE` | (none) | Accept bearer tokens on the API with this audience, e.g. `api://<client id>` ([details](#api-with-sign-in)) |
-| `RECEIPT_SHOW_VIEWER` | `false` | `true`: the status page shows the name of the signed-in person who opened the secret (stored with the view time) |
+| `RECEIPT_SHOW_VIEWER` | `false` | `true`: the status page shows the name and address of the signed-in person who opened the secret (stored with the view time) |
+| `RESPONSIBLE` | `off` | People or groups who look after a secret: `off`, `optional` or `required` (every secret must name one). In the form a folded "Responsible" section with the same picker as the recipients; on the API `responsible` and `responsibleGroups`. Checked like recipients, stored as keyed hashes |
+| `STATUS_ACCESS` | `signed-in` with sign-in, else `link` | Who may see the status page: `link` (whoever has the status link, as before) or `signed-in` (the creator, the responsible people and who opened the secret, after sign-in; only creator and responsible may burn it). See [Status page](#status-page) |
 
 The container sets `NODE_ENV=production`, `HOST=0.0.0.0`, `PORT=3000` and
 `TEMPLATES_DIR=/var/lib/vanishly/templates`.
@@ -301,6 +303,46 @@ whole company searchable.
 - The API keeps taking e-mail addresses in `recipients`; the search
   (`GET /api/v1/people?q=`) is meant for the form.
 - Generic `oidc` has no people search; senders type the address.
+
+### Status page
+
+With `STATUS_ACCESS=link` (without sign-in the only choice) the status link
+is the key: whoever has it sees the state and may burn the secret.
+
+With `STATUS_ACCESS=signed-in` (the default when sign-in is on) the status
+page asks for a sign-in and shows the status only to:
+
+| Who | Sees the status | May burn |
+|---|---|---|
+| the creator (the signed-in sender) | yes | yes |
+| the responsible people and groups (`RESPONSIBLE`) | yes | yes |
+| who opened the secret (signed in) | yes | no |
+| anybody else | no (`403 not_allowed`) | no |
+| not signed in | no (`401 login_required`, the page shows "Sign in") | no |
+
+The page then also shows who created it, who is responsible and, with
+`RECEIPT_SHOW_VIEWER=true`, the name and address of each person who opened
+it, as a history. These names and addresses are kept with the receipt
+(until `RECEIPT_KEEP` ends), the access rules as keyed hashes. A secret
+created without a sign-in (`AUTH_CREATE=anyone`) and without responsible
+people, or before this setting existed, keeps the link access.
+
+**Our case: only named people open it, named people look after it.**
+
+```bash
+AUTH_PROVIDER=entra            # or keycloak, oidc, ...
+RECIPIENTS=required            # every secret names who may open it
+RESPONSIBLE=required           # and who looks after it
+STATUS_ACCESS=signed-in        # status only for creator, responsible, openers
+RECEIPT_SHOW_VIEWER=true       # show who opened it, with name and address
+# The API only creates and reveals; the pages keep working:
+ENABLE_SHARE_API=false
+ENABLE_OPEN_API=false
+ENABLE_SECRET_META_API=false
+ENABLE_CONFIG_API=false
+ENABLE_ME_API=false
+ENABLE_API_INDEX=false
+```
 
 ### API with sign-in
 

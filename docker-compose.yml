@@ -132,6 +132,8 @@ services:
       RECIPIENT_USER_GROUP: ${RECIPIENT_USER_GROUP:-} # group whose members the form suggests (needs ENTRA_GRAPH or DIRECTORY_API)
       RECIPIENT_DOMAINS: ${RECIPIENT_DOMAINS:-}   # allowed e-mail domains, e.g. example.com
       RECEIPT_SHOW_VIEWER: ${RECEIPT_SHOW_VIEWER:-}           # true: show who opened it on the status page
+      RESPONSIBLE: ${RESPONSIBLE:-}                           # off (default), optional or required: who looks after a secret
+      STATUS_ACCESS: ${STATUS_ACCESS:-}                       # link or signed-in (empty: signed-in with sign-in, else link)
     ports:
       - "127.0.0.1:3000:3000"
     volumes:

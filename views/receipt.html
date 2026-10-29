@@ -1,6 +1,14 @@
 <section class="card" id="receipt-card" data-id="{{ id }}">
   <h1>{{ t:receipt.title }}</h1>
   <p class="notice notice-error" id="receipt-error" role="alert" hidden></p>
+  <div id="r-locked" hidden>
+    <p class="notice" id="r-locked-text"></p>
+    <a class="btn btn-primary btn-block" id="r-login" data-login href="/auth/login?return=/r/{{ id }}">{{ t:auth.button }}</a>
+  </div>
+  <div class="r-people" id="r-people" hidden>
+    <div class="r-person" id="r-creator-row" hidden><span class="r-label">{{ t:receipt.creator }}</span><span class="r-who" id="r-creator"></span></div>
+    <div class="r-person" id="r-responsible-row" hidden><span class="r-label">{{ t:receipt.responsible }}</span><span class="r-who" id="r-responsible"></span></div>
+  </div>
   <dl class="facts" id="receipt-facts" hidden>
     <dt>{{ t:receipt.state }}</dt><dd><span class="badge" id="r-state"></span></dd>
     <dt>{{ t:receipt.created }}</dt><dd id="r-created"></dd>
@@ -10,6 +18,10 @@
     <dt class="r-recipients-row" hidden>{{ t:receipt.recipients }}</dt><dd class="r-recipients-row" id="r-recipients" hidden></dd>
     <dt class="r-log-row">{{ t:receipt.log }}</dt><dd class="r-log-row"><ul class="plain" id="r-log"></ul></dd>
   </dl>
+  <section class="r-timeline-box" id="r-timeline-box" aria-labelledby="r-timeline-title" hidden>
+    <h2 id="r-timeline-title">{{ t:receipt.timeline }}</h2>
+    <ol class="timeline" id="r-timeline"></ol>
+  </section>
   <div id="r-share" hidden>
     <label for="r-share-link">{{ t:receipt.shareLink }}</label>
     <div class="copy-row">
@@ -18,4 +30,5 @@
     </div>
   </div>
   <button type="button" class="btn btn-danger btn-block" id="burn" hidden>{{ t:receipt.burn }}</button>
+  <p class="hint" id="burn-not-allowed" hidden>{{ t:receipt.burnNotAllowed }}</p>
 </section>

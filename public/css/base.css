@@ -216,6 +216,26 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible, .mode-toggle:focu
 .badge-new, .badge-viewed { border-color: var(--good); background: var(--good-bg); }
 .badge-received, .badge-burned, .badge-expired { border-color: var(--bad); background: var(--bad-bg); }
 
+/* Responsible (RESPONSIBLE): a folded section with the same picker */
+.responsible-box { border: 1px solid var(--border); border-radius: calc(var(--radius) / 1.5); padding: .6rem .8rem; }
+.responsible-box > summary { cursor: pointer; font-weight: 600; }
+.responsible-box > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.responsible-box[open] > summary { margin-bottom: .6rem; }
+.responsible-box .recipients { margin: 0; }
+
+/* Status page: who created it and who is responsible, and the history */
+.r-people { display: grid; gap: .5rem; margin: 0 0 1rem; }
+.r-person { display: flex; flex-wrap: wrap; gap: .25rem .75rem; padding: .6rem .8rem; border: 1px solid var(--border); border-radius: calc(var(--radius) / 1.5); background: var(--surface-2); }
+.r-label { color: var(--muted); font-size: .85rem; min-width: 8rem; }
+.r-who { font-weight: 600; overflow-wrap: anywhere; }
+.r-timeline-box h2 { font-size: 1rem; margin: 1rem 0 .5rem; }
+.timeline { list-style: none; margin: 0 0 1rem; padding: 0 0 0 1rem; border-left: 2px solid var(--border); }
+.timeline li { position: relative; display: flex; flex-wrap: wrap; gap: .15rem .75rem; padding: .35rem 0 .35rem .5rem; }
+.timeline li::before { content: ""; position: absolute; left: calc(-1rem - 6px); top: .75rem; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.timeline time { color: var(--muted); font-size: .85rem; min-width: 11rem; }
+.tl-what { font-weight: 600; }
+.tl-who { overflow-wrap: anywhere; }
+
 /* Footer */
 .site-footer {
   display: flex;

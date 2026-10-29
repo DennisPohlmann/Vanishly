@@ -237,6 +237,10 @@ config:
   RECIPIENT_DOMAINS: ""
   # Show on the status page who opened the secret (false).
   RECEIPT_SHOW_VIEWER: ""
+  # Responsible people/groups of a secret: off, optional or required (off).
+  RESPONSIBLE: ""
+  # Who sees the status page: link or signed-in (signed-in with sign-in, else link).
+  STATUS_ACCESS: ""
 
 # -- Set BASE_URL to https://<first host> of ingress or httpRoute when config.BASE_URL is empty.
 baseUrlFromIngress: true

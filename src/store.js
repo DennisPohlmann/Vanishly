@@ -130,8 +130,11 @@ export class Store {
    * @param {number} ttl seconds
    * @param {number} views
    * @param {string[]} [to] hashed recipients; empty = anyone with the link
+   * @param {{ creator?: string, responsible?: string[], who?: any }} [status] for the status page
+   *   (STATUS_ACCESS=signed-in): the creator's hash, the hashed responsible people and groups, and
+   *   names to show (creator, responsible), kept only with the receipt
    */
-  async create(payload, ttl, views, to = []) {
+  async create(payload, ttl, views, to = [], status = {}) {
     const id = newId();
     const rid = newId();
     const now = Date.now();
@@ -165,6 +168,9 @@ export class Store {
         state: 'new',
         pass: String(pass),
         ...(to.length ? { rc: String(to.length) } : {}),
+        ...(status.creator ? { cr: status.creator } : {}),
+        ...(status.responsible?.length ? { rs: status.responsible.join(' ') } : {}),
+        ...(status.who ? { who: JSON.stringify(status.who) } : {}),
       }).pExpireAt(r, expires + this.receiptKeep * 1000);
     }
     await tx.exec();
@@ -211,11 +217,12 @@ export class Store {
    * is checked before, in src/app.js.
    * @param {string} id
    * @param {string} [verifier]
-   * @param {string} [viewer] name for the view log (RECEIPT_SHOW_VIEWER)
+   * @param {string} [viewer] name (and address) for the view log (RECEIPT_SHOW_VIEWER)
+   * @param {string} [opener] hash of the signed-in viewer: may see the status (STATUS_ACCESS=signed-in)
    * @returns {Promise<{ status: 'ok', payload: Omit<Payload, 'verifier'>, viewsLeft: number }
    *   | { status: 'notfound' } | { status: 'badpass', attemptsLeft: number } | { status: 'burned' }>}
    */
-  async reveal(id, verifier, viewer = '') {
+  async reveal(id, verifier, viewer = '', opener = '') {
     const s = `${this.p}s:${id}`;
     const [vh, rid] = await this.redis.hmGet(s, ['vh', 'rid']);
     if (rid == null) return { status: 'notfound' };
@@ -234,11 +241,16 @@ export class Store {
       }
     }
     const r = `${this.p}r:${rid}`;
-    const entry = viewer ? `${Date.now()}\t${viewer.replace(/[\t\r\n]/g, ' ')}` : String(Date.now());
+    const entry = viewer ? `${Date.now()}\t${viewer.replace(/[\r\n]/g, ' ')}` : String(Date.now());
     const res = /** @type {any[] | null} */ (
       await this.redis.eval(REVEAL, { keys: [s, r, `${r}:v`], arguments: [entry, this.viewLog ? '1' : '0'] })
     );
     if (!res || Number(res[0]) < 0) return { status: 'notfound' };
+    if (opener && this.receipts) {
+      // Who opened it may see the status too; kept as long as the receipt.
+      const ttl = Number(await this.redis.pTTL(r));
+      await this.redis.multi().sAdd(`${r}:o`, opener).pExpire(`${r}:o`, ttl > 0 ? ttl : this.receiptKeep * 1000).exec();
+    }
     return {
       status: 'ok',
       payload: { ciphertext: res[1], iv: res[2], salt: res[3], iterations: Number(res[4]) },
@@ -257,7 +269,7 @@ export class Store {
   /** @param {string} rid */
   async receipt(rid) {
     const r = `${this.p}r:${rid}`;
-    const [h, views] = await Promise.all([this.redis.hGetAll(r), this.redis.lRange(`${r}:v`, 0, -1)]);
+    const [h, views, openers] = await Promise.all([this.redis.hGetAll(r), this.redis.lRange(`${r}:v`, 0, -1), this.redis.sMembers(`${r}:o`)]);
     if (!h || !h.sid) return null;
     let state = h.state;
     if ((state === 'new' || state === 'viewed') && Number(h.expires) <= Date.now()) state = 'expired';
@@ -277,6 +289,11 @@ export class Store {
       recipients: Number(h.rc || 0),
       views: views.map((v) => Number(v.split('\t')[0])),
       viewers: views.map((v) => v.split('\t')[1] || ''),
+      viewerUsers: views.map((v) => v.split('\t')[2] || ''),
+      creator: h.cr || '',
+      responsible: h.rs ? h.rs.split(' ') : [],
+      who: h.who ? JSON.parse(h.who) : null,
+      openers,
     };
   }
 

@@ -101,6 +101,7 @@ export const SETTINGS = [
   'ENABLE_API', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SHARE_API', 'ENABLE_OPEN_API',
   'ENABLE_SECRET_META_API', 'ENABLE_CONFIG_API', 'ENABLE_ME_API',
   'ENABLE_CREATE_API', 'ENABLE_REVEAL_API', 'ENABLE_RECEIPT_API', 'ENABLE_API_INDEX',
+  'RESPONSIBLE', 'STATUS_ACCESS',
   'ENABLE_PASSPHRASE', 'ENABLE_VIEWS', 'ENABLE_RECEIPTS', 'ENABLE_BURN', 'ENABLE_VIEW_LOG',
   'ENABLE_RECEIPT_SHARE_LINK', 'ENABLE_GENERATOR', 'ENABLE_LANG_SWITCH', 'ENABLE_THEME_TOGGLE',
   'ENABLE_GITHUB_LINK', 'VANISHLY_VERSION',
@@ -649,6 +650,13 @@ export function loadConfig(env = process.env) {
     },
     accessLog: sw('ACCESS_LOG', true),
     auth: authConfig(env, baseUrl),
+    // RESPONSIBLE: people/groups who look after a secret (status, burn):
+    // off, optional or required. Needs sign-in.
+    responsible: str('RESPONSIBLE', /^(off|optional|required)$/, 'off', 'off, optional or required'),
+    // STATUS_ACCESS: who may see the status page. link: whoever has the link
+    // (without sign-in the only choice); signed-in: the creator, the
+    // responsible people and those who opened the secret, after sign-in.
+    statusAccess: str('STATUS_ACCESS', /^(link|signed-in)$/, env.AUTH_PROVIDER && env.AUTH_PROVIDER !== 'none' ? 'signed-in' : 'link', 'link or signed-in'),
   };
   if (config.minSecretChars > maxSecretChars) throw new Error('MIN_SECRET_CHARS is above MAX_SECRET_CHARS');
   if (config.redisTlsCa && !config.redisUrl.startsWith('rediss://')) throw new Error('REDIS_TLS_CA_FILE needs a rediss:// REDIS_URL (TLS)');
@@ -663,6 +671,8 @@ export function loadConfig(env = process.env) {
   if (config.generatorLength < config.generatorClasses.length) throw new Error('GENERATOR_LENGTH is too short for GENERATOR_COMPLEXITY');
   if (!config.features.receipts) config.features.burn = config.features.viewLog = config.features.receiptShareLink = false;
   if (!config.features.views) config.maxViews = 1;
+  if (!config.auth && config.responsible !== 'off') throw new Error('RESPONSIBLE needs sign-in (AUTH_PROVIDER)');
+  if (!config.auth && config.statusAccess === 'signed-in') throw new Error('STATUS_ACCESS=signed-in needs sign-in (AUTH_PROVIDER)');
   if (!config.api) {
     config.apiDocs = false;
     config.features.shareApi = false;

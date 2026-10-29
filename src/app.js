@@ -290,38 +290,71 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     }
     return null;
   };
-  /** @param {any} b @param {import('express').Response} res */
-  const recipientsOf = (b, res) => {
-    const users = b.recipients ?? [];
-    const groups = b.recipientGroups ?? [];
+  /**
+   * People and groups of a new secret (recipients or responsible), checked
+   * the same way and returned as hashes, with what the status page shows.
+   * @param {unknown} usersIn @param {unknown} groupsIn @param {import('express').Response} res
+   * @param {{ field: string, groupField: string, mode: string, code: string, what: string, required: string }} k
+   */
+  const peopleOf = (usersIn, groupsIn, res, k) => {
+    const users = usersIn ?? [];
+    const groups = groupsIn ?? [];
     if (!Array.isArray(users) || !Array.isArray(groups)) {
-      throw new ApiError(400, 'invalid_recipients', 'recipients and recipientGroups must be arrays');
+      throw new ApiError(400, `invalid_${k.code}s`, `${k.field} and ${k.groupField} must be arrays`);
     }
     if (!users.length && !groups.length) {
-      if (auth?.c.recipients === 'required') throw new ApiError(400, 'recipients_required', 'This server requires at least one recipient');
-      return [];
+      if (k.mode === 'required') throw new ApiError(400, `${k.code}s_required`, k.required);
+      return { ids: [], users: [], groups: [] };
     }
-    if (!auth || auth.c.recipients === 'off') throw new ApiError(400, 'recipients_disabled', 'Recipients are switched off on this server');
-    if (!userOf(res)) throw new ApiError(401, 'login_required', 'Sign in to choose recipients');
+    if (!auth || k.mode === 'off') throw new ApiError(400, `${k.code}s_disabled`, `${k.what[0].toUpperCase()}${k.what.slice(1)}s are switched off on this server`);
+    if (!userOf(res)) throw new ApiError(401, 'login_required', `Sign in to choose ${k.what}s`);
     if (users.length + groups.length > auth.c.recipientsMax) {
-      throw new ApiError(400, 'too_many_recipients', `At most ${auth.c.recipientsMax} recipients`, { max: auth.c.recipientsMax });
+      throw new ApiError(400, `too_many_${k.code}s`, `At most ${auth.c.recipientsMax} ${k.what}s`, { max: auth.c.recipientsMax });
     }
     const ids = new Set();
+    /** @type {string[]} */ const names = [];
     for (const u of users) {
-      if (!Auth.validEmail(u)) throw new ApiError(400, 'invalid_recipient', 'A recipient is not a valid e-mail address', { recipient: String(u).slice(0, 254) });
+      if (!Auth.validEmail(u)) throw new ApiError(400, `invalid_${k.code}`, `A ${k.what} is not a valid e-mail address`, { [k.code]: String(u).slice(0, 254) });
       if (!auth.domainAllowed(u)) {
-        throw new ApiError(400, 'recipient_domain', `Recipients must have an address of ${auth.c.domains.join(', ')}`, { recipient: u, domains: auth.c.domains });
+        throw new ApiError(400, `${k.code}_domain`, `${k.what[0].toUpperCase()}${k.what.slice(1)}s must have an address of ${auth.c.domains.join(', ')}`, { [k.code]: u, domains: auth.c.domains });
       }
       ids.add(auth.hash('u', u));
+      names.push(String(u).trim().toLowerCase());
     }
     if (groups.length && !auth.c.groups.any && !auth.c.groups.list.length) {
-      throw new ApiError(400, 'groups_disabled', 'Groups as recipients are switched off on this server');
+      throw new ApiError(400, 'groups_disabled', `Groups as ${k.what}s are switched off on this server`);
     }
+    /** @type {string[]} */ const groupNames = [];
     for (const g of groups) {
       if (typeof g !== 'string' || !auth.groupAllowed(g)) throw new ApiError(400, 'invalid_group', 'A group is unknown or not allowed', { group: String(g).slice(0, 200) });
       ids.add(auth.hash('g', auth.c.provider === 'entra' ? g.toLowerCase() : g));
+      groupNames.push(auth.c.groups.list.find((x) => x.id === g)?.name || g);
     }
-    return [...ids];
+    return { ids: [...ids], users: names, groups: groupNames };
+  };
+  /** "recipients" (addresses) and "recipientGroups": who may open it. @param {any} b @param {import('express').Response} res */
+  const recipientsOf = (b, res) =>
+    peopleOf(b.recipients, b.recipientGroups, res, { field: 'recipients', groupField: 'recipientGroups', mode: auth?.c.recipients || 'optional', code: 'recipient', what: 'recipient', required: 'This server requires at least one recipient' }).ids;
+  /**
+   * "responsible" and "responsibleGroups" (RESPONSIBLE): who looks after it:
+   * may see the status and burn it (STATUS_ACCESS=signed-in).
+   * @param {any} b @param {import('express').Response} res
+   */
+  const responsibleOf = (b, res) => peopleOf(b.responsible, b.responsibleGroups, res, { field: 'responsible', groupField: 'responsibleGroups', mode: config.responsible, code: 'responsible', what: 'responsible person', required: 'This server requires at least one responsible person or group (responsible or responsibleGroups): who may see the status and burn the secret' });
+  /**
+   * What the receipt keeps for the status page (STATUS_ACCESS=signed-in):
+   * the creator, the responsible people and their names to show.
+   * @param {import('express').Response} res @param {{ ids: string[], users: string[], groups: string[] }} resp
+   */
+  const statusOf = (res, resp) => {
+    const user = userOf(res);
+    const creator = user?.user && !user.app ? auth?.hash('u', user.user) || '' : '';
+    const show = config.statusAccess === 'signed-in';
+    return {
+      creator,
+      responsible: resp.ids,
+      who: show && (creator || resp.ids.length) ? { creator: creator ? { name: user?.name || '', user: user?.user || '' } : null, responsible: { users: resp.users, groups: resp.groups } } : null,
+    };
   };
 
   /**
@@ -337,8 +370,35 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     if (!user) throw new ApiError(401, 'login_required', 'This secret is only for certain people: sign in first');
     if (!Auth.allowed(user, to)) throw new ApiError(403, 'not_recipient', 'This secret was not shared with your account');
   };
-  /** @param {import('express').Response} res */
-  const viewerName = (res) => (auth?.c.showViewer ? userOf(res)?.name || userOf(res)?.user || '' : '');
+  /** RECEIPT_SHOW_VIEWER: "name<TAB>address" for the view log. @param {import('express').Response} res */
+  const viewerName = (res) => {
+    const u = userOf(res);
+    if (!auth?.c.showViewer || !u) return '';
+    /** @param {string} v */ const clean = (v) => String(v || '').replace(/[\t\r\n]/g, ' ');
+    return `${clean(u.name || u.user)}\t${clean(u.user)}`;
+  };
+  /** STATUS_ACCESS=signed-in: who opened it may see the status. @param {import('express').Response} res */
+  const openerOf = (res) => {
+    const u = userOf(res);
+    return config.statusAccess === 'signed-in' && u?.user && !u.app ? auth?.hash('u', u.user) || '' : '';
+  };
+  /**
+   * STATUS_ACCESS=signed-in: may this user see the status of the receipt
+   * (creator, responsible, opened it) or burn it (creator, responsible)?
+   * Receipts without creator and responsible (anonymous, older) keep link access.
+   * @param {any} r from store.receipt() @param {import('express').Response} res @param {'view' | 'burn'} action
+   */
+  const statusAccessOf = (r, res, action) => {
+    if (config.statusAccess !== 'signed-in' || (!r.creator && !r.responsible.length)) return { view: true, burn: true };
+    const user = userOf(res);
+    if (!user) throw new ApiError(401, 'login_required', 'Sign in to see the status of this secret');
+    const burn = user.ids.includes(r.creator) || Auth.allowed(user, r.responsible);
+    const view = burn || (Boolean(user.user) && r.openers.includes(auth?.hash('u', user.user)));
+    if (action === 'burn' ? !burn : !view) {
+      throw new ApiError(403, 'not_allowed', action === 'burn' ? 'Only the creator and the responsible people may burn this secret' : 'This status is only for the creator, the responsible people and who opened the secret');
+    }
+    return { view, burn };
+  };
 
   // ENABLE_API=false: the API only answers the pages of this server. Browsers
   // mark their own fetches with Sec-Fetch-Site; scripts could fake that
@@ -487,6 +547,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     // leaves the browser. The form enforces it; /v1/share checks it.
     if (config.confirmCheckbox && b.confirmed !== true) throw confirmationRequired(res);
     const to = recipientsOf(b, res);
+    const resp = responsibleOf(b, res);
     const noPass = b.verifier ? null : passphraseNeeded(to);
     if (noPass) throw noPass;
     const { ttl, views } = options(b);
@@ -495,6 +556,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       ttl,
       views,
       to,
+      statusOf(res, resp),
     );
     res.status(201).json(created(s));
   });
@@ -521,6 +583,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       throw new ApiError(400, 'passphrase_disabled', 'Passphrases are switched off on this server');
     }
     const to = recipientsOf(b, res);
+    const resp = responsibleOf(b, res);
     const noPass = pass ? null : passphraseNeeded(to);
     if (noPass) throw noPass;
     if (pass && pass.length < config.minPassphraseLength) {
@@ -532,7 +595,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     }
     const { ttl, views } = options(b);
     const { key, payload } = await encryptSecret(b.secret, pass);
-    const s = await store.create(payload, ttl, views, to);
+    const s = await store.create(payload, ttl, views, to, statusOf(res, resp));
     const o = origin(req);
     res.status(201).json({
       ...created(s),
@@ -559,7 +622,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       throw new ApiError(400, 'invalid_verifier', 'verifier must be 32 bytes, base64url');
     }
     await mayOpen(id, res);
-    const r = validId(id) ? await store.reveal(id, verifier || undefined, viewerName(res)) : /** @type {const} */ ({ status: 'notfound' });
+    const r = validId(id) ? await store.reveal(id, verifier || undefined, viewerName(res), openerOf(res)) : /** @type {const} */ ({ status: 'notfound' });
     if (r.status === 'ok') return void res.json({ ...r.payload, viewsLeft: r.viewsLeft });
     if (r.status === 'badpass') {
       throw new ApiError(403, 'bad_passphrase', 'Wrong passphrase', { attemptsLeft: r.attemptsLeft });
@@ -595,7 +658,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       pk = await unlockKey(b.passphrase, meta);
       verifier = await verifierFor(pk, meta);
     }
-    const r = await store.reveal(id, verifier, viewerName(res));
+    const r = await store.reveal(id, verifier, viewerName(res), openerOf(res));
     if (r.status === 'badpass') {
       throw new ApiError(403, 'bad_passphrase', 'Wrong passphrase', { attemptsLeft: r.attemptsLeft });
     }
@@ -616,6 +679,8 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     const id = String(req.params.id);
     const r = validId(id) ? await store.receipt(id) : null;
     if (!r) throw new ApiError(404, 'not_found', 'Unknown or too old');
+    const may = statusAccessOf(r, res, 'view');
+    const signedIn = config.statusAccess === 'signed-in';
     res.json({
       state: r.state,
       secretPath: config.features.receiptShareLink && (r.state === 'new' || r.state === 'viewed') ? `/s/${r.secretId}` : null,
@@ -629,6 +694,12 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       views: config.features.viewLog ? r.views.map((t) => new Date(t).toISOString()) : [],
       // RECEIPT_SHOW_VIEWER: who opened it (signed-in viewers), else null per view.
       viewedBy: config.features.viewLog ? r.viewers.map((n) => (auth?.c.showViewer && n) || null) : [],
+      // With RECEIPT_SHOW_VIEWER also the address of each signed-in viewer.
+      viewedByUser: config.features.viewLog ? r.viewerUsers.map((u) => (auth?.c.showViewer && u) || null) : [],
+      // STATUS_ACCESS=signed-in: who created it and who is responsible.
+      creator: signedIn ? r.who?.creator || null : null,
+      responsible: signedIn && r.who ? r.who.responsible : { users: [], groups: [] },
+      mayBurn: config.features.burn && may.burn,
     });
   });
 
@@ -636,7 +707,10 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     pagesOnly(config.features.receiptApi, req);
     if (!config.features.burn) throw disabled();
     const id = String(req.params.id);
-    const r = validId(id) ? await store.burn(id) : null;
+    const rec = validId(id) ? await store.receipt(id) : null;
+    if (!rec) throw new ApiError(404, 'not_found', 'Unknown or too old');
+    statusAccessOf(rec, res, 'burn');
+    const r = await store.burn(id);
     if (r === null) throw new ApiError(404, 'not_found', 'Unknown or too old');
     if (!r) throw new ApiError(409, 'gone', 'The secret is already gone');
     res.json({ state: 'burned' });
@@ -810,48 +884,81 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
    */
   /** @param {import('express').Response} res can this sender choose recipients? */
   const recipientsOn = (res) => Boolean(auth && auth.c.recipients !== 'off' && userOf(res));
-  const recipientsBlock = (res) => {
-    if (!recipientsOn(res)) return '';
+  /** The element ids of a picker (recipients keep theirs, responsible get a prefix). @param {'recipients' | 'responsible'} kind */
+  const pickerIds = (kind) => {
+    const p = kind === 'recipients' ? '' : 'responsible-';
+    return {
+      wrap: kind === 'recipients' ? 'recipients-wrap' : 'responsible-wrap',
+      email: kind === 'recipients' ? 'recipient-email' : 'responsible-email',
+      add: kind === 'recipients' ? 'recipient-add' : 'responsible-add',
+      results: `${p}people-results`,
+      status: `${p}people-status`,
+      peopleHint: `${p}people-hint`,
+      hint: kind === 'recipients' ? 'recipients-hint' : 'responsible-hint',
+      list: kind === 'recipients' ? 'recipient-list' : 'responsible-list',
+      group: kind === 'recipients' ? 'recipient-group' : 'responsible-group',
+      groupAdd: kind === 'recipients' ? 'recipient-group-add' : 'responsible-group-add',
+      groupSearch: `${p}group-search`,
+      groupSearchHint: `${p}group-search-hint`,
+      groupResults: `${p}group-results`,
+      opt: kind === 'recipients' ? 'people-opt' : 'responsible-opt',
+    };
+  };
+  /**
+   * The picker for people and groups: "Only for these people" (recipients)
+   * or "Responsible" (RESPONSIBLE), with the same people and group search.
+   * @param {import('express').Response} res @param {'recipients' | 'responsible'} kind
+   */
+  const pickerBlock = (res, kind) => {
+    if (!recipientsOn(res) && kind === 'recipients') return '';
+    if (kind === 'responsible' && (config.responsible === 'off' || !auth || !userOf(res))) return '';
     const t = theme.strings[lang(res)];
-    const required = auth.c.recipients === 'required';
+    const ids = pickerIds(kind);
+    const required = kind === 'recipients' ? auth.c.recipients === 'required' : config.responsible === 'required';
     const g = auth.c.groups;
     const people = Boolean(auth.c.userGroup);
     let groups = '';
     if (g.list.length) {
       const opts = g.list.map((x) => `<option value="${escapeHtml(x.id)}">${escapeHtml(x.name)}</option>`).join('');
       groups =
-        `<label for="recipient-group">${escapeHtml(t['home.recipientGroup'])}</label>` +
-        `<div class="copy-row"><select id="recipient-group"><option value="">${escapeHtml(t['home.recipientGroupPick'])}</option>${opts}</select>` +
-        `<button type="button" class="btn" id="recipient-group-add">${escapeHtml(t['home.recipientAdd'])}</button></div>`;
+        `<label for="${ids.group}">${escapeHtml(t['home.recipientGroup'])}</label>` +
+        `<div class="copy-row"><select id="${ids.group}"><option value="">${escapeHtml(t['home.recipientGroupPick'])}</option>${opts}</select>` +
+        `<button type="button" class="btn" id="${ids.groupAdd}">${escapeHtml(t['home.recipientAdd'])}</button></div>`;
     } else if (g.any) {
       groups =
-        `<label for="group-search">${escapeHtml(t['home.groupSearch'])}</label>` +
-        `<input type="search" id="group-search" maxlength="64" autocomplete="off" aria-describedby="group-search-hint" aria-controls="group-results">` +
-        `<div class="hint" id="group-search-hint">${escapeHtml(t['home.groupSearchHint'])}</div>` +
-        `<ul class="plain group-results" id="group-results"></ul>`;
+        `<label for="${ids.groupSearch}">${escapeHtml(t['home.groupSearch'])}</label>` +
+        `<input type="search" id="${ids.groupSearch}" maxlength="64" autocomplete="off" aria-describedby="${ids.groupSearchHint}" aria-controls="${ids.groupResults}">` +
+        `<div class="hint" id="${ids.groupSearchHint}">${escapeHtml(t['home.groupSearchHint'])}</div>` +
+        `<ul class="plain group-results" id="${ids.groupResults}"></ul>`;
     }
     const domains = auth.c.domains.length ? ` ${t['home.recipientDomains'].replace('{list}', auth.c.domains.join(', '))}` : '';
-    return (
-      `<fieldset class="field recipients" id="recipients-wrap" data-max="${auth.c.recipientsMax}" data-required="${required ? '1' : '0'}"${people ? ' data-people="1"' : ''}>` +
-      `<legend>${escapeHtml(required ? t['home.recipientsRequired'] : t['home.recipients'])}</legend>` +
+    const legend = kind === 'recipients' ? (required ? t['home.recipientsRequired'] : t['home.recipients']) : required ? t['home.responsibleRequired'] : t['home.responsible'];
+    const hint = kind === 'recipients' ? t['home.recipientsHint'] : t['home.responsibleHint'];
+    const fieldset =
+      `<fieldset class="field recipients${kind === 'responsible' ? ' responsible' : ''}" id="${ids.wrap}" data-kind="${kind}" data-max="${auth.c.recipientsMax}" data-required="${required ? '1' : '0'}"${people ? ' data-people="1"' : ''}>` +
+      `<legend>${escapeHtml(legend)}</legend>` +
       (people
         ? // RECIPIENT_USER_GROUP: the same field searches people (ARIA combobox); an address typed in full still works.
-          `<label for="recipient-email">${escapeHtml(t['home.recipientPerson'])}</label>` +
-          `<div class="copy-row combo"><input type="text" id="recipient-email" maxlength="254" autocomplete="off" spellcheck="false" ` +
-          `role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="people-results" aria-describedby="people-hint recipients-hint">` +
-          `<button type="button" class="btn" id="recipient-add">${escapeHtml(t['home.recipientAdd'])}</button>` +
-          `<ul class="suggestions" id="people-results" role="listbox" aria-label="${escapeHtml(t['home.peopleResults'])}" hidden></ul></div>` +
-          `<div class="hint" id="people-hint">${escapeHtml(t['home.peopleHint'])}</div>` +
-          `<div class="suggestion-status" id="people-status" role="status"></div>`
-        : `<label for="recipient-email">${escapeHtml(t['home.recipientEmail'])}</label>` +
-          `<div class="copy-row"><input type="email" id="recipient-email" maxlength="254" autocomplete="off" spellcheck="false" aria-describedby="recipients-hint">` +
-          `<button type="button" class="btn" id="recipient-add">${escapeHtml(t['home.recipientAdd'])}</button></div>`) +
+          `<label for="${ids.email}">${escapeHtml(t['home.recipientPerson'])}</label>` +
+          `<div class="copy-row combo"><input type="text" id="${ids.email}" maxlength="254" autocomplete="off" spellcheck="false" ` +
+          `role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${ids.results}" aria-describedby="${ids.peopleHint} ${ids.hint}">` +
+          `<button type="button" class="btn" id="${ids.add}">${escapeHtml(t['home.recipientAdd'])}</button>` +
+          `<ul class="suggestions" id="${ids.results}" role="listbox" aria-label="${escapeHtml(t['home.peopleResults'])}" hidden></ul></div>` +
+          `<div class="hint" id="${ids.peopleHint}">${escapeHtml(t['home.peopleHint'])}</div>` +
+          `<div class="suggestion-status" id="${ids.status}" role="status"></div>`
+        : `<label for="${ids.email}">${escapeHtml(t['home.recipientEmail'])}</label>` +
+          `<div class="copy-row"><input type="email" id="${ids.email}" maxlength="254" autocomplete="off" spellcheck="false" aria-describedby="${ids.hint}">` +
+          `<button type="button" class="btn" id="${ids.add}">${escapeHtml(t['home.recipientAdd'])}</button></div>`) +
       groups +
-      `<ul class="chips" id="recipient-list" aria-label="${escapeHtml(t['home.recipientList'])}"></ul>` +
-      `<div class="hint" id="recipients-hint">${escapeHtml(t['home.recipientsHint'] + domains)}</div>` +
-      `</fieldset>`
-    );
+      `<ul class="chips" id="${ids.list}" aria-label="${escapeHtml(t['home.recipientList'])}"></ul>` +
+      `<div class="hint" id="${ids.hint}">${escapeHtml(hint + domains)}</div>` +
+      `</fieldset>`;
+    if (kind === 'recipients') return fieldset;
+    // Responsible: folded away unless required.
+    return `<details class="field responsible-box"${required ? ' open' : ''}><summary>${escapeHtml(legend)}</summary>${fieldset}</details>`;
   };
+  /** @param {import('express').Response} res */
+  const recipientsBlock = (res) => pickerBlock(res, 'recipients') + pickerBlock(res, 'responsible');
 
   app.get('/', (req, res) => {
     const t = theme.strings[lang(res)];

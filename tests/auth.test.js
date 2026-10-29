@@ -199,7 +199,7 @@ test('login: state, nonce and PKCE; creators must sign in', opts, async () => {
 });
 
 test('only a signed-in recipient gets the ciphertext; others use no view', opts, async () => {
-  const { call, login } = await startApp({ RECEIPT_SHOW_VIEWER: 'true' });
+  const { call, login } = await startApp({ RECEIPT_SHOW_VIEWER: 'true', STATUS_ACCESS: 'link' });
   const alice = (await login(ALICE)).cookie;
   const bob = (await login(BOB)).cookie;
   const c = await create(call, alice, { recipients: ['bob@example.COM'], views: 2 });
@@ -557,4 +557,91 @@ test('generic OIDC provider: issuer with a path, groups claim values', opts, asy
   } finally {
     mock = saved;
   }
+});
+
+test('RESPONSIBLE: off, optional and required, checked like recipients', opts, async () => {
+  const off = await startApp({});
+  const a0 = (await off.login(ALICE)).cookie;
+  assert.equal((await create(off.call, a0, { responsible: ['carol@example.com'] })).data.error, 'responsibles_disabled');
+  const req = await startApp({ RESPONSIBLE: 'required', RECIPIENT_GROUPS: `IT Admins=${IT}`, RECIPIENT_DOMAINS: 'example.com' });
+  const a = (await req.login(ALICE)).cookie;
+  const none = await create(req.call, a, { recipients: ['bob@example.com'] });
+  assert.deepEqual([none.status, none.data.error], [400, 'responsibles_required']);
+  assert.match(none.data.message, /responsible person or group/);
+  const share = await req.call('/api/v1/share', { cookie: a, body: { secret: 'x', recipients: ['bob@example.com'] } });
+  assert.equal(share.data.error, 'responsibles_required');
+  assert.equal((await create(req.call, a, { responsible: ['nobody@other.org'] })).data.error, 'responsible_domain');
+  assert.equal((await create(req.call, a, { responsible: ['not an address'] })).data.error, 'invalid_responsible');
+  assert.equal((await create(req.call, a, { responsibleGroups: ['f0000000-0000-0000-0000-000000000000'] })).data.error, 'invalid_group');
+  assert.equal((await create(req.call, a, { responsible: ['carol@example.com'] })).status, 201);
+  assert.equal((await create(req.call, a, { responsibleGroups: [IT] })).status, 201);
+  assert.throws(() => loadConfig({ RESPONSIBLE: 'optional' }), /RESPONSIBLE needs sign-in/);
+  assert.throws(() => loadConfig({ STATUS_ACCESS: 'signed-in' }), /STATUS_ACCESS=signed-in needs sign-in/);
+  assert.equal(loadConfig({}).statusAccess, 'link');
+  assert.equal(loadConfig({ STATUS_ACCESS: 'link', RESPONSIBLE: 'off' }).responsible, 'off'); // allowed without sign-in
+  assert.equal(req.config.statusAccess, 'signed-in');
+  assert.throws(() => loadConfig({ RESPONSIBLE: 'sometimes' }), /RESPONSIBLE/);
+});
+
+test('STATUS_ACCESS=signed-in: creator, responsible and openers see the status; only creator and responsible burn', opts, async () => {
+  const { call, login } = await startApp({ RESPONSIBLE: 'optional', RECIPIENT_GROUPS: `Finance=${HR}`, RECEIPT_SHOW_VIEWER: 'true' });
+  const alice = (await login(ALICE)).cookie;
+  const bob = (await login(BOB)).cookie;
+  const carol = (await login({ ...CAROL, groups: [HR] })).cookie; // in Finance, responsible through the group
+  const dave = (await login({ oid: '00000000-0000-0000-0000-00000000000d', tid: TENANT, name: 'Dave', preferred_username: 'dave@example.com' })).cookie;
+  const c = await create(call, alice, { recipients: ['bob@example.com'], responsibleGroups: [HR], views: 2 });
+  assert.equal(c.status, 201);
+  const rid = c.data.receiptId;
+  // Nobody signed in: 401; somebody else: 403.
+  assert.deepEqual([(await call(`/api/v1/receipts/${rid}`)).status, (await call(`/api/v1/receipts/${rid}`)).data.error], [401, 'login_required']);
+  assert.equal((await call(`/api/v1/receipts/${rid}`, { cookie: dave })).data.error, 'not_allowed');
+  assert.equal((await call(`/api/v1/receipts/${rid}`, { cookie: bob })).data.error, 'not_allowed'); // not opened yet
+  // Creator and responsible see it, with the names.
+  const ra = await call(`/api/v1/receipts/${rid}`, { cookie: alice });
+  assert.equal(ra.status, 200);
+  assert.deepEqual(ra.data.creator, { name: 'Alice Example', user: 'alice@example.com' });
+  assert.deepEqual(ra.data.responsible, { users: [], groups: ['Finance'] });
+  assert.equal(ra.data.mayBurn, true);
+  assert.equal((await call(`/api/v1/receipts/${rid}`, { cookie: carol })).data.mayBurn, true);
+  // Bob opens it: now he sees the status (with his name and address), but may not burn.
+  assert.equal((await call(`/api/v1/secrets/${c.data.id}/reveal`, { cookie: bob, body: {} })).status, 200);
+  const rb = await call(`/api/v1/receipts/${rid}`, { cookie: bob });
+  assert.equal(rb.status, 200);
+  assert.equal(rb.data.mayBurn, false);
+  assert.deepEqual([rb.data.viewedBy[0], rb.data.viewedByUser[0]], ['Bob Example', 'bob@example.com']);
+  assert.equal((await call(`/api/v1/receipts/${rid}/burn`, { cookie: bob, body: {} })).data.error, 'not_allowed');
+  assert.equal((await call(`/api/v1/receipts/${rid}/burn`, { cookie: dave, body: {} })).status, 403);
+  assert.equal((await call(`/api/v1/receipts/${rid}/burn`, { body: {} })).status, 401);
+  assert.equal((await call(`/api/v1/receipts/${rid}/burn`, { cookie: carol, body: {} })).status, 200);
+  // The status page itself is open: the page script asks the API (and shows "Sign in").
+  assert.equal((await call(`/r/${rid}`)).status, 200);
+});
+
+test('STATUS_ACCESS: link keeps the old behaviour; anonymous secrets keep link access under signed-in', opts, async () => {
+  const link = await startApp({ STATUS_ACCESS: 'link' });
+  const a = (await link.login(ALICE)).cookie;
+  const c = await create(link.call, a);
+  const r = await link.call(`/api/v1/receipts/${c.data.receiptId}`);
+  assert.equal(r.status, 200);
+  assert.deepEqual([r.data.creator, r.data.responsible], [null, { users: [], groups: [] }]);
+  assert.equal((await link.call(`/api/v1/receipts/${c.data.receiptId}/burn`, { body: {} })).status, 200);
+  const anyone = await startApp({ AUTH_CREATE: 'anyone' });
+  const anon = await anyone.call('/api/v1/share', { body: { secret: 'x' } });
+  assert.equal(anon.status, 201);
+  assert.equal((await anyone.call(`/api/v1/receipts/${anon.data.receiptId}`)).status, 200); // no creator: the link is the key
+});
+
+test('the form: a folded "Responsible" section with the same picker, open when required', opts, async () => {
+  const opt = await startApp({ RESPONSIBLE: 'optional', RECIPIENT_GROUPS: `IT Admins=${IT}` });
+  const a = (await opt.login(ALICE)).cookie;
+  const html = String((await opt.call('/', { cookie: a })).data);
+  assert.match(html, /<details class="field responsible-box"><summary>Responsible \(optional\)<\/summary><fieldset class="field recipients responsible" id="responsible-wrap" data-kind="responsible"/);
+  assert.match(html, /id="responsible-email"/);
+  assert.match(html, /<select id="responsible-group">/);
+  assert.match(html, /id="recipient-email"/); // the recipients keep their ids
+  const req = await startApp({ RESPONSIBLE: 'required' });
+  const b = (await req.login(ALICE)).cookie;
+  assert.match(String((await req.call('/', { cookie: b })).data), /<details class="field responsible-box" open><summary>Responsible \(required\)<\/summary>/);
+  const off = await startApp({});
+  assert.doesNotMatch(String((await off.call('/', { cookie: (await off.login(ALICE)).cookie })).data), /responsible-wrap/);
 });
