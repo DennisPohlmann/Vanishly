@@ -249,7 +249,11 @@ test('WCAG 2.2 AA and flow: sign-in and recipients', async () => {
         assert.match(await page.textContent('#r-log') || '', /Bob Example/);
         assert.match(await page.textContent('#r-timeline') || '', /Opened/);
         problems.push(...(await scan(page, at('receipt'))));
+        await page.click('.nav-menu summary');
+        problems.push(...(await scan(page, at('user-menu'))));
+        await page.keyboard.press('Escape');
         // Not signed in: the sign-in prompt on a restricted secret.
+        await page.click('.nav-menu summary');
         await page.click('.nav-logout button');
         await page.waitForURL(`${base}/`);
         // STATUS_ACCESS=signed-in: the status page asks for a sign-in.
@@ -265,6 +269,7 @@ test('WCAG 2.2 AA and flow: sign-in and recipients', async () => {
         await page.click('#create-submit');
         await page.waitForFunction(() => !document.getElementById('created-card')?.hidden);
         const link2 = await page.inputValue('#share-link');
+        await page.click('.nav-menu summary');
         await page.click('.nav-logout button');
         await page.waitForURL(`${base}/`);
         await page.goto(link2);

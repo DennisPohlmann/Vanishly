@@ -686,7 +686,8 @@ test('header: the full name and below it the address of the signed-in user, esca
   const { call, login } = await startApp({});
   const a = (await login({ ...ALICE, name: 'Alice <b>Example</b>' })).cookie;
   const html = String((await call('/', { cookie: a })).data);
-  assert.match(html, /<span class="nav-user"><span class="nav-user-name">Alice &lt;b&gt;Example&lt;\/b&gt;<\/span><span class="nav-user-mail">alice@example.com<\/span><\/span><form class="nav-logout"/);
+  assert.match(html, /<summary class="nav-user"><span class="nav-user-who"><span class="nav-user-name">Alice &lt;b&gt;Example&lt;\/b&gt;<\/span><span class="nav-user-mail">alice<wbr>@example.<wbr>com<\/span><\/span>/);
+  assert.match(html, /<form class="nav-logout" method="post" action="\/auth\/logout">/);
   const noName = (await login({ ...BOB, name: '' })).cookie;
-  assert.match(String((await call('/', { cookie: noName })).data), /<span class="nav-user"><span class="nav-user-name">bob@example.com<\/span><\/span>/);
+  assert.match(String((await call('/', { cookie: noName })).data), /<span class="nav-user-who"><span class="nav-user-name">bob@example.com<\/span><\/span>/);
 });

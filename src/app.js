@@ -792,12 +792,22 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       const back = RETURN.test(req.path) ? req.path : '/';
       return `<a class="nav-login" data-login href="/auth/login?return=${encodeURIComponent(back)}">${escapeHtml(t['nav.signIn'])}</a>`;
     }
+    // A menu under the user's name (<details>: works with keyboard and without
+    // script): the full name and address, "Sign out" and "another account".
+    const name = u.name || u.user;
+    const back = RETURN.test(req.path) ? req.path : '/';
     return (
-      // The full name, and the address below it (only once when there is no name).
-      `<span class="nav-user"><span class="nav-user-name">${escapeHtml(u.name || u.user)}</span>` +
-      (u.name && u.user && u.name !== u.user ? `<span class="nav-user-mail">${escapeHtml(u.user)}</span>` : '') +
-      `</span>` +
-      `<form class="nav-logout" method="post" action="/auth/logout"><button type="submit" class="btn btn-small btn-ghost">${escapeHtml(t['nav.signOut'])}</button></form>`
+      // Name and address always in full: they wrap and get smaller instead of being cut.
+      `<details class="nav-menu"><summary class="nav-user">` +
+      `<span class="nav-user-who"><span class="nav-user-name">${escapeHtml(name)}</span>` +
+      // <wbr>: a long address breaks before "@" and after "." and "-", not in a word.
+      (u.user && u.user !== name ? `<span class="nav-user-mail">${escapeHtml(u.user).replace(/@/g, '<wbr>@').replace(/([.-])/g, '$1<wbr>')}</span>` : '') +
+      `</span><span class="nav-caret" aria-hidden="true"></span></summary>` +
+      `<div class="nav-menu-panel">` +
+      `<form class="nav-logout" method="post" action="/auth/logout"><button type="submit" class="nav-menu-item">${escapeHtml(t['nav.signOut'])}</button></form>` +
+      `<form class="nav-switch" method="post" action="/auth/logout" data-login><input type="hidden" name="return" value="${escapeHtml(back)}">` +
+      `<button type="submit" class="nav-menu-item">${escapeHtml(t['reveal.switchAccount'])}</button></form>` +
+      `</div></details>`
     );
   };
 
