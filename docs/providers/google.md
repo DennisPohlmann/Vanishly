@@ -43,7 +43,13 @@ memberships). The values are the group addresses:
 `RECIPIENT_USER_GROUP` is the address of the group whose members the form
 suggests (also through nested groups).
 
-## Example
+## Example (`.env` or Compose)
+
+Required: `AUTH_PROVIDER`, `BASE_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
+`OIDC_CLIENT_SECRET` (or `_FILE`) and `AUTH_SECRET` (or `_FILE`) and `AUTH_ALLOWED_DOMAINS`. The
+same lines go into `.env` next to `docker-compose.yml`
+([docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml))
+or into its `environment:` block.
 
 ```bash
 AUTH_PROVIDER=google
@@ -59,3 +65,15 @@ DIRECTORY_GOOGLE_CREDENTIALS_FILE=/run/secrets/google_service_account.json
 DIRECTORY_GOOGLE_ADMIN=directory-reader@example.com
 RECIPIENT_USER_GROUP=staff@example.com
 ```
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Start stops: `AUTH_ALLOWED_DOMAINS is required with AUTH_PROVIDER=google` | Set the Workspace domains; otherwise every Google account could sign in |
+| Log `auth: sign-in failed: account of a domain that may not sign in` | A private Google account, or the Workspace domain (`hd`) is not in `AUTH_ALLOWED_DOMAINS` |
+| Log `auth: people search failed: Google answered 401` | Domain-wide delegation is missing, has other scopes, or names another client id |
+| Log `auth: people search failed: Google answered 403` | The Admin SDK API is not enabled, or `DIRECTORY_GOOGLE_ADMIN` cannot read users and groups |
+| Groups do not work at all | `RECIPIENT_GROUPS` with Google needs `DIRECTORY_API=true`: Google puts no groups into the token |
+
+General problems: [providers/README.md](README.md#troubleshooting).

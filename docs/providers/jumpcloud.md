@@ -30,7 +30,13 @@ suggests (24 hex characters, in the URL of the group); members of nested
 groups count. Organizations in the EU region:
 `DIRECTORY_URL=https://console.eu.jumpcloud.com`.
 
-## Example
+## Example (`.env` or Compose)
+
+Required: `AUTH_PROVIDER`, `BASE_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
+`OIDC_CLIENT_SECRET` (or `_FILE`) and `AUTH_SECRET` (or `_FILE`). The
+same lines go into `.env` next to `docker-compose.yml`
+([docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml))
+or into its `environment:` block.
 
 ```bash
 AUTH_PROVIDER=jumpcloud
@@ -44,3 +50,13 @@ DIRECTORY_API=true
 DIRECTORY_API_TOKEN_FILE=/run/secrets/jumpcloud_api_key
 RECIPIENT_USER_GROUP=0123456789abcdef01234567
 ```
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| A group member gets "not shared with your account" | **Include group attribute** is off, or its name is not `groups` |
+| Log `auth: people search failed: JumpCloud answered 401` | The API key is wrong or was regenerated |
+| People search fails in the EU region | Set `DIRECTORY_URL=https://console.eu.jumpcloud.com` |
+
+General problems: [providers/README.md](README.md#troubleshooting).

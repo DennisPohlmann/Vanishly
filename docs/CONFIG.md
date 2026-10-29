@@ -125,20 +125,15 @@ for the whole API.
 Off by default (`AUTH_PROVIDER=none`): no login anywhere, and setting any
 of the others then stops the start. With a provider, senders sign in and
 can name the people who may open a secret; see
-[Sign-in and recipients](#sign-in-and-recipients) below and the
-[app registration](INSTALLATION.md#10-sign-in-with-entra-id-or-oidc). Setup
-per provider and what each supports (groups, group search, people search):
+[Sign-in and recipients](#sign-in-and-recipients) below. Setup per
+provider (app registration, groups claim, directory access, the settings
+only that provider has) and what each supports:
 [providers/README.md](providers/README.md).
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `AUTH_PROVIDER` | `none` | `none`, `entra` (Microsoft Entra ID), a preset (`keycloak`, `okta`, `auth0`, `google`, `ping`, `jumpcloud`, `cognito`) or `oidc` (any other OpenID Connect provider). The presets use the `OIDC_*` settings and know the provider's issuer format, groups claim and directory ([providers](providers/README.md)). Needs `BASE_URL`: the redirect URI is `<BASE_URL>/auth/callback` |
-| `ENTRA_TENANT_ID` | (required for `entra`) | Directory (tenant) id, a GUID; tokens of other tenants are refused |
-| `ENTRA_CLIENT_ID` | (required for `entra`) | Application (client) id of the app registration |
-| `ENTRA_CLIENT_SECRET` | (required for `entra`) | Client secret; or `ENTRA_CLIENT_SECRET_FILE` with a file that holds it (Docker secrets) |
-| `ENTRA_AUTHORITY` | `https://login.microsoftonline.com` | Only for national clouds, e.g. `https://login.microsoftonline.us` |
-| `ENTRA_GRAPH` | `false` | `true`: use Microsoft Graph (application permission `GroupMember.Read.All`, for the people search also `User.Read.All`) for the group and people search and for users in more than 200 groups |
-| `ENTRA_GRAPH_URL` | `https://graph.microsoft.com` | Only for national clouds |
+| `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` (`_FILE`), `ENTRA_AUTHORITY`, `ENTRA_GRAPH`, `ENTRA_GRAPH_URL` | | `entra` only: tenant, app registration, national clouds, Microsoft Graph for the group and people search ([entra.md](providers/entra.md#settings)) |
 | `OIDC_ISSUER` | (required for `oidc` and the presets) | Issuer URL, e.g. `https://sso.example.com/realms/main`; its `/.well-known/openid-configuration` must be reachable. Auth0 and JumpCloud keep their trailing `/` |
 | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | (required for `oidc` and the presets) | The confidential client; `OIDC_CLIENT_SECRET_FILE` instead of the secret |
 | `OIDC_SCOPES` | `openid profile email` | Scopes to ask for (must include `openid`); add the scope that puts the groups into the ID token if your provider needs one |
@@ -146,10 +141,8 @@ per provider and what each supports (groups, group search, people search):
 | `AUTH_ALLOWED_DOMAINS` | (any) | Only accounts with an address of these domains sign in, e.g. `example.com`. Required for `google` (also checks the Workspace domain, `hd`) |
 | `DIRECTORY_API` | `false` | `true`: use the provider's directory for the people search, the group search and (Google) the groups of a user. Presets only; Entra uses `ENTRA_GRAPH`. Access per provider: [providers](providers/README.md) |
 | `DIRECTORY_CLIENT_ID`, `DIRECTORY_CLIENT_SECRET` | the sign-in client | `keycloak`, `auth0`, `ping`: a client of its own for the directory (service account, machine-to-machine app, worker); `DIRECTORY_CLIENT_SECRET_FILE` instead of the secret |
-| `DIRECTORY_API_TOKEN` | (required for `okta`, `jumpcloud` with `DIRECTORY_API`) | The API token (Okta) or API key (JumpCloud); `DIRECTORY_API_TOKEN_FILE` instead |
-| `DIRECTORY_GOOGLE_CREDENTIALS_FILE`, `DIRECTORY_GOOGLE_ADMIN` | (required for `google` with `DIRECTORY_API`) | The JSON key file of a service account with domain-wide delegation, and the admin address it acts for |
-| `DIRECTORY_URL` | from the issuer | The directory API's address, where it differs: Auth0 with a custom domain, JumpCloud EU (`https://console.eu.jumpcloud.com`), an internal Keycloak admin address |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_ROLE_ARN`, `AWS_WEB_IDENTITY_TOKEN_FILE` | (none) | `cognito` with `DIRECTORY_API`: the standard AWS credentials, keys or a role through a web identity token (EKS) |
+| `DIRECTORY_API_TOKEN` (`_FILE`), `DIRECTORY_GOOGLE_CREDENTIALS_FILE`, `DIRECTORY_GOOGLE_ADMIN`, `AWS_*` | | The directory access of `okta` and `jumpcloud` (API token), `google` (service account) and `cognito` (AWS credentials); see their pages in [providers](providers/README.md) |
+| `DIRECTORY_URL` | from the issuer | The directory API's address, where it differs (Auth0 with a custom domain, JumpCloud EU, an internal Keycloak admin address) |
 | `AUTH_SECRET` | (required) | At least 32 random characters (`openssl rand -base64 48`); or `AUTH_SECRET_FILE`. Keys the hashes of the recipients: changing it locks every open restricted secret |
 | `AUTH_SESSION_TTL` | `28800` | Lifetime of a sign-in in seconds (5 minutes to 7 days) |
 | `AUTH_LOGOUT` | `provider` (Entra: `local`) | `provider`: "Sign out" also ends the session at the provider, which then asks again at the next sign-in; needs `<BASE_URL>/auth/logged-out` as post logout redirect URI there. `local`: only Vanishly signs out (with Entra the default, as the Microsoft session is shared with Microsoft 365) |
@@ -247,18 +240,11 @@ With any `AUTH_PROVIDER`:
 - The key stays in the link: the server still cannot read a secret, the
   sign-in is a second lock on top.
 - The server compares the addresses case-insensitively with names the
-  account cannot pick itself: with Entra the `preferred_username` / `upn`
-  (the sign-in name), and `email` only when Entra verified its domain
-  (optional claim `xms_edov`); with the other providers the `email` claim,
-  unless the provider marks it `email_verified: false`. A sign-in without such an
-  address is refused. With Entra, the groups come from the `groups` claim of the ID
-  token (set "Group claims" in the app registration, as group ids). Users
-  in more than 200 groups get no `groups` claim: Vanishly then asks
-  Microsoft Graph when `ENTRA_GRAPH=true`, otherwise such a user cannot
-  open secrets for a group. The other providers send the claim named by
-  `OIDC_GROUPS_CLAIM`; Google sends none, so with `DIRECTORY_API=true`
-  Vanishly asks its directory at sign-in. Keycloak groups count as paths:
-  `finance` and `/finance` are the same group.
+  account cannot pick itself: the verified `email` (Entra: the sign-in
+  name). A sign-in without such an address is refused. The groups come
+  from the groups claim of the ID token or, for Google, from the
+  directory. What each provider sends and how to set it up:
+  [providers](providers/README.md).
 - `AUTH_ALLOWED_DOMAINS` limits who may sign in at all, by the domain of
   the address (Google: and the Workspace domain).
 - With `RECIPIENT_GROUPS=*` the form offers a search over the groups of
@@ -274,7 +260,8 @@ With any `AUTH_PROVIDER`:
   asks for the account again. Register `<BASE_URL>/auth/logged-out` as post
   logout redirect URI at the provider. "Sign in with another account" always
   asks the provider again (`prompt=login`; Entra and Google: the account
-  picker). Google has no logout endpoint: there only Vanishly signs out.
+  picker). Providers without a logout endpoint (Google, Cognito,
+  JumpCloud): there only Vanishly signs out.
 
 ### People search
 
@@ -286,17 +273,11 @@ keys and Enter or a click add a person; several people can be added, and a
 full e-mail address still works. A group with the whole company makes the
 whole company searchable.
 
-- The person is added with the address they sign in with (Entra: the UPN,
-  for guests their e-mail; otherwise the verified e-mail), so it matches
+- The person is added with the address they sign in with, so it matches
   their sign-in.
-- Entra and Google search the directory for each query. The other
-  providers list the group's members once (at most 5000, kept 5 minutes in
-  memory) and Vanishly searches that list. Answers are kept for a minute,
-  at most 10 hits per search, only for signed-in users; nothing goes to
-  Redis.
-- The directory access is read-only and differs per provider (Graph
-  application permissions `GroupMember.Read.All` and `User.Read.All`, a
-  Keycloak service account, an Okta API token, ...): see
+- At most 10 hits per search, only for signed-in users; nothing goes to
+  Redis ([how the search works](providers/README.md#how-the-search-works)).
+- The directory access is read-only and differs per provider: see
   [providers](providers/README.md).
 - Privacy: every signed-in sender can look up names and addresses of that
   group's members. Pick a group that may be visible to all senders.
@@ -349,11 +330,9 @@ ENABLE_API_INDEX=false
 Pages use the session cookie. For scripts, set `AUTH_API_AUDIENCE`: the API
 then accepts an access token of your provider as `Authorization: Bearer
 <token>`, checked against the provider's keys, issuer, audience, expiry
-and (Entra) tenant. Cognito access tokens have no audience: there
-`AUTH_API_AUDIENCE` is the app client id, checked against `client_id`.
-With Entra, expose an API in the app registration
-("Application ID URI" `api://<client id>`) and use that as the audience.
-A token for a user can create restricted secrets and open those meant for
+and (Entra) tenant. Per provider: [Entra](providers/entra.md#api-tokens)
+(expose an API, `api://<client id>`), [Cognito](providers/cognito.md#api-tokens)
+(no audience: the app client id). A token for a user can create restricted secrets and open those meant for
 that user; a token of an app (client credentials) can create secrets, but
 has no user and so cannot open restricted ones. Without
 `AUTH_API_AUDIENCE`, scripts can only create secrets with

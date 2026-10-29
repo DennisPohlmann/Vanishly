@@ -45,7 +45,7 @@ small stand-in for Entra ID / an OpenID provider with Microsoft Graph
 (the other directories: stand-ins in `tests/directory.test.js`); no
 tenant is needed. To click through the sign-in by hand, use the test login
 server of `docker-compose/standalone/docker-compose.auth-test.yml`
-([INSTALLATION.md](INSTALLATION.md#try-it-locally-with-a-test-login-server)).
+([providers/oidc.md](providers/oidc.md#try-it-locally)).
 
 ## CI (`.github/workflows/build.yml`)
 

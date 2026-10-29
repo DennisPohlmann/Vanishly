@@ -158,11 +158,13 @@ curl -s -X POST http://127.0.0.1:3000/api/v1/share \
 
 | File | Content |
 |------|---------|
+| [docs/README.md](docs/README.md) | index of all documentation |
 | [docs/INSTALLATION.md](docs/INSTALLATION.md) | docker compose, container, tar.gz with systemd, Kubernetes (Helm), reverse proxy, update, troubleshooting, removal |
 | [docs/CONFIG.md](docs/CONFIG.md) | all environment variables, Redis, rate limits, languages |
 | [docs/USAGE.md](docs/USAGE.md) | pages, how sharing works, receipts, health and monitoring |
 | [docs/SECURITY.md](docs/SECURITY.md) | how a secret is protected: encryption in the browser, what Redis stores, passphrase, behaviour on Redis errors, limits |
-| [docs/providers/](docs/providers/README.md) | sign-in providers: what each supports, setup per provider |
+| [docs/providers/](docs/providers/README.md) | sign-in providers: what each supports, one page per provider (none, Entra ID, Keycloak, Okta, Auth0, Google, PingOne, JumpCloud, Cognito, other OIDC) |
+| [docker-compose/](docker-compose/keycloak/README.md) | Compose examples: `standalone` (Vanishly with Redis), `keycloak` (local sign-in demo) |
 | [docs/INTERFACE.md](docs/INTERFACE.md) | REST API (OpenAPI), crypto format, Redis keys |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | local development, tests, CI and releases |
 | [templates/README.md](templates/README.md) | own templates: logo, CSS, pictures, views |

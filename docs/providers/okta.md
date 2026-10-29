@@ -37,7 +37,13 @@ rights; keep it in a secret file.
 suggests (`00g...`, in the URL of the group in the admin console).
 `RECIPIENT_GROUPS=*` searches groups by name.
 
-## Example
+## Example (`.env` or Compose)
+
+Required: `AUTH_PROVIDER`, `BASE_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
+`OIDC_CLIENT_SECRET` (or `_FILE`) and `AUTH_SECRET` (or `_FILE`). The
+same lines go into `.env` next to `docker-compose.yml`
+([docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml))
+or into its `environment:` block.
 
 ```bash
 AUTH_PROVIDER=okta
@@ -54,3 +60,14 @@ RECIPIENT_USER_GROUP=00g1abcdefghijklmnop
 
 The Management API is called at the issuer's host; `DIRECTORY_URL`
 overrides it.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| A group member gets "not shared with your account" | No groups claim in the ID token, or the filter leaves the group out; the values are the group names, spelt exactly |
+| Log `auth: people search failed: Okta answered 401` | The API token is wrong or expired (tokens unused for 30 days expire) |
+| Log `auth: people search failed: Okta answered 403` | The admin who made the token lacks the **Read-only Administrator** role |
+| Start stops at `RECIPIENT_USER_GROUP` | Use the group id (`00g...`), not its name |
+
+General problems: [providers/README.md](README.md#troubleshooting).

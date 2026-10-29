@@ -49,7 +49,13 @@ Cognito access tokens carry no `aud` and no e-mail address. With
 `client_id` and `token_use: access`), but treats them like app tokens:
 they can create secrets, not open restricted ones.
 
-## Example
+## Example (`.env` or Compose)
+
+Required: `AUTH_PROVIDER`, `BASE_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
+`OIDC_CLIENT_SECRET` (or `_FILE`) and `AUTH_SECRET` (or `_FILE`). The
+same lines go into `.env` next to `docker-compose.yml`
+([docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml))
+or into its `environment:` block.
 
 ```bash
 AUTH_PROVIDER=cognito
@@ -63,3 +69,14 @@ DIRECTORY_API=true
 RECIPIENT_USER_GROUP=staff
 # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, or the EKS role variables
 ```
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Start stops: `DIRECTORY_API=true with AUTH_PROVIDER=cognito needs AWS credentials` | Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, or the EKS role variables |
+| Log `auth: people search failed: Cognito answered 400` | The IAM policy lacks `ListUsersInGroup` / `ListGroups` for this pool, or the group name is wrong |
+| Log `auth: people search failed: STS answered 403` | The role cannot be assumed with the web identity token (trust policy) |
+| Sign-in refused: no e-mail address | The user's `email` attribute is not verified, or the app client lacks the `email` scope |
+
+General problems: [providers/README.md](README.md#troubleshooting).

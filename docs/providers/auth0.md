@@ -43,7 +43,13 @@ suggests its users, at most 1000.
 With a custom domain the Management API still lives on the tenant domain:
 `DIRECTORY_URL=https://<tenant>.<region>.auth0.com`.
 
-## Example
+## Example (`.env` or Compose)
+
+Required: `AUTH_PROVIDER`, `BASE_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
+`OIDC_CLIENT_SECRET` (or `_FILE`) and `AUTH_SECRET` (or `_FILE`). The
+same lines go into `.env` next to `docker-compose.yml`
+([docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml))
+or into its `environment:` block.
 
 ```bash
 AUTH_PROVIDER=auth0
@@ -59,3 +65,14 @@ DIRECTORY_CLIENT_ID=change-me
 DIRECTORY_CLIENT_SECRET_FILE=/run/secrets/auth0_m2m_secret
 RECIPIENT_USER_GROUP=rol_abcdefghijklmnop
 ```
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| A member of a role gets "not shared with your account" | The post-login Action is not deployed or not in the Login flow, or `OIDC_GROUPS_CLAIM` differs from its claim name |
+| Log `auth: people search failed: Auth0 answered 403` | The machine-to-machine app lacks `read:users` or `read:roles` on the Management API |
+| Log `auth: people search failed: Auth0 answered 404` | With a custom domain set `DIRECTORY_URL` to the tenant domain |
+| "Sign out" does not ask again | Switch on **RP-Initiated Logout** and add `<BASE_URL>/auth/logged-out` to **Allowed Logout URLs** |
+
+General problems: [providers/README.md](README.md#troubleshooting).

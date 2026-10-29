@@ -9,7 +9,7 @@
 7. [Update](#7-update)
 8. [Troubleshooting](#8-troubleshooting)
 9. [Removal](#9-removal)
-10. [Sign-in with Entra ID or OIDC](#10-sign-in-with-entra-id-or-oidc)
+10. [Sign-in](#10-sign-in)
 
 ## 1. Docker Compose (recommended)
 
@@ -224,85 +224,26 @@ are gone). tar.gz: `systemctl disable --now vanishly`, then remove
 `/opt/vanishly`, `/etc/vanishly`, `/etc/systemd/system/vanishly.service`,
 `/var/lib/vanishly` and the user `vanishly`.
 
-## 10. Sign-in with Entra ID or OIDC
+## 10. Sign-in
 
-Optional; [CONFIG.md](CONFIG.md#sign-in-and-recipients) explains what it
-does, [providers/](providers/README.md) what each provider supports. Vanishly must be served via HTTPS with `BASE_URL` set.
+Optional and off by default ([no sign-in](providers/none.md)). Vanishly
+must be served via HTTPS with `BASE_URL` set; the provider gets the
+redirect URI `<BASE_URL>/auth/callback`.
 
-### Microsoft Entra ID
+1. Pick the provider and follow its page: [Entra ID](providers/entra.md),
+   [Keycloak](providers/keycloak.md), [Okta](providers/okta.md),
+   [Auth0](providers/auth0.md), [Google Workspace](providers/google.md),
+   [PingOne](providers/ping.md), [JumpCloud](providers/jumpcloud.md),
+   [Cognito](providers/cognito.md) or [any other OpenID Connect
+   provider](providers/oidc.md). The [overview](providers/README.md) shows
+   what each one supports.
+2. Put the settings from that page into `.env` (Compose), the Helm values
+   (`config`, secrets in `secretConfig` or `existingSecret`) or
+   `/etc/vanishly/vanishly.env` (systemd) and restart. A wrong or missing
+   value stops the start with a message.
+3. Pick what sign-in should do: who may create, recipients, responsible
+   people, the status page ([CONFIG.md](CONFIG.md#sign-in-and-recipients)).
 
-1. Entra admin center → **App registrations** → **New registration**:
-   name `Vanishly`, "Accounts in this organizational directory only",
-   redirect URI **Web** `https://ots.example.com/auth/callback`.
-2. **Certificates & secrets** → new client secret; note its value.
-3. Optional, for groups as recipients: **Token configuration** → **Add
-   groups claim** → "Security groups" (ID token: "Group ID").
-4. Optional, for `RECIPIENT_GROUPS=*` and users in more than 200 groups:
-   **API permissions** → Microsoft Graph → **Application permissions** →
-   `GroupMember.Read.All` → **Grant admin consent**, and set
-   `ENTRA_GRAPH=true`.
-   For the people search (`RECIPIENT_USER_GROUP=<group object id>`) add
-   `User.Read.All` (application) as well.
-5. Optional, for scripts: **Expose an API** → Application ID URI
-   `api://<client id>`, add a scope (e.g. `Secrets.Use`), and set
-   `AUTH_API_AUDIENCE=api://<client id>`. Set "accessTokenAcceptedVersion"
-   to 2 in the manifest.
-6. Optional, to sign out of Microsoft too (`AUTH_LOGOUT=provider`): add
-   `https://ots.example.com/auth/logged-out` as a second **Web** redirect
-   URI (Authentication). By default (`local`) only Vanishly signs out.
-7. Optional: in **Enterprise applications** → Vanishly → Properties, set
-   "Assignment required" to limit who can sign in at all.
-8. Settings (`.env`):
-
-   ```sh
-   BASE_URL=https://ots.example.com
-   AUTH_PROVIDER=entra
-   ENTRA_TENANT_ID=<directory (tenant) id>
-   ENTRA_CLIENT_ID=<application (client) id>
-   ENTRA_CLIENT_SECRET=<secret value>
-   AUTH_SECRET=<openssl rand -base64 48>
-   # RECIPIENT_GROUPS=IT Admins=<group object id>,HR=<group object id>
-   # ENTRA_GRAPH=true
-   # RECIPIENT_USER_GROUP=<object id of the group whose members are suggested>
-   ```
-
-The whole site behind **Entra Application Proxy** (pre-authentication)
-works as well, alone or together with this: the proxy keeps everybody
-outside the tenant away, the built-in sign-in decides per secret.
-
-### Keycloak, Okta, Auth0, Google Workspace, PingOne, JumpCloud, Cognito
-
-These have presets (`AUTH_PROVIDER=keycloak`, `okta`, ...): one page per
-provider with the client setup, the groups claim, the directory access for
-the people search and an example is in [providers/](providers/README.md).
-
-### Another OpenID Connect provider
-
-Create a confidential client with the redirect URI
-`https://ots.example.com/auth/callback` and the "authorization code" flow,
-then set `AUTH_PROVIDER=oidc`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
-`OIDC_CLIENT_SECRET` and `AUTH_SECRET`. For groups, let the provider put a
-`groups` claim (a list of strings; another name with `OIDC_GROUPS_CLAIM`)
-into the ID token and list the values in `RECIPIENT_GROUPS` (`Ops=ops`).
-There is no people search with `oidc`.
-
-### Try it locally with a test login server
-
-`docker-compose/standalone/docker-compose.auth-test.yml` adds a test login
-server ([mock-oauth2-server](https://github.com/navikt/mock-oauth2-server))
-where you can sign in as anybody. Only for your own machine:
-
-```sh
-cd docker-compose/standalone
-docker compose -f docker-compose.yml -f docker-compose.auth-test.yml up -d
-```
-
-With real users, groups, the people search and responsible groups:
-[docker-compose/keycloak](../docker-compose/keycloak/README.md) (Keycloak
-with demo users alice, bob and carol).
-
-Open `http://localhost:3000` and click "Sign in". On the test server's page
-type any user name and, as claims,
-`{"email": "alice@example.com", "name": "Alice", "groups": ["ops"]}`.
-Create a secret for `bob@example.com`, open the link in a private window
-and sign in there as Bob (or as somebody else, to see it refused).
+To try it on your own machine: [docker-compose/keycloak](../docker-compose/keycloak/README.md)
+(Keycloak with demo users alice, bob and carol) or the
+[test login server](providers/oidc.md#try-it-locally).

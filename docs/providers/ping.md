@@ -29,7 +29,13 @@ suggests. The API address follows the issuer
 (`https://api.pingone.<region>/v1/environments/<id>`); `DIRECTORY_URL`
 overrides it.
 
-## Example
+## Example (`.env` or Compose)
+
+Required: `AUTH_PROVIDER`, `BASE_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
+`OIDC_CLIENT_SECRET` (or `_FILE`) and `AUTH_SECRET` (or `_FILE`). The
+same lines go into `.env` next to `docker-compose.yml`
+([docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml))
+or into its `environment:` block.
 
 ```bash
 AUTH_PROVIDER=ping
@@ -44,3 +50,13 @@ DIRECTORY_CLIENT_ID=change-me
 DIRECTORY_CLIENT_SECRET_FILE=/run/secrets/ping_worker_secret
 RECIPIENT_USER_GROUP=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
 ```
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Start stops with `OIDC_ISSUER: the issuer of ping, e.g. ...` | Use `https://auth.pingone.<region>/<environment id>/as` |
+| A group member gets "not shared with your account" | The `groups` attribute mapping (Group Names) is missing in the ID token |
+| Log `auth: people search failed: PingOne answered 403` | The worker application lacks **Identity Data Read Only** for this environment |
+
+General problems: [providers/README.md](README.md#troubleshooting).

@@ -50,7 +50,13 @@ members the form suggests. Only direct members count, not those of
 subgroups. `RECIPIENT_GROUPS=*` searches all groups by name and offers
 their full paths.
 
-## Example
+## Example (`.env` or Compose)
+
+Required: `AUTH_PROVIDER`, `BASE_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
+`OIDC_CLIENT_SECRET` (or `_FILE`) and `AUTH_SECRET` (or `_FILE`). The
+same lines go into `.env` next to `docker-compose.yml`
+([docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml))
+or into its `environment:` block.
 
 ```bash
 AUTH_PROVIDER=keycloak
@@ -69,3 +75,15 @@ RECIPIENT_USER_GROUP=/staff
 `DIRECTORY_URL` overrides the admin API address (default: the issuer with
 `/admin/realms/<realm>`), e.g. when the admin API is only reachable
 internally.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Start stops with `OIDC_ISSUER: the issuer of keycloak, e.g. ...` | Use `https://<host>/realms/<realm>` (older versions: `/auth/realms/<realm>`) |
+| Log `auth: people search failed: Keycloak answered 403` | The directory client lacks `view-users`, `query-users` or `query-groups` of `realm-management` |
+| Log `auth: people search failed: Keycloak: group not found` | `RECIPIENT_USER_GROUP` is not the path (`/staff`) or id of an existing group |
+| A group member gets "not shared with your account" | The Group Membership mapper is missing, or **Add to ID token** is off |
+| Sign-in refused: no e-mail address | The user has no e-mail address, or **Email verified** is off |
+
+General problems: [providers/README.md](README.md#troubleshooting).
