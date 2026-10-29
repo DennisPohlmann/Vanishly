@@ -29,6 +29,33 @@ try {
   process.exit(69); // EX_UNAVAILABLE
 }
 const app = createApp({ config, store, theme, version });
+/** @type {import('./audit.js').Audit | null} */
+const audit = app.locals.audit;
+if (audit) {
+  // The first event of every start: which settings shape the log. A log that
+  // cannot be written stops the start (AUDIT_LOG_FAIL=closed).
+  const a = /** @type {NonNullable<typeof config.audit>} */ (config.audit);
+  try {
+    await audit.log({
+      type: 'system.startup',
+      actor: { type: 'system' },
+      details: {
+        format: a.format,
+        sinks: [a.file && 'file', a.stdout && 'stdout', a.redis && 'redis', a.syslog && `syslog-${a.syslog.proto}`, a.otlp && 'otlp', a.webhook && 'webhook'].filter(Boolean),
+        signed: Boolean(a.hmacKey),
+        fail: a.failClosed ? 'closed' : 'open',
+        ip: a.ip,
+        comment: config.comment.mode,
+        sign_in: config.auth?.provider || 'none',
+        api_tokens: config.auth?.tokens ? (config.auth.tokens.required ? 'required' : 'on') : 'off',
+        admin_view: Boolean(config.auth?.admin.auditView),
+      },
+    });
+  } catch (err) {
+    console.error(`Vanishly: the audit log cannot be written: ${/** @type {Error} */ (err).message}`);
+    if (a.failClosed) process.exit(73); // EX_CANTCREAT
+  }
+}
 
 const server = app.listen(config.port, config.host, () => {
   console.log(`Vanishly ${version} listening on ${config.host}:${config.port}, template "${theme.name}"`);
@@ -39,7 +66,11 @@ server.requestTimeout = 30000;
 /** @param {string} signal */
 function shutdown(signal) {
   console.log(`${signal}: shutting down`);
-  server.close(() => {
+  server.close(async () => {
+    if (audit) {
+      await audit.log({ type: 'system.shutdown', actor: { type: 'system' }, reason: signal }).catch(() => {});
+      await audit.close().catch(() => {});
+    }
     store.close().finally(() => process.exit(0));
   });
   setTimeout(() => process.exit(0), 5000).unref();

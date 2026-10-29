@@ -203,6 +203,40 @@ network, Vanishly only on `127.0.0.1` for the reverse proxy. CI scans the
 code, the dependencies and both images on every build and every night
 ([DEVELOPMENT.md](DEVELOPMENT.md#security-checks)).
 
+## Audit log and API tokens
+
+Optional (`AUDIT_LOG`, `API_TOKENS`, see [CONFIG.md](CONFIG.md#audit-log)).
+
+- **What the audit log holds:** who (signed-in address and name, or the
+  API token with its owner), what (event type, outcome, reason), when, for
+  whom (recipient addresses and groups, responsible), the comment, run id,
+  source address and browser name (`AUDIT_LOG_IP`, `AUDIT_LOG_USER_AGENT`).
+  **Never** the secret, its ciphertext, key, passphrase, verifier, the URL
+  fragment, a full API token, or a secret/receipt id: secrets appear only
+  as `ref`, an HMAC of the id, so the log cannot be used to open anything.
+  The tests check this for every format. It is personal data: restrict who
+  reads the file, the stream and the admin page, and set a retention.
+- **Tamper evidence:** a hash chain per instance plus, with
+  `AUDIT_LOG_HMAC_KEY`, an HMAC per event; `audit:verify` finds changed,
+  removed, inserted or moved events. Keep the key away from where the log
+  is stored and ship a copy elsewhere (stdout, syslog, OTLP), then a cut-off
+  end shows too. The admin page itself is logged; with
+  `AUDIT_LOG_FAIL=closed` (the default) no secret is created or handed out,
+  no sign-in completed and no token made unless its event was written.
+- **API tokens:** 256 random bits behind the prefix `vnly_<id>_` (secret
+  scanners can find leaked ones). Redis keeps only an HMAC-SHA256 with a
+  key derived from `AUTH_SECRET`, compared in constant time; the token is
+  shown once. A token acts as its owner with the scopes picked, cannot make
+  or manage tokens, and with networks set (`API_TOKEN_IP_BINDING=required`
+  makes it mandatory) works only from there: a token passed on to someone
+  elsewhere is refused and logged. The client address comes from
+  `TRUST_PROXY`; set it exactly to your proxies, else `X-Forwarded-For` can
+  be forged. With `API_TOKEN_REQUIRED=true` scripts cannot use the API
+  without a token; the pages of the server still call it with their
+  session (the browser marks them `Sec-Fetch-Site: same-origin`; a script
+  could fake that header, but only with a signed-in session of its own, and
+  every call is then logged under that user).
+
 ## What Vanishly cannot protect against
 
 - **Whoever has the full link** (and the passphrase, if set) can read the

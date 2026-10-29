@@ -1,8 +1,11 @@
 // Vanishly - HTTP app: pages, JSON API (openapi/openapi.json), static files.
 
+import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
+import { Audit, normalize, parseTraceparent, sanitizeText, sizeBucket, verifyText } from './audit.js';
+import { Tokens, SCOPES } from './tokens.js';
 import { decryptSecret, encryptSecret, PBKDF2_ITERATIONS, unlockKey, verifierFor } from '../public/js/vanishly-crypto.js';
 import { validId } from './store.js';
 import { Auth, RETURN } from './auth.js';
@@ -95,13 +98,30 @@ export function servedSpec(spec, on, version, index = true) {
 }
 
 /**
- * @param {{ config: import('./config.js').Config, store: import('./store.js').Store,
- *   theme: import('./theme.js').Theme, version: string, auth?: Auth | null }} deps
+ * A CSV cell: quoted, and text that a spreadsheet would run as a formula
+ * (=, +, -, @, tab, CR at the start) gets a ' in front.
+ * @param {unknown} v
  */
-export function createApp({ config, store, theme, version, auth: authIn }) {
+export function csvCell(v) {
+  const s = Array.isArray(v) ? v.join('; ') : String(v ?? '');
+  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
+/**
+ * @param {{ config: import('./config.js').Config, store: import('./store.js').Store,
+ *   theme: import('./theme.js').Theme, version: string, auth?: Auth | null, audit?: Audit | null }} deps
+ */
+export function createApp({ config, store, theme, version, auth: authIn, audit: auditIn }) {
   const app = express();
   // Sign-in (AUTH_PROVIDER); null = off, Vanishly works without any login.
   const auth = authIn === undefined ? (config.auth ? new Auth(config.auth, store) : null) : authIn;
+  // AUDIT_LOG (src/audit.js); null = off.
+  const audit = auditIn === undefined ? (config.audit ? new Audit(config.audit, { redis: store.redis, p: store.p, version }) : null) : auditIn;
+  // API_TOKENS (src/tokens.js): personal API tokens; needs sign-in.
+  const tokens = auth?.c.tokens ? new Tokens(auth.c.tokens, store, auth.c, (k, v) => auth.hash(k, v)) : null;
+  app.locals.audit = audit;
+  app.locals.tokens = tokens;
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
   app.set('etag', false);
@@ -127,6 +147,22 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     }
     next();
   });
+
+  // AUDIT_LOG: a run id per request (X-Run-Id or X-Request-Id from the
+  // caller, else new) and the W3C trace context; both go into the events
+  // and back in the answer.
+  if (audit) {
+    app.use((req, res, next) => {
+      const tp = parseTraceparent(req.get('traceparent'));
+      const given = [req.get('x-run-id'), req.get('x-request-id')].find((v) => typeof v === 'string' && /^[\w.:@/+=-]{1,128}$/.test(v));
+      const runId = given || randomUUID();
+      const spanId = randomBytes(8).toString('hex');
+      res.locals.run = { runId, traceId: tp?.traceId || '', spanId: tp ? spanId : '' };
+      res.set({ 'X-Run-Id': runId, 'X-Request-Id': runId });
+      if (tp) res.set('traceparent', `00-${tp.traceId}-${spanId}-${tp.flags}`);
+      next();
+    });
+  }
 
   // Access log without IPs, user agents or the ids of secrets and receipts.
   if (config.accessLog) {
@@ -173,7 +209,24 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     app.use(async (req, res, next) => {
       if (req.path.startsWith('/static/') || req.path.startsWith('/theme/') || req.path === '/healthz') return next();
       try {
-        res.locals.user = await auth.user(req);
+        const bearer = /^Bearer\s+(\S+)$/i.exec(req.get('authorization') || '')?.[1] || '';
+        if (tokens && bearer.startsWith('vnly_')) {
+          // A personal API token: acts as its owner (src/tokens.js).
+          const r = await tokens.verify(bearer, req.ip || '');
+          if (r.ok) {
+            const t = r.record;
+            res.locals.user = { name: t.ownerName, user: t.owner, ids: t.ids, token: { id: t.id, name: t.name, scopes: t.scopes } };
+          } else {
+            res.locals.user = null;
+            res.locals.tokenDenied = r;
+          }
+        } else if (tokens?.c.required && bearer && req.path.startsWith('/api/')) {
+          // API_TOKEN_REQUIRED: no other bearer tokens (AUTH_API_AUDIENCE).
+          res.locals.user = null;
+          res.locals.tokenDenied = { ok: false, reason: 'token_required' };
+        } else {
+          res.locals.user = await auth.user(req);
+        }
       } catch (err) {
         console.error(`auth: ${/** @type {Error} */ (err).message}`);
         res.locals.user = null;
@@ -217,9 +270,155 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     [Boolean(auth) && f.meApi, 'GET', '/v1/me'],
     [Boolean(auth?.c.groups.any), 'GET', '/v1/groups'],
     [Boolean(auth?.c.userGroup), 'GET', '/v1/people'],
+    [Boolean(tokens), 'GET', '/v1/tokens'],
+    [Boolean(tokens), 'POST', '/v1/tokens'],
+    [Boolean(tokens), 'POST', '/v1/tokens/{id}/revoke'],
+    [Boolean(tokens && (auth?.c.admin.users.length || auth?.c.admin.groups.length)), 'GET', '/v1/admin/tokens'],
+    [Boolean(tokens && (auth?.c.admin.users.length || auth?.c.admin.groups.length)), 'POST', '/v1/admin/tokens/{id}/revoke'],
+    [Boolean(auth?.c.admin.auditView), 'GET', '/v1/admin/audit'],
+    [Boolean(auth?.c.admin.auditView && audit?.c.file), 'GET', '/v1/admin/audit/verify'],
   ];
   const endpointsOn = endpointTable.filter(([on]) => on).map(([, method, path]) => /** @type {[string, string]} */ ([method, path]));
   api.use(express.json({ limit: Math.max(64 * 1024, maxCtLen * 2) }));
+
+  // ---------------------------------------------------------------- audit
+  /** The route of a request without ids ("/api/v1/secrets/:id/reveal"). @param {import('express').Request} req */
+  const routeOf = (req) => (req.route?.path ? `${req.baseUrl}${req.route.path}` : req.originalUrl.split('?')[0].replace(/[A-Za-z0-9_-]{22}/g, ':id').replace(/vnly_[0-9a-f]{16}/g, ':token').slice(0, 200));
+  /**
+   * A header with free text (X-Audit-Comment, X-On-Behalf-Of): percent-encoded
+   * or raw UTF-8, cleaned like any comment.
+   * @param {import('express').Request} req @param {string} name @param {number} max
+   */
+  const headerText = (req, name, max) => {
+    const raw = req.get(name);
+    if (typeof raw !== 'string' || !raw) return '';
+    let v = raw;
+    try {
+      v = /%[0-9a-f]{2}/i.test(raw) ? decodeURIComponent(raw) : Buffer.from(raw, 'latin1').toString('utf8');
+    } catch {}
+    return sanitizeText(v, max);
+  };
+  /** Who acts: the signed-in user, an API token (with its owner), an app or nobody. @param {import('express').Request} req @param {import('express').Response} res */
+  const actorOf = (req, res) => {
+    const u = userOf(res);
+    if (!u) return /** @type {import('./audit.js').Actor} */ ({ type: 'anonymous' });
+    if (u.token) return /** @type {import('./audit.js').Actor} */ ({ type: 'api_token', user: u.user, name: u.name, token: { id: u.token.id, name: u.token.name }, onBehalfOf: headerText(req, 'x-on-behalf-of', 200) });
+    if (u.app) return /** @type {import('./audit.js').Actor} */ ({ type: 'app', name: u.name, onBehalfOf: headerText(req, 'x-on-behalf-of', 200) });
+    return /** @type {import('./audit.js').Actor} */ ({ type: 'user', user: u.user, name: u.name });
+  };
+  /**
+   * Writes an audit event for this request. critical: with AUDIT_LOG_FAIL=closed
+   * a failed write throws (503), so the caller refuses or undoes the action.
+   * @param {import('express').Request} req @param {import('express').Response} res @param {string} type
+   * @param {Partial<import('./audit.js').AuditEvent>} [e] @param {boolean} [critical]
+   */
+  const ev = async (req, res, type, e = {}, critical = false) => {
+    if (!audit) return;
+    res.locals.audited = true;
+    const run = res.locals.run || {};
+    try {
+      await audit.log({
+        type,
+        outcome: 'success',
+        actor: actorOf(req, res),
+        runId: run.runId,
+        traceId: run.traceId,
+        spanId: run.spanId,
+        source: { ip: audit.ip(req.ip || ''), userAgent: audit.c.userAgent ? sanitizeText(req.get('user-agent') || '', 300) : '' },
+        http: { method: req.method, route: routeOf(req) },
+        ...e,
+      });
+    } catch {
+      if (critical) throw new ApiError(503, 'audit_unavailable', 'The audit log cannot be written right now; nothing was done');
+    }
+  };
+  /** AUDIT_LOG_FAIL=closed: refuse before anything changes while the log fails. */
+  const auditReady = () => {
+    if (audit && !audit.ready()) throw new ApiError(503, 'audit_unavailable', 'The audit log cannot be written right now; nothing was done');
+  };
+  /** The comment of a request: the "comment" field, else X-Audit-Comment. @param {import('express').Request} req @param {any} b */
+  const commentOf = (req, b) => (b && typeof b.comment === 'string' ? sanitizeText(b.comment, config.comment.max) : headerText(req, 'x-audit-comment', config.comment.max));
+  /**
+   * AUDIT_COMMENT for a new secret: checked and returned (cleaned).
+   * @param {import('express').Request} req @param {import('express').Response} res @param {any} b
+   */
+  const secretComment = (req, res, b) => {
+    if (b.comment !== undefined && b.comment !== null && (typeof b.comment !== 'string' || b.comment.length > config.comment.max * 2)) {
+      throw new ApiError(400, 'invalid_comment', `comment must be a string of at most ${config.comment.max} characters`);
+    }
+    const c = commentOf(req, b);
+    if (config.comment.mode === 'off') {
+      if (typeof b.comment === 'string' && b.comment.trim()) throw new ApiError(400, 'comment_disabled', 'Comments are switched off on this server');
+      return userOf(res)?.token ? c : '';
+    }
+    if (config.comment.mode === 'required' && !c) throw new ApiError(400, 'comment_required', 'This server requires a comment (what the secret is for)');
+    return c;
+  };
+  /** The people of a secret, as names for the log. @param {{ users: string[], groups: string[] }} p */
+  const people = (p) => ({ users: p.users, groups: p.groups });
+
+  // API_TOKENS: refused tokens, API_TOKEN_REQUIRED, scopes, the token's rate
+  // limit, API_TOKEN_COMMENT; and every token call is logged.
+  if (tokens) {
+    api.use(async (req, res, next) => {
+      try {
+        const d = res.locals.tokenDenied;
+        if (d) {
+          const type = d.reason === 'expired' ? 'api.token_expired' : d.reason === 'ip_denied' ? 'api.ip_denied' : 'api.token_denied';
+          const r = d.record;
+          await ev(req, res, type, {
+            outcome: 'denied',
+            reason: d.reason,
+            ...(r ? { actor: { type: 'api_token', user: r.owner, name: r.ownerName, token: { id: r.id, name: r.name } } } : {}),
+            details: r && d.reason === 'ip_denied' ? { allowed_networks: r.ips } : undefined,
+          });
+          if (d.reason === 'ip_denied') throw new ApiError(403, 'ip_not_allowed', 'This token may not be used from this address');
+          if (d.reason === 'token_required') throw new ApiError(401, 'token_required', 'This server takes only its own API tokens (vnly_...)');
+          throw new ApiError(401, d.reason === 'expired' ? 'token_expired' : 'invalid_token', d.reason === 'expired' ? 'The token has expired' : 'The token is unknown, revoked or malformed');
+        }
+        const u = userOf(res);
+        if (u?.token) {
+          // Every call with a token, with its answer: "api.token_used".
+          res.on('finish', () => {
+            const st = res.statusCode;
+            ev(req, res, 'api.token_used', {
+              outcome: st < 400 ? 'success' : st >= 500 ? 'error' : 'denied',
+              reason: res.locals.errorCode,
+              comment: commentOf(req, req.body),
+              http: { method: req.method, route: routeOf(req), status: st },
+            });
+          });
+          if (tokens.c.rateLimit) {
+            const r = await store.rateLimit('tok', u.token.id, tokens.c.rateLimit, config.rateWindow);
+            if (!r.ok) {
+              res.set('Retry-After', String(r.retryAfter));
+              throw new ApiError(429, 'rate_limited', 'Too many requests with this token');
+            }
+          }
+          if (tokens.c.comment === 'required' && req.method === 'POST' && !commentOf(req, req.body)) {
+            throw new ApiError(400, 'comment_required', 'This server requires a comment on every API call (X-Audit-Comment or "comment")');
+          }
+          return next();
+        }
+        // API_TOKEN_REQUIRED: without a token only this server's own pages.
+        if (tokens.c.required && /^\/v1\//.test(req.path) && !fromPage(req)) {
+          await ev(req, res, 'api.denied', { outcome: 'denied', reason: 'token_required' });
+          throw new ApiError(401, 'token_required', 'This server requires an API token (Authorization: Bearer vnly_...); create one on the API tokens page');
+        }
+        next();
+      } catch (err) {
+        next(err);
+      }
+    });
+  }
+  /**
+   * A token needs the scope for this call (create, read, status).
+   * @param {import('express').Response} res @param {string} scope
+   */
+  const needScope = (res, scope) => {
+    const t = userOf(res)?.token;
+    if (t && !t.scopes.includes(scope)) throw new ApiError(403, 'insufficient_scope', `This token lacks the scope "${scope}"`, { scope });
+  };
 
   /** @param {'create' | 'read'} bucket */
   const limit = (bucket) => /** @type {import('express').RequestHandler} */ (async (req, res, next) => {
@@ -334,7 +533,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   };
   /** "recipients" (addresses) and "recipientGroups": who may open it. @param {any} b @param {import('express').Response} res */
   const recipientsOf = (b, res) =>
-    peopleOf(b.recipients, b.recipientGroups, res, { field: 'recipients', groupField: 'recipientGroups', mode: auth?.c.recipients || 'optional', code: 'recipient', what: 'recipient', required: 'This server requires at least one recipient' }).ids;
+    peopleOf(b.recipients, b.recipientGroups, res, { field: 'recipients', groupField: 'recipientGroups', mode: auth?.c.recipients || 'optional', code: 'recipient', what: 'recipient', required: 'This server requires at least one recipient' });
   /**
    * "responsible" and "responsibleGroups" (RESPONSIBLE): who looks after it:
    * may see the status and burn it (STATUS_ACCESS=signed-in).
@@ -369,6 +568,46 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     const user = userOf(res);
     if (!user) throw new ApiError(401, 'login_required', 'This secret is only for certain people: sign in first');
     if (!Auth.allowed(user, to)) throw new ApiError(403, 'not_recipient', 'This secret was not shared with your account');
+  };
+  /**
+   * mayOpen() with the refusal in the audit log ("secret.reveal_denied").
+   * @param {import('express').Request} req @param {import('express').Response} res @param {string} id
+   */
+  const mayOpenLogged = async (req, res, id) => {
+    try {
+      await mayOpen(id, res);
+    } catch (err) {
+      await ev(req, res, 'secret.reveal_denied', { outcome: 'denied', reason: /** @type {ApiError} */ (err).code, secret: { ref: audit?.ref('s', id) } });
+      throw err;
+    }
+  };
+  /**
+   * The outcome of a reveal (page or /v1/open) in the audit log. A handed-out
+   * secret is logged before the answer (critical): without the event no
+   * ciphertext leaves the server.
+   * @param {import('express').Request} req @param {import('express').Response} res @param {string} id @param {any} r from store.reveal()
+   * @param {string} via
+   */
+  const revealLogged = async (req, res, id, r, via) => {
+    const secret = validId(id) ? { ref: audit?.ref('s', id) } : undefined;
+    if (r.status === 'ok') return ev(req, res, 'secret.revealed', { secret, details: { views_left: r.viewsLeft, via } }, true);
+    if (r.status === 'badpass') return ev(req, res, 'secret.reveal_denied', { outcome: 'denied', reason: 'bad_passphrase', secret, details: { attempts_left: r.attemptsLeft, via } });
+    if (r.status === 'burned') return ev(req, res, 'secret.burned', { reason: 'passphrase_attempts', secret, details: { via } });
+    return ev(req, res, 'secret.reveal_denied', { outcome: 'denied', reason: 'not_found', secret, details: { via } });
+  };
+  /**
+   * "secret.created" (critical): when it cannot be written (AUDIT_LOG_FAIL=closed)
+   * the new secret is deleted again and the request fails.
+   * @param {import('express').Request} req @param {import('express').Response} res
+   * @param {Awaited<ReturnType<typeof store.create>>} s @param {any} e
+   */
+  const createdLogged = async (req, res, s, e) => {
+    try {
+      await ev(req, res, 'secret.created', { secret: { ref: audit?.ref('s', s.id), receiptRef: s.receiptId ? audit?.ref('r', s.receiptId) : undefined }, ...e }, true);
+    } catch (err) {
+      await store.discard(s.id, s.rid);
+      throw err;
+    }
   };
   /** RECEIPT_SHOW_VIEWER: "name<TAB>address" for the view log. @param {import('express').Response} res */
   const viewerName = (res) => {
@@ -407,9 +646,9 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   const fromPage = (req) => req.get('sec-fetch-site') === 'same-origin';
   if (!config.api) {
     api.use((req, _res, next) => {
-      const own = fromPage(req) && /^\/v1\/(secrets|receipts|me|groups|people)(\/|$)/.test(req.path);
+      const own = fromPage(req) && /^\/v1\/(secrets|receipts|me|groups|people|tokens|admin)(\/|$)/.test(req.path);
       // Known paths: switched off; anything else falls through to not_found.
-      const known = /^\/(v1(\/(config|secrets|share|open|receipts|me|groups|people)(\/.*)?)?\/?|openapi\.json|docs(\/.*)?)?$/.test(req.path);
+      const known = /^\/(v1(\/(config|secrets|share|open|receipts|me|groups|people|tokens|admin)(\/.*)?)?\/?|openapi\.json|docs(\/.*)?)?$/.test(req.path);
       next(own ? undefined : known ? disabled() : undefined);
     });
   }
@@ -520,6 +759,8 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   api.post('/v1/secrets', limit('create'), async (req, res) => {
     pagesOnly(config.features.createApi, req);
     mayCreate(res);
+    needScope(res, 'create');
+    auditReady();
     const b = req.body || {};
     if (b.v !== undefined && b.v !== 1) throw new ApiError(400, 'invalid_version', 'Only format v1 is known');
     if (!check(b.ciphertext, /^[A-Za-z0-9_-]{22,}$/)) {
@@ -546,7 +787,9 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     // MIN_PASSPHRASE_LENGTH cannot be checked here: the passphrase never
     // leaves the browser. The form enforces it; /v1/share checks it.
     if (config.confirmCheckbox && b.confirmed !== true) throw confirmationRequired(res);
-    const to = recipientsOf(b, res);
+    const comment = secretComment(req, res, b);
+    const rcp = recipientsOf(b, res);
+    const to = rcp.ids;
     const resp = responsibleOf(b, res);
     const noPass = b.verifier ? null : passphraseNeeded(to);
     if (noPass) throw noPass;
@@ -556,9 +799,15 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       ttl,
       views,
       to,
-      statusOf(res, resp),
+      { ...statusOf(res, resp), comment: config.comment.mode !== 'off' ? comment : '' },
     );
-    res.status(201).json(created(s));
+    await createdLogged(req, res, s, {
+      recipients: people(rcp),
+      responsible: people(resp),
+      comment,
+      details: { encrypted: 'browser', ttl_s: ttl, expires: new Date(s.expires).toISOString(), max_views: views, passphrase: s.passphrase, restricted: s.restricted, size: sizeBucket(Math.floor((b.ciphertext.length * 3) / 4) - 16) },
+    });
+    res.status(201).json({ ...created(s), ...(comment && config.comment.mode !== 'off' ? { comment } : {}) });
   });
 
   // Encrypts on the server for scripts without crypto (curl): the key is
@@ -566,6 +815,8 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   api.post('/v1/share', limit('create'), async (req, res) => {
     if (!config.features.shareApi) throw disabled();
     mayCreate(res);
+    needScope(res, 'create');
+    auditReady();
     const b = req.body || {};
     if (typeof b.secret !== 'string' || b.secret.length === 0) {
       throw new ApiError(400, 'invalid_secret', 'secret must be a non-empty string');
@@ -582,7 +833,9 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     if (pass && !config.features.passphrase) {
       throw new ApiError(400, 'passphrase_disabled', 'Passphrases are switched off on this server');
     }
-    const to = recipientsOf(b, res);
+    const comment = secretComment(req, res, b);
+    const rcp = recipientsOf(b, res);
+    const to = rcp.ids;
     const resp = responsibleOf(b, res);
     const noPass = pass ? null : passphraseNeeded(to);
     if (noPass) throw noPass;
@@ -595,10 +848,17 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     }
     const { ttl, views } = options(b);
     const { key, payload } = await encryptSecret(b.secret, pass);
-    const s = await store.create(payload, ttl, views, to, statusOf(res, resp));
+    const s = await store.create(payload, ttl, views, to, { ...statusOf(res, resp), comment: config.comment.mode !== 'off' ? comment : '' });
+    await createdLogged(req, res, s, {
+      recipients: people(rcp),
+      responsible: people(resp),
+      comment,
+      details: { encrypted: 'server', ttl_s: ttl, expires: new Date(s.expires).toISOString(), max_views: views, passphrase: s.passphrase, restricted: s.restricted, size: sizeBucket(Buffer.byteLength(b.secret)) },
+    });
     const o = origin(req);
     res.status(201).json({
       ...created(s),
+      ...(comment && config.comment.mode !== 'off' ? { comment } : {}),
       shareUrl: `${o}/s/${s.id}#${key}`,
       receiptUrl: s.receiptId ? `${o}/r/${s.receiptId}${config.features.receiptShareLink ? `#${key}` : ''}` : null,
     });
@@ -606,9 +866,10 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
 
   api.get('/v1/secrets/:id', limit('read'), async (req, res) => {
     switchedOff(config.features.secretMetaApi);
+    needScope(res, 'read');
     const id = String(req.params.id);
     // Restricted: the salt and the views only for a recipient.
-    await mayOpen(id, res);
+    await mayOpenLogged(req, res, id);
     const m = validId(id) ? await store.meta(id) : null;
     if (!m) throw new ApiError(404, 'not_found', 'Unknown, viewed, burned or expired');
     res.json({ ...m, expires: new Date(m.expires).toISOString() });
@@ -621,8 +882,11 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     if (verifier !== undefined && verifier !== null && !check(verifier, /^[A-Za-z0-9_-]{43}$/)) {
       throw new ApiError(400, 'invalid_verifier', 'verifier must be 32 bytes, base64url');
     }
-    await mayOpen(id, res);
+    needScope(res, 'read');
+    auditReady();
+    await mayOpenLogged(req, res, id);
     const r = validId(id) ? await store.reveal(id, verifier || undefined, viewerName(res), openerOf(res)) : /** @type {const} */ ({ status: 'notfound' });
+    await revealLogged(req, res, id, r, 'browser');
     if (r.status === 'ok') return void res.json({ ...r.payload, viewsLeft: r.viewsLeft });
     if (r.status === 'badpass') {
       throw new ApiError(403, 'bad_passphrase', 'Wrong passphrase', { attemptsLeft: r.attemptsLeft });
@@ -640,6 +904,8 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   // forgets both. Same trust as /v1/share; browsers decrypt themselves.
   api.post('/v1/open', limit('read'), async (req, res) => {
     if (!config.features.openApi) throw disabled();
+    needScope(res, 'read');
+    auditReady();
     const b = req.body || {};
     const m = typeof b.link === 'string' ? /\/s\/([A-Za-z0-9_-]{22})#([A-Za-z0-9_-]{43})$/.exec(b.link.trim()) : null;
     if (!m) throw new ApiError(400, 'invalid_link', 'link must be a full secret link: https://.../s/<id>#<key>');
@@ -647,7 +913,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       throw new ApiError(400, 'invalid_passphrase', 'passphrase must be a string of at most 1000 characters');
     }
     const [, id, key] = m;
-    await mayOpen(id, res);
+    await mayOpenLogged(req, res, id);
     const meta = await store.meta(id);
     if (!meta) throw new ApiError(404, 'not_found', 'Unknown, viewed, burned or expired');
     /** @type {Uint8Array | undefined} */
@@ -659,6 +925,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       verifier = await verifierFor(pk, meta);
     }
     const r = await store.reveal(id, verifier, viewerName(res), openerOf(res));
+    await revealLogged(req, res, id, r, 'server');
     if (r.status === 'badpass') {
       throw new ApiError(403, 'bad_passphrase', 'Wrong passphrase', { attemptsLeft: r.attemptsLeft });
     }
@@ -676,10 +943,19 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
 
   api.get('/v1/receipts/:id', receiptsOn, limit('read'), async (req, res) => {
     pagesOnly(config.features.receiptApi, req);
+    needScope(res, 'status');
     const id = String(req.params.id);
     const r = validId(id) ? await store.receipt(id) : null;
     if (!r) throw new ApiError(404, 'not_found', 'Unknown or too old');
-    const may = statusAccessOf(r, res, 'view');
+    const refs = { ref: audit?.ref('s', r.secretId), receiptRef: audit?.ref('r', id) };
+    let may;
+    try {
+      may = statusAccessOf(r, res, 'view');
+    } catch (err) {
+      await ev(req, res, 'receipt.denied', { outcome: 'denied', reason: /** @type {ApiError} */ (err).code, secret: refs });
+      throw err;
+    }
+    await ev(req, res, 'receipt.viewed', { secret: refs, details: { state: r.state } });
     const signedIn = config.statusAccess === 'signed-in';
     res.json({
       state: r.state,
@@ -700,20 +976,170 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       creator: signedIn ? r.who?.creator || null : null,
       responsible: signedIn && r.who ? r.who.responsible : { users: [], groups: [] },
       mayBurn: config.features.burn && may.burn,
+      ...(config.comment.mode !== 'off' && r.comment ? { comment: r.comment } : {}),
     });
   });
 
   api.post('/v1/receipts/:id/burn', receiptsOn, limit('read'), async (req, res) => {
     pagesOnly(config.features.receiptApi, req);
     if (!config.features.burn) throw disabled();
+    needScope(res, 'status');
     const id = String(req.params.id);
     const rec = validId(id) ? await store.receipt(id) : null;
     if (!rec) throw new ApiError(404, 'not_found', 'Unknown or too old');
-    statusAccessOf(rec, res, 'burn');
+    const refs = { ref: audit?.ref('s', rec.secretId), receiptRef: audit?.ref('r', id) };
+    try {
+      statusAccessOf(rec, res, 'burn');
+    } catch (err) {
+      await ev(req, res, 'secret.burn_denied', { outcome: 'denied', reason: /** @type {ApiError} */ (err).code, secret: refs });
+      throw err;
+    }
     const r = await store.burn(id);
     if (r === null) throw new ApiError(404, 'not_found', 'Unknown or too old');
     if (!r) throw new ApiError(409, 'gone', 'The secret is already gone');
+    await ev(req, res, 'secret.burned', { reason: 'manual', secret: refs, comment: commentOf(req, req.body) });
     res.json({ state: 'burned' });
+  });
+
+  // ------------------------------------------------------------ API tokens
+  // Only with a session (the token page), never with a token: a token cannot
+  // make, list or revoke tokens.
+  /** @param {import('express').Response} res */
+  const sessionUser = (res) => {
+    const u = userOf(res);
+    if (!u || u.app || !u.user) throw new ApiError(401, 'login_required', 'Sign in first');
+    if (u.token) throw new ApiError(403, 'session_required', 'API tokens are managed on the API tokens page, not with a token');
+    return u;
+  };
+  /** @param {import('express').Response} res */
+  const adminUser = (res) => {
+    const u = sessionUser(res);
+    if (!auth?.isAdmin(u)) throw new ApiError(403, 'not_admin', 'Only admins (ADMIN_USERS, ADMIN_GROUPS)');
+    return u;
+  };
+  /** @param {import('express').Request} req */
+  const tokenOptions = (req) =>
+    tokens && {
+      expiry: tokens.c.expiryOptions,
+      defaultExpiry: tokens.c.defaultExpiry,
+      maxExpiry: tokens.c.maxExpiry,
+      ipBinding: tokens.c.ipBinding,
+      scopes: SCOPES,
+      maxPerUser: tokens.c.maxPerUser,
+      comment: tokens.c.comment,
+      // The caller's own address as this server sees it (TRUST_PROXY), to bind a token to it.
+      yourIp: String(req.ip || '').replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/, '$1'),
+    };
+  /** @param {import('./tokens.js').TokenRecord} r */
+  const tokenRef = (r) => ({ id: r.id, name: r.name });
+
+  api.get('/v1/tokens', limit('read'), async (req, res) => {
+    if (!tokens) throw disabled();
+    const u = sessionUser(res);
+    res.json({ mayCreate: tokens.mayCreate(u), options: tokenOptions(req), tokens: (await tokens.list(u.user)).map((t) => Tokens.view(t)) });
+  });
+
+  api.post('/v1/tokens', limit('create'), async (req, res) => {
+    if (!tokens) throw disabled();
+    const u = sessionUser(res);
+    auditReady();
+    if (!tokens.mayCreate(u)) {
+      await ev(req, res, 'api.token_create_denied', { outcome: 'denied', reason: 'not_enabled' });
+      throw new ApiError(403, 'tokens_not_allowed', 'Your account may not create API tokens; ask an admin to enable it');
+    }
+    const r = await tokens.create(u, req.body || {});
+    if ('error' in r) throw new ApiError(400, r.error, r.message);
+    const t = r.record;
+    try {
+      await ev(req, res, 'api.token_created', { details: { token: tokenRef(t), expires: t.expires ? new Date(t.expires).toISOString() : 'never', networks: t.ips, scopes: t.scopes } }, true);
+    } catch (err) {
+      await tokens.revoke(t.id, '', 'audit failure');
+      throw err;
+    }
+    // The token itself only in this one answer.
+    res.status(201).json({ token: r.token, ...Tokens.view(t) });
+  });
+
+  api.post('/v1/tokens/:id/revoke', limit('create'), async (req, res) => {
+    if (!tokens) throw disabled();
+    const u = sessionUser(res);
+    const t = await tokens.revoke(String(req.params.id), u.user, u.user);
+    if (!t) throw new ApiError(404, 'not_found', 'No such token');
+    await ev(req, res, 'api.token_revoked', { details: { token: tokenRef(t), owner: t.owner } });
+    res.json(Tokens.view(t));
+  });
+
+  // ------------------------------------------------------------ admin
+  api.get('/v1/admin/tokens', limit('read'), async (req, res) => {
+    if (!tokens || !auth?.c.admin.users.length && !auth?.c.admin.groups.length) throw disabled();
+    adminUser(res);
+    await ev(req, res, 'admin.tokens_listed');
+    res.json({ tokens: (await tokens.list('')).map((t) => Tokens.view(t)) });
+  });
+
+  api.post('/v1/admin/tokens/:id/revoke', limit('create'), async (req, res) => {
+    if (!tokens || !auth?.c.admin.users.length && !auth?.c.admin.groups.length) throw disabled();
+    const u = adminUser(res);
+    const t = await tokens.revoke(String(req.params.id), '', u.user);
+    if (!t) throw new ApiError(404, 'not_found', 'No such token');
+    await ev(req, res, 'admin.token_revoked', { details: { token: tokenRef(t), owner: t.owner }, comment: commentOf(req, req.body) });
+    res.json(Tokens.view(t));
+  });
+
+  /**
+   * The filter of the audit view from the query string.
+   * @param {import('express').Request} req
+   */
+  const auditFilter = (req) => {
+    /** @param {string} k @param {number} [max] */
+    const q = (k, max = 200) => (typeof req.query[k] === 'string' ? sanitizeText(req.query[k], max) : '');
+    /** @param {string} k */
+    const time = (k) => {
+      const v = q(k, 40);
+      if (!v) return undefined;
+      const t = Date.parse(v);
+      if (Number.isNaN(t)) throw new ApiError(400, 'invalid_time', `${k}: an ISO 8601 time, e.g. 2026-10-29T12:00:00Z`);
+      return t;
+    };
+    const limitN = q('limit', 6) ? Number(q('limit', 6)) : 200;
+    if (!Number.isInteger(limitN) || limitN < 1 || limitN > 5000) throw new ApiError(400, 'invalid_limit', 'limit: 1 to 5000');
+    const outcome = q('outcome', 10);
+    if (outcome && !/^(success|denied|error)$/.test(outcome)) throw new ApiError(400, 'invalid_outcome', 'outcome: success, denied or error');
+    return { type: q('type', 64), actor: q('actor'), recipient: q('recipient'), runId: q('runId', 128), outcome, q: q('q'), from: time('from'), to: time('to'), limit: limitN };
+  };
+
+  api.get('/v1/admin/audit', limit('read'), async (req, res) => {
+    if (!auth?.c.admin.auditView || !audit) throw disabled();
+    adminUser(res);
+    auditReady();
+    const f = auditFilter(req);
+    const format = req.query.format === 'csv' ? 'csv' : req.query.format === 'jsonl' ? 'jsonl' : 'json';
+    // Reading the log is logged too (critical: no unlogged look).
+    await ev(req, res, format === 'json' ? 'admin.audit_viewed' : 'admin.audit_exported', { details: { filter: { ...f, from: f.from ? new Date(f.from).toISOString() : undefined, to: f.to ? new Date(f.to).toISOString() : undefined }, format } }, true);
+    const { records, source } = await audit.query(f);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    if (format === 'jsonl') {
+      res.set('Content-Disposition', `attachment; filename="vanishly-audit-${stamp}.jsonl"`).type('application/x-ndjson');
+      return void res.send(records.map((r) => JSON.stringify(r)).join('\n') + (records.length ? '\n' : ''));
+    }
+    if (format === 'csv') {
+      const cols = ['ts', 'type', 'outcome', 'reason', 'actor_type', 'actor', 'actor_name', 'token', 'on_behalf_of', 'recipients', 'comment', 'run_id', 'ip', 'route', 'secret_ref', 'instance', 'seq'];
+      const rows = records.map((r) => {
+        const n = normalize(r);
+        return [n.ts, n.type, n.outcome, n.reason, n.actor.type, n.actor.user, n.actor.name, n.actor.token, n.actor.onBehalfOf, n.recipients, n.comment, n.runId, n.ip, n.route, n.secretRef, n.instance, n.seq].map(csvCell).join(',');
+      });
+      res.set('Content-Disposition', `attachment; filename="vanishly-audit-${stamp}.csv"`).type('text/csv; charset=utf-8');
+      return void res.send([cols.join(','), ...rows].join('\r\n') + '\r\n');
+    }
+    res.json({ source, format: audit.c.format, count: records.length, events: records.map((r) => ({ ...normalize(r), raw: r })) });
+  });
+
+  api.get('/v1/admin/audit/verify', limit('read'), async (req, res) => {
+    if (!auth?.c.admin.auditView || !audit?.c.file) throw disabled();
+    adminUser(res);
+    const result = await audit.verifyFile();
+    await ev(req, res, 'admin.audit_verified', { outcome: result?.ok ? 'success' : 'error', reason: result?.ok ? '' : 'chain_broken', details: { entries: result?.entries, errors: result?.errors.length } });
+    res.json(result);
   });
 
   api.get('/openapi.json', (_req, res) => {
@@ -750,8 +1176,14 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
 
   api.use((_req, _res, next) => next(new ApiError(404, 'not_found', 'No such endpoint')));
   api.use(
-    /** @type {import('express').ErrorRequestHandler} */ ((err, _req, res, _next) => {
+    /** @type {import('express').ErrorRequestHandler} */ ((err, req, res, _next) => {
       if (err instanceof ApiError) {
+        res.locals.errorCode = err.code;
+        // Refusals (401, 403, 429) not logged yet: "api.request_denied". Token
+        // calls are in "api.token_used" with the reason anyway.
+        if (audit && !res.locals.audited && !userOf(res)?.token && [401, 403, 429].includes(err.status)) {
+          ev(req, res, 'api.request_denied', { outcome: 'denied', reason: err.code });
+        }
         return void res.status(err.status).json({ error: err.code, message: err.message, ...err.extra });
       }
       if (err?.type === 'entity.too.large') {
@@ -777,7 +1209,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
   /** @param {import('express').Response} res */
   const lang = (res) => /** @type {string} */ (res.locals.lang);
 
-  const COMMON = ['theme', 'created', 'error', 'reveal', 'receipt', 'gone', 'views', 'rule', 'home', 'a11y', 'auth'];
+  const COMMON = ['theme', 'created', 'error', 'reveal', 'receipt', 'gone', 'views', 'rule', 'home', 'a11y', 'auth', 'tokens', 'admin'];
 
   /**
    * "Sign in" or the signed-in user with "Sign out" in the header.
@@ -804,6 +1236,9 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
       (u.user && u.user !== name ? `<span class="nav-user-mail">${escapeHtml(u.user).replace(/@/g, '<wbr>@').replace(/([.-])/g, '$1<wbr>')}</span>` : '') +
       `</span><span class="nav-caret" aria-hidden="true"></span></summary>` +
       `<div class="nav-menu-panel">` +
+      // API_TOKENS: the user's own tokens; admins: the audit log and all tokens.
+      (tokens?.mayCreate(u) ? `<a class="nav-menu-item" href="/settings/tokens">${escapeHtml(t['nav.tokens'])}</a>` : '') +
+      (auth.isAdmin(u) && (auth.c.admin.auditView || tokens) ? `<a class="nav-menu-item" href="/admin">${escapeHtml(t[auth.c.admin.auditView ? 'nav.audit' : 'nav.admin'])}</a>` : '') +
       `<form class="nav-logout" method="post" action="/auth/logout"><button type="submit" class="nav-menu-item">${escapeHtml(t['nav.signOut'])}</button></form>` +
       `<form class="nav-switch" method="post" action="/auth/logout" data-login><input type="hidden" name="return" value="${escapeHtml(back)}">` +
       `<button type="submit" class="nav-menu-item">${escapeHtml(t['reveal.switchAccount'])}</button></form>` +
@@ -865,11 +1300,21 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
         const declined = providerError ? await auth.silentDeclined(search) : null;
         if (declined) return res.redirect(303, declined);
         if (providerError) throw new Error(`the provider answered ${providerError}`);
-        const { sid, returnTo } = await auth.callback(search);
+        const { sid, returnTo, who } = await auth.callback(search);
+        try {
+          await ev(req, res, 'auth.login', { actor: { type: 'user', user: who.user, name: who.name } }, true);
+        } catch {
+          // AUDIT_LOG_FAIL=closed: no sign-in the audit log does not know of.
+          await auth.dropSession(sid);
+          return errorPage(req, res, 503, theme.strings[lang(res)]['auth.unavailable']);
+        }
+        // The user's API tokens act with the groups of this sign-in.
+        await tokens?.refresh(who).catch(() => {});
         auth.setCookie(res, sid);
         res.redirect(303, returnTo);
       } catch (err) {
         console.error(`auth: sign-in failed: ${/** @type {Error} */ (err).message}`);
+        await ev(req, res, 'auth.failed', { outcome: 'denied', reason: providerError || 'sign_in_failed' });
         errorPage(req, res, 400, theme.strings[lang(res)]['auth.failed']);
       }
     });
@@ -878,6 +1323,7 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
     app.post('/auth/logout', express.urlencoded({ extended: false, limit: '1kb' }), async (req, res) => {
       const site = req.get('sec-fetch-site');
       if (site && site !== 'same-origin') return errorPage(req, res, 403, theme.strings[lang(res)]['error.generic']);
+      if (userOf(res)) await ev(req, res, 'auth.logout');
       const idToken = await auth.logout(req, res);
       const back = typeof req.body?.return === 'string' && RETURN.test(req.body.return) ? req.body.return : '';
       // AUTH_LOGOUT=provider: end the provider's session too, or it signs the same account in again.
@@ -1008,10 +1454,18 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
         return `<option value="${n}">${label}</option>`;
       })
       .join('');
+    // AUDIT_COMMENT: what the secret is for; into the audit log, not the secret.
+    const cm = config.comment;
+    const commentBlock =
+      cm.mode === 'off'
+        ? ''
+        : `<div class="field" id="comment-wrap"><label for="comment">${escapeHtml(t[cm.mode === 'required' ? 'home.commentRequired' : 'home.comment'])}</label>` +
+          `<input type="text" id="comment" name="comment" maxlength="${cm.max}" autocomplete="off" aria-describedby="comment-hint"${cm.mode === 'required' ? ' aria-required="true" data-required="1"' : ''}>` +
+          `<div class="hint" id="comment-hint">${escapeHtml(t['home.commentHint'])}</div></div>`;
     res.type('html').send(
       page('home', req, res, {
           page: 'home',
-          recipientsBlock: recipientsBlock(res),
+          recipientsBlock: recipientsBlock(res) + commentBlock,
           ttlSelect,
           viewsSelect,
           maxChars: config.maxSecretChars,
@@ -1079,6 +1533,56 @@ export function createApp({ config, store, theme, version, auth: authIn }) {
               ? t['reveal.introOnce']
               : t['reveal.intro'].replace('{n}', String(m.viewsLeft)),
         }),
+    );
+  });
+
+  // API_TOKENS: the user's own tokens ("API tokens" in the user menu).
+  app.get('/settings/tokens', (req, res, next) => {
+    if (!tokens) return next();
+    const t = theme.strings[lang(res)];
+    const u = userOf(res);
+    if (!u) return void res.type('html').send(page('login', req, res, { page: 'login', title: t['tokens.title'], heading: t['tokens.title'], text: t['tokens.loginText'], returnTo: '/settings/tokens' }));
+    const c = tokens.c;
+    const expirySelect = c.expiryOptions
+      .map((o) => `<option value="${escapeHtml(o)}"${o === c.defaultExpiry ? ' selected' : ''}>${escapeHtml(o === 'never' ? t['tokens.never'] : (t[`tokens.unit.${o.slice(-1)}.${o.slice(0, -1) === '1' ? 1 : 'n'}`] || o).replace('{n}', o.slice(0, -1)))}</option>`)
+      .join('');
+    const scopeBoxes = SCOPES.map(
+      (sc) => `<div class="check"><input type="checkbox" id="scope-${sc}" name="scopes" value="${sc}"${sc !== 'read' ? ' checked' : ''}><label for="scope-${sc}">${escapeHtml(t[`tokens.scope.${sc}`])}</label></div>`,
+    ).join('');
+    res.type('html').send(
+      page('tokens', req, res, {
+        page: 'tokens',
+        title: t['tokens.title'],
+        allowed: tokens.mayCreate(u) ? '1' : '0',
+        expirySelect,
+        scopeBoxes,
+        ipsLabel: t[c.ipBinding === 'required' ? 'tokens.ipsRequired' : 'tokens.ips'],
+        ipsRequired: c.ipBinding === 'required' ? '1' : '0',
+        ipsHint: t['tokens.ipsHint'].replace('{ip}', String(req.ip || '').replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/, '$1')),
+        commentNote: c.comment === 'required' ? t['tokens.commentRequired'] : '',
+        origin: config.baseUrl || `${req.protocol}://${req.get('host')}`,
+      }),
+    );
+  });
+
+  // Admins: the audit log (filter, export, chain check) and all API tokens.
+  app.get('/admin', async (req, res, next) => {
+    if (!auth || (!auth.c.admin.auditView && !tokens)) return next();
+    const t = theme.strings[lang(res)];
+    const u = userOf(res);
+    if (!u) return void res.type('html').send(page('login', req, res, { page: 'login', title: t['admin.title'], heading: t['admin.title'], text: t['admin.loginText'], returnTo: '/admin' }));
+    if (!auth.isAdmin(u)) {
+      await ev(req, res, 'admin.denied', { outcome: 'denied', reason: 'not_admin' });
+      return errorPage(req, res, 403, t['admin.notAllowed']);
+    }
+    res.type('html').send(
+      page('admin', req, res, {
+        page: 'admin',
+        title: t['admin.title'],
+        audit: auth.c.admin.auditView ? '1' : '0',
+        verify: auth.c.admin.auditView && audit?.c.file ? '1' : '0',
+        tokens: tokens ? '1' : '0',
+      }),
     );
   });
 

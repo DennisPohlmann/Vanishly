@@ -4,9 +4,9 @@
 //   s:<id>      hash  ct iv salt it vh views attempts rid created expires [to]
 //               expires with the secret; deleted on the last view or burn;
 //               to = the hashed recipients (src/auth.js), space-separated
-//   r:<rid>     hash  sid created expires maxViews viewsLeft state pass burned [rc]
+//   r:<rid>     hash  sid created expires maxViews viewsLeft state pass burned [rc] [cm]
 //               the creator's receipt; kept RECEIPT_KEEP seconds longer;
-//               rc = number of recipients
+//               rc = number of recipients; cm = the comment (AUDIT_COMMENT)
 //   r:<rid>:v   list  times of the views (no IPs, no user agents); with
 //               RECEIPT_SHOW_VIEWER "time<TAB>name" of the signed-in viewer
 //   rl:<bucket>:<ip-hash>  counter for the rate limits
@@ -130,9 +130,9 @@ export class Store {
    * @param {number} ttl seconds
    * @param {number} views
    * @param {string[]} [to] hashed recipients; empty = anyone with the link
-   * @param {{ creator?: string, responsible?: string[], who?: any }} [status] for the status page
+   * @param {{ creator?: string, responsible?: string[], who?: any, comment?: string }} [status] for the status page
    *   (STATUS_ACCESS=signed-in): the creator's hash, the hashed responsible people and groups, and
-   *   names to show (creator, responsible), kept only with the receipt
+   *   names to show (creator, responsible), kept only with the receipt; the comment (AUDIT_COMMENT)
    */
   async create(payload, ttl, views, to = [], status = {}) {
     const id = newId();
@@ -171,10 +171,20 @@ export class Store {
         ...(status.creator ? { cr: status.creator } : {}),
         ...(status.responsible?.length ? { rs: status.responsible.join(' ') } : {}),
         ...(status.who ? { who: JSON.stringify(status.who) } : {}),
+        ...(status.comment ? { cm: status.comment } : {}),
       }).pExpireAt(r, expires + this.receiptKeep * 1000);
     }
     await tx.exec();
-    return { id, receiptId: this.receipts ? rid : null, created: now, expires, views, passphrase: Boolean(pass), restricted: to.length > 0 };
+    return { id, rid, receiptId: this.receipts ? rid : null, created: now, expires, views, passphrase: Boolean(pass), restricted: to.length > 0 };
+  }
+
+  /**
+   * Removes a secret and its receipt that were just made (the audit log
+   * could not record them, AUDIT_LOG_FAIL=closed).
+   * @param {string} id @param {string} rid
+   */
+  async discard(id, rid) {
+    await this.redis.del([`${this.p}s:${id}`, `${this.p}r:${rid}`]);
   }
 
   /**
@@ -293,6 +303,7 @@ export class Store {
       creator: h.cr || '',
       responsible: h.rs ? h.rs.split(' ') : [],
       who: h.who ? JSON.parse(h.who) : null,
+      comment: h.cm || '',
       openers,
     };
   }

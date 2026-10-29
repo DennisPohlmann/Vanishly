@@ -158,6 +158,58 @@ only that provider has) and what each supports:
 | `RESPONSIBLE` | `off` | People or groups who look after a secret: `off`, `optional` or `required` (every secret must name one). In the form a folded "Responsible" section with the same picker as the recipients; on the API `responsible` and `responsibleGroups`. Checked like recipients, stored as keyed hashes |
 | `STATUS_ACCESS` | `signed-in` with sign-in, else `link` | Who may see the status page: `link` (whoever has the status link, as before) or `signed-in` (the creator, the responsible people and who opened the secret, after sign-in; only creator and responsible may burn it). See [Status page](#status-page) |
 
+### Audit log (`AUDIT_LOG*`, `AUDIT_COMMENT*`)
+
+Off by default (nothing changes for existing setups). Details, event list
+and format: [Audit log](#audit-log) below and
+[INTERFACE.md](INTERFACE.md#audit-log); shipping to Loki, Elastic, Splunk
+or an OpenTelemetry Collector: [INSTALLATION.md](INSTALLATION.md#11-audit-log-shipping).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AUDIT_LOG` | `false` | `true`: write an audit event for every action (who, what, when, for whom, comment, run id, source address), tamper-evident (hash chain). Works with and without sign-in |
+| `AUDIT_LOG_FORMAT` | `ecs` | `ecs` (Elastic Common Schema: `@timestamp`, `event.action`, `user.name`, `source.ip`, `trace.id`, ...), `otel` (OpenTelemetry log data model: `Timestamp`, `SeverityText`, `Body`, `Attributes` with semantic conventions) or `plain` (Vanishly's own, short keys) |
+| `AUDIT_LOG_PRETTY` | `false` | `true`: pretty-printed JSON over several lines (for development; log shippers want one event per line). The verify command reads both |
+| `AUDIT_LOG_FILE` | (none) | Append-only file, one event per line, e.g. `/var/log/vanishly/audit.jsonl` (created with mode 0640). The chain continues there after a restart |
+| `AUDIT_LOG_FSYNC` | `true` | Flush every event to disk before the action goes on |
+| `AUDIT_LOG_STDOUT` | `true` when no file and no Redis, else `false` | Events on stdout too (Kubernetes / Docker log shipping) |
+| `AUDIT_LOG_REDIS` | `false` | Also into the Redis stream `<prefix>audit`; feeds the admin view across all replicas |
+| `AUDIT_LOG_REDIS_MAXLEN` | `0` | Keep about this many events in the stream (`0`: all; nothing is ever deleted unless set) |
+| `AUDIT_LOG_HMAC_KEY` (`_FILE`) | (none) | At least 32 characters: every event also gets an HMAC signature (`sig`), so a changed log cannot be re-chained without the key. Also keys the secret references and IP hashes (else `AUTH_SECRET`, else a random key per start) |
+| `AUDIT_LOG_FAIL` | `closed` | `closed`: an action whose event cannot be written (file, Redis) is refused or undone (503 `audit_unavailable`; a new secret is deleted again, a secret is not handed out, a sign-in is not completed). `open`: go on, report on stderr |
+| `AUDIT_LOG_IP` | `full` | Source address in events: `full`, `hash` (HMAC) or `off` |
+| `AUDIT_LOG_USER_AGENT` | `true` | Browser / client name in events |
+| `AUDIT_LOG_INSTANCE` | (host name) | Name of this instance in the chain (one chain per instance); set a stable one per replica (StatefulSet name, systemd host) so a restart continues the same chain |
+| `AUDIT_LOG_CHECKPOINT` | `100` | Every n events an `audit.checkpoint` event with the current head hash, an anchor in the external copies (`0`: off) |
+| `AUDIT_LOG_SYSLOG` | (none) | Forward to syslog (RFC 5424, facility authpriv): `udp://host:514`, `tcp://host:514` or `tls://host:6514`; best effort with retries |
+| `AUDIT_LOG_SYSLOG_CA_FILE` | (system CAs) | PEM file of the CA for `tls://` |
+| `AUDIT_LOG_OTLP_URL` | (none) | Send to an OTLP/HTTP logs endpoint (JSON), e.g. `http://otel-collector:4318/v1/logs` |
+| `AUDIT_LOG_OTLP_HEADERS` (`_FILE`) | (none) | Extra headers, `name=value,name=value` (e.g. `authorization=Bearer change-me`) |
+| `AUDIT_LOG_WEBHOOK_URL` | (none) | POST every event as JSON to this address |
+| `AUDIT_LOG_WEBHOOK_AUTH` (`_FILE`) | (none) | `Authorization` header of the webhook, e.g. `Bearer change-me` or `Splunk change-me` |
+| `AUDIT_LOG_WEBHOOK_FORMAT` | `json` | `json` (the event) or `splunk` (HTTP Event Collector envelope, batches) |
+| `AUDIT_COMMENT` | `off` | Comment field per secret (form and API, `comment` / `X-Audit-Comment`): `off`, `optional` or `required`. Needs `AUDIT_LOG`. It goes into the audit log and onto the status page, never into the secret |
+| `AUDIT_COMMENT_MAX` | `500` | Most characters of a comment (10 to 2000) |
+
+### API tokens and admins (`API_TOKEN*`, `ADMIN_*`)
+
+Need sign-in. See [API tokens](#api-tokens) below.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `API_TOKENS` | `false` | `true`: signed-in users make personal API tokens on the page "API tokens" (user menu). A token acts as its owner, is shown once and stored only as an HMAC |
+| `API_TOKEN_REQUIRED` | `false` | `true`: outside this server's own pages the API takes only these tokens: no anonymous calls, no session cookies from scripts, no other bearer tokens (`AUTH_API_AUDIENCE`) |
+| `API_TOKEN_USERS`, `API_TOKEN_GROUPS` | (everyone signed in) | Only these addresses / groups (as in the groups claim; Entra: object ids) may make tokens: the "activation" by the admins |
+| `API_TOKEN_IP_BINDING` | `optional` | `required`: every token must name the IP addresses or networks (IPv4/IPv6 CIDR) it works from; any other address is refused (403) and logged, which stops passing tokens on |
+| `API_TOKEN_EXPIRY_OPTIONS` | `30d,60d,90d,never` | Lifetimes a user may pick: `d` days, `m` calendar months, `y` calendar years, `never` (note: `m` is months here, minutes in `TTL_OPTIONS`) |
+| `API_TOKEN_DEFAULT_EXPIRY` | `90d` (or the longest choice) | Preselected lifetime; added to the choices if missing |
+| `API_TOKEN_MAX_EXPIRY` | `never` (no cap) | Longest lifetime allowed, e.g. `1y`: longer choices and `never` disappear, the server refuses them |
+| `API_TOKEN_MAX_PER_USER` | `10` | Active tokens per user (1 to 100) |
+| `API_TOKEN_RATE_LIMIT` | `0` (off) | Calls per token per `RATE_LIMIT_WINDOW` |
+| `API_TOKEN_COMMENT` | `optional` | `required`: every POST with a token needs a comment (`X-Audit-Comment` or `comment`); needs `AUDIT_LOG` |
+| `ADMIN_USERS`, `ADMIN_GROUPS` | (none) | Admins: they see the audit log (page "Audit log", `/admin`) and all API tokens and may revoke any |
+| `AUDIT_ADMIN_VIEW` | `true` | The audit page for admins; needs `AUDIT_LOG` with `AUDIT_LOG_FILE` or `AUDIT_LOG_REDIS=true` |
+
 The container sets `NODE_ENV=production`, `HOST=0.0.0.0`, `PORT=3000` and
 `TEMPLATES_DIR=/var/lib/vanishly/templates`.
 
@@ -364,6 +416,100 @@ that user; a token of an app (client credentials) can create secrets, but
 has no user and so cannot open restricted ones. Without
 `AUTH_API_AUDIENCE`, scripts can only create secrets with
 `AUTH_CREATE=anyone` and cannot open restricted ones.
+
+## Audit log
+
+`AUDIT_LOG=true` writes one JSON event per action, for example (format
+`plain`, pretty-printed; the default `ecs` carries the same content under
+ECS names):
+
+```json
+{
+  "ts": "2026-10-29T21:40:12.418Z",
+  "id": "4f0a8f0e-6f52-4b8e-9a8a-1d3c9f0b7a21",
+  "type": "secret.created",
+  "outcome": "success",
+  "actor": { "type": "api_token", "user": "alice@example.com", "name": "Alice Example", "token": { "id": "3f9c0d2a7b1e4c55", "name": "api_aap" } },
+  "secret": { "ref": "qL1o0b8c2mJm9wKQe1xXrA", "receipt_ref": "Jx8h1d0a0uQyW3n5cV2pTg" },
+  "recipients": { "users": ["bob@example.com"] },
+  "details": { "encrypted": "server", "ttl_s": 3600, "expires": "2026-10-29T22:40:12.418Z", "max_views": 1, "passphrase": false, "restricted": true, "size": "<=64B" },
+  "comment": "reset a user pw",
+  "run_id": "run-4711",
+  "source": { "ip": "203.0.113.10", "user_agent": "curl/8.5.0" },
+  "http": { "method": "POST", "route": "/api/v1/share" },
+  "service": { "name": "vanishly", "version": "1.3.0" },
+  "message": "secret.created success by alice@example.com via token api_aap for bob@example.com",
+  "audit": { "schema": 1, "seq": 42, "instance": "vanishly-0", "prev_hash": "9b1f...", "hash": "c07a...", "sig": "5e2d..." }
+}
+```
+
+- **Never in the log:** the secret, its ciphertext, key, passphrase,
+  verifier, the URL fragment, a full API token, or a secret/receipt id.
+  Secrets are referred to by `ref`, an HMAC of the id: the `secret.created`
+  and the later `secret.revealed` of the same secret carry the same `ref`.
+- **Tamper evidence:** each event holds its place in the chain of its
+  instance (`seq`, `prev_hash`) and `hash` = SHA-256 over the event in
+  canonical JSON (keys sorted) without `hash` and `sig`; with
+  `AUDIT_LOG_HMAC_KEY` also `sig` = HMAC-SHA256 of the hash. `npm run
+  audit:verify -- <file>` (or `node src/audit-verify.js`, in the image
+  `docker compose exec vanishly node src/audit-verify.js /path`) reports any
+  changed, removed, added or moved event. A cut-off end is found with the
+  external copies (checkpoints) and `--expect-head <instance>=<hash>`.
+- **Fail closed:** with `AUDIT_LOG_FAIL=closed` (the default) nothing
+  happens without its event: see the table above.
+- **Run id:** callers send `X-Run-Id` (or `X-Request-Id`); it is in every
+  event of the call and comes back in both headers. A W3C `traceparent`
+  gives the trace id (`trace.id` / `TraceId`).
+- **Several replicas:** each instance keeps its own chain
+  (`AUDIT_LOG_INSTANCE`); one file per replica, or the Redis stream /
+  stdout for all. A new instance name starts a new chain.
+- **Retention:** Vanishly deletes no audit events (unless
+  `AUDIT_LOG_REDIS_MAXLEN` trims the Redis stream). Rotate the file with
+  `logrotate` (`copytruncate`; the writes continue in the emptied file, so
+  it starts mid-chain: verify the rotated files together in order, e.g.
+  `cat audit.jsonl.2 audit.jsonl.1 audit.jsonl | node src/audit-verify.js /dev/stdin`)
+  and keep them as your rules require; the events hold personal data
+  (names, addresses, IPs).
+
+```sh
+AUDIT_LOG=true
+AUDIT_LOG_FILE=/var/log/vanishly/audit.jsonl
+AUDIT_LOG_REDIS=true                      # admin view across replicas
+AUDIT_LOG_HMAC_KEY_FILE=/run/secrets/audit_hmac_key
+AUDIT_COMMENT=required
+ADMIN_GROUPS=/vanishly-admins
+```
+
+## API tokens
+
+With `API_TOKENS=true` every signed-in user (or only `API_TOKEN_USERS` /
+`API_TOKEN_GROUPS`) opens "API tokens" in the user menu and makes a token:
+name (e.g. `api_aap`), lifetime, allowed addresses, scopes (create secrets,
+open secrets, status and burn). The token (`vnly_<id>_<secret>`) is shown
+once; Redis keeps only an HMAC of it. The list shows each token with its
+expiry, last use, addresses and state; a click revokes it. Admins see and
+revoke all tokens on `/admin`.
+
+```sh
+curl -s -X POST https://ots.example.com/api/v1/share \
+  -H "Authorization: Bearer vnly_..." \
+  -H "X-Run-Id: run-4711" -H "X-Audit-Comment: reset a user pw" \
+  -H "Content-Type: application/json" \
+  -d '{"secret":"s3cret","ttl":3600,"recipients":["bob@example.com"]}'
+```
+
+- The audit log shows the owner as actor, with the token's name and id
+  (`actor.type: api_token`), the comment, the run id and the address; every
+  call also as `api.token_used` with its answer.
+- Refused and logged: an unknown or revoked token (`api.token_denied`), an
+  expired one (`api.token_expired`), a call from another address
+  (`api.ip_denied`, 403 `ip_not_allowed`), a missing scope
+  (`insufficient_scope`).
+- Strict setup: `API_TOKEN_REQUIRED=true`, `API_TOKEN_GROUPS=<api group>`,
+  `API_TOKEN_IP_BINDING=required`, `API_TOKEN_MAX_EXPIRY=1y`,
+  `API_TOKEN_COMMENT=required`. Behind a reverse proxy set `TRUST_PROXY`
+  right, or the proxy's address is checked instead of the caller's.
+- A token picks up the owner's groups at each sign-in of the owner.
 
 ## Languages
 

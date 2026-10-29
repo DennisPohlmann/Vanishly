@@ -19,14 +19,17 @@ import { createDirectory } from './directory/index.js';
 
 /** @typedef {NonNullable<import('./config.js').Config['auth']>} AuthConfig */
 /**
- * @typedef {{ name: string, user: string, ids: string[], app?: boolean }} User
- * ids: the recipient hashes this user matches (addresses and groups)
+ * @typedef {{ name: string, user: string, ids: string[], app?: boolean,
+ *   token?: { id: string, name: string, scopes: string[] } }} User
+ * ids: the recipient hashes this user matches (addresses and groups);
+ * token: set when the request came with a personal API token (src/tokens.js)
  */
 
 const EMAIL = /^[^\s@<>"',;]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 const STATE_TTL = 600;
-// Paths a login may return to: the home page, a secret, a receipt.
-const RETURN = /^\/((s|r)\/[A-Za-z0-9_-]{22})?$/;
+// Paths a login may return to: the home page, a secret, a receipt, the
+// API token page, the admin page.
+const RETURN = /^\/((s|r)\/[A-Za-z0-9_-]{22}|settings\/tokens|admin)?$/;
 
 /** @param {string} v */
 function sha256(v) {
@@ -191,7 +194,9 @@ export class Auth {
    */
   async groupsOf(claims) {
     const { any, list } = this.c.groups;
-    if (!any && !list.length) return [];
+    // Admin and token groups (ADMIN_GROUPS, API_TOKEN_GROUPS) count too.
+    const extra = this.c.extraGroups || [];
+    if (!any && !list.length && !extra.length) return [];
     const claim = this.c.groupsClaim ? claims[this.c.groupsClaim] : undefined;
     let groups = typeof claim === 'string' ? [claim] : strings(claim);
     const key = String(claims.oid || claims.sub || '');
@@ -208,7 +213,18 @@ export class Auth {
       }
     }
     groups = groups.map((g) => this.group(g)).filter(Boolean);
-    return any ? groups : groups.filter((g) => list.some((l) => l.id === g));
+    return any ? groups : groups.filter((g) => list.some((l) => l.id === g) || extra.includes(g));
+  }
+
+  /**
+   * ADMIN_USERS / ADMIN_GROUPS: may read the audit log and manage all tokens.
+   * Not through an API token or an app.
+   * @param {User | null} user
+   */
+  isAdmin(user) {
+    if (!user?.user || user.app || user.token) return false;
+    const { users, groups } = this.c.admin;
+    return users.includes(user.user) || groups.some((g) => user.ids.includes(this.hash('g', g)));
   }
 
   // ------------------------------------------------------------ directory
@@ -300,7 +316,7 @@ export class Auth {
    * Finishes a login: checks state, code, nonce and the ID token, creates
    * the session. The state is used once.
    * @param {string} search the query string of the callback ("?code=...&state=...")
-   * @returns {Promise<{ sid: string, returnTo: string }>}
+   * @returns {Promise<{ sid: string, returnTo: string, who: User }>}
    */
   async callback(search) {
     const params = new URLSearchParams(search);
@@ -322,7 +338,7 @@ export class Auth {
     if (!who.ids.length) throw new Error('the account has no e-mail address or user name');
     // The ID token is kept only as id_token_hint for the logout at the provider.
     const idToken = this.c.logout === 'provider' && typeof tokens.id_token === 'string' && tokens.id_token.length < 8192 ? tokens.id_token : '';
-    return { sid: await this.createSession(who, idToken), returnTo: saved.r || '/' };
+    return { sid: await this.createSession(who, idToken), returnTo: saved.r || '/', who };
   }
 
   /**
@@ -351,6 +367,11 @@ export class Auth {
       .expire(key, this.c.sessionTtl)
       .exec();
     return sid;
+  }
+
+  /** Ends a session at once (the audit log could not record the sign-in). @param {string} sid */
+  async dropSession(sid) {
+    await this.redis.del(`${this.p}sess:${sha256(sid)}`);
   }
 
   /** @param {import('express').Request} req */

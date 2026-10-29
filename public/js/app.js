@@ -522,6 +522,10 @@ function initHome() {
     if (missing.length) {
       return showError(err, t('error.passWeak', { list: missing.map((c) => t(`rule.${c}`)).join(', ') }), passField);
     }
+    // AUDIT_COMMENT: what the secret is for (into the audit log, not the secret).
+    const commentField = $('comment');
+    const comment = commentField ? commentField.value.trim() : '';
+    if (commentField?.dataset.required === '1' && !comment) return showError(err, t('error.commentRequired'), commentField);
     const confirmBox = $('confirm');
     if (confirmBox && !confirmBox.checked) return showError(err, t('error.confirm'), confirmBox);
     const submit = $('create-submit');
@@ -533,6 +537,7 @@ function initHome() {
         ttl: Number($('ttl').value),
         views: off('views') ? 1 : Number($('views').value),
         ...(confirmBox ? { confirmed: true } : {}),
+        ...(comment ? { comment } : {}),
         ...(recipients ? { recipients: recipients.users(), recipientGroups: recipients.groups() } : {}),
         ...(responsible ? { responsible: responsible.users(), responsibleGroups: responsible.groups() } : {}),
       });
@@ -548,6 +553,7 @@ function initHome() {
         if (data.error === 'too_many_responsibles') return showError(err, t('error.recipientsMax', { n: data.max }), $('responsible-email'));
         if (data.error === 'too_short') return showError(err, t('error.tooShort', { n: minChars }), secret);
         if (data.error === 'confirmation_required') return showError(err, t('error.confirm'), confirmBox);
+        if (data.error === 'comment_required') return showError(err, t('error.commentRequired'), commentField);
         if (data.error === 'passphrase_required') {
           return showError(err, t(form.dataset.passRequired === 'unless-recipients' ? 'error.passRequiredNoRecipients' : 'error.passRequired'), passField);
         }
@@ -570,6 +576,7 @@ function initHome() {
       responsible?.clear();
       secret.value = '';
       if (confirmBox) confirmBox.checked = false;
+      if (commentField) commentField.value = '';
       $('passphrase').value = '';
       $('create-card').hidden = true;
       $('created-card').hidden = false;
@@ -737,6 +744,8 @@ async function initReceipt() {
     $('r-pass').textContent = data.passphrase ? t('receipt.yes') : t('receipt.no');
     for (const el of document.querySelectorAll('.r-recipients-row')) /** @type {HTMLElement} */ (el).hidden = !data.recipients;
     if ($('r-recipients')) $('r-recipients').textContent = String(data.recipients || 0);
+    for (const el of document.querySelectorAll('.r-comment-row')) /** @type {HTMLElement} */ (el).hidden = !data.comment;
+    if ($('r-comment')) $('r-comment').textContent = data.comment || '';
     const log = $('r-log');
     log.replaceChildren(
       ...(data.views.length ? data.views : [null]).map((/** @type {string | null} */ v, /** @type {number} */ i) => {
@@ -787,7 +796,194 @@ async function initReceipt() {
   await load();
 }
 
+/**
+ * A table cell with text (never HTML).
+ * @param {string} text @param {string} [cls]
+ */
+function cell(text, cls = '') {
+  const td = document.createElement('td');
+  td.textContent = text;
+  if (cls) td.className = cls;
+  return td;
+}
+
+/**
+ * Names every cell after its column (data-label), so narrow screens can show
+ * each row as a card with labels (base.css).
+ * @param {HTMLElement} tbody
+ */
+function labelCells(tbody) {
+  const heads = [...(tbody.closest('table')?.querySelectorAll('thead th') || [])].map((th) => th.textContent?.trim() || '');
+  for (const tr of tbody.querySelectorAll('tr')) [...tr.children].forEach((td, i) => heads[i] && /** @type {HTMLElement} */ (td).setAttribute('data-label', heads[i]));
+}
+
+/**
+ * A row of the token tables, with a "Revoke" button while it is active.
+ * @param {any} tok @param {boolean} admin @param {() => void} reload
+ */
+function tokenRow(tok, admin, reload) {
+  const tr = document.createElement('tr');
+  if (admin) tr.append(cell(tok.ownerName && tok.ownerName !== tok.owner ? `${tok.ownerName} · ${tok.owner}` : tok.owner));
+  tr.append(cell(tok.name), cell(`${tok.prefix}…`, 'mono'), cell(tok.expires ? fmt(tok.expires) : t('tokens.never')), cell(tok.lastUsed ? fmt(tok.lastUsed) : t('tokens.unused')), cell(tok.ips.length ? tok.ips.join(', ') : t('tokens.anyIp'), 'mono'));
+  if (!admin) tr.append(cell(tok.scopes.map((/** @type {string} */ s) => t(`tokens.scope.${s}`)).join(', ')));
+  const st = document.createElement('td');
+  const badge = document.createElement('span');
+  badge.className = `badge badge-${tok.state === 'active' ? 'new' : 'burned'}`;
+  badge.textContent = t(`tokens.state.${tok.state}`);
+  st.append(badge);
+  const act = document.createElement('td');
+  if (tok.state === 'active') {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn-small btn-danger';
+    b.textContent = t('tokens.revoke');
+    b.setAttribute('aria-label', `${t('tokens.revoke')}: ${tok.name}`);
+    b.addEventListener('click', async () => {
+      if (!confirm(t('tokens.revokeConfirm', { name: tok.name }))) return;
+      b.disabled = true;
+      await api(`/api/v1/${admin ? 'admin/' : ''}tokens/${tok.id}/revoke`, {});
+      reload();
+    });
+    act.append(b);
+  }
+  tr.append(st, act);
+  return tr;
+}
+
+function initTokens() {
+  const card = $('tokens-card');
+  const form = $('token-form');
+  const err = $('token-error');
+  if (card.dataset.allowed !== '1') {
+    $('tokens-not-allowed').hidden = false;
+    form.hidden = true;
+  }
+  const load = async () => {
+    const { status, data } = await api('/api/v1/tokens');
+    if (status !== 200) return showError($('token-list-error'), errorText(status));
+    $('token-rows').replaceChildren(...data.tokens.map((/** @type {any} */ tok) => tokenRow(tok, false, load)));
+    labelCells($('token-rows'));
+    $('token-none').hidden = data.tokens.length > 0;
+    $('token-table').hidden = !data.tokens.length;
+  };
+  form.addEventListener('submit', async (/** @type {Event} */ e) => {
+    e.preventDefault();
+    showError(err, '');
+    const name = $('token-name').value.trim();
+    if (!name) return showError(err, t('tokens.errorName'), $('token-name'));
+    const ips = $('token-ips').value.split(/[\s,;]+/).filter(Boolean);
+    if (card.dataset.ipsRequired === '1' && !ips.length) return showError(err, t('tokens.errorIps'), $('token-ips'));
+    const scopes = [...document.querySelectorAll('input[name="scopes"]:checked')].map((el) => /** @type {HTMLInputElement} */ (el).value);
+    $('token-submit').disabled = true;
+    try {
+      const { status, data } = await api('/api/v1/tokens', { name, expires: $('token-expires').value, ips, scopes });
+      if (status !== 201) return showError(err, status === 400 || status === 403 ? t('tokens.error', { message: data.message || '' }) : errorText(status));
+      $('token-value').value = data.token;
+      const origin = card.dataset.origin || location.origin;
+      $('token-example').value =
+        `curl -X POST ${origin}/api/v1/share \\\n` +
+        `  -H "Authorization: Bearer ${data.token}" \\\n` +
+        `  -H "Content-Type: application/json" \\\n` +
+        `  -H "X-Run-Id: <your run id>" -H "X-Audit-Comment: reset a user pw" \\\n` +
+        `  -d '{"secret":"...","ttl":3600}'`;
+      $('token-new').hidden = false;
+      form.reset();
+      $('token-value').focus();
+      $('token-value').select();
+      announce(t('tokens.created'));
+      await load();
+    } finally {
+      $('token-submit').disabled = false;
+    }
+  });
+  load();
+}
+
+function initAdmin() {
+  const card = $('admin-card');
+  if (card.dataset.audit === '1') {
+    $('audit-box').hidden = false;
+    $('audit-verify').hidden = card.dataset.verify !== '1';
+    const form = $('audit-filter');
+    const query = () => {
+      const p = new URLSearchParams();
+      for (const el of form.querySelectorAll('input, select')) {
+        const v = /** @type {HTMLInputElement} */ (el).value.trim();
+        if (!v) continue;
+        // datetime-local is local time: send it as ISO with the zone.
+        p.set(el.name, el.type === 'datetime-local' ? new Date(v).toISOString() : v);
+      }
+      return p;
+    };
+    const load = async () => {
+      showError($('audit-error'), '');
+      const { status, data } = await api(`/api/v1/admin/audit?${query()}`);
+      if (status !== 200) return showError($('audit-error'), data.message || errorText(status));
+      $('audit-count').textContent = data.count ? t('admin.count', { n: data.count, source: data.source }) : t('admin.none');
+      $('audit-rows').replaceChildren(
+        ...data.events.map((/** @type {any} */ e) => {
+          const tr = document.createElement('tr');
+          tr.className = `outcome-${e.outcome}`;
+          const who = e.actor.token ? `${e.actor.user} (${e.actor.token})` : e.actor.user || e.actor.name || e.actor.type;
+          const what = document.createElement('td');
+          const code = document.createElement('code');
+          code.textContent = e.type;
+          what.append(code);
+          if (e.outcome !== 'success') {
+            const b = document.createElement('span');
+            b.className = 'badge badge-burned';
+            b.textContent = e.reason ? `${e.outcome}: ${e.reason}` : e.outcome;
+            what.append(' ', b);
+          }
+          tr.append(cell(fmt(e.ts)), what, cell(e.actor.onBehalfOf ? `${who} → ${e.actor.onBehalfOf}` : who), cell(e.recipients.join(', ')), cell(e.comment), cell(e.runId, 'mono'), cell([e.ip, e.route].filter(Boolean).join(' · '), 'mono'));
+          return tr;
+        }),
+      );
+      labelCells($('audit-rows'));
+    };
+    form.addEventListener('submit', (/** @type {Event} */ e) => {
+      e.preventDefault();
+      load();
+    });
+    /** @param {string} format */
+    const download = (format) => {
+      const p = query();
+      p.set('format', format);
+      p.set('limit', '5000');
+      location.href = `/api/v1/admin/audit?${p}`;
+    };
+    $('export-csv').addEventListener('click', () => download('csv'));
+    $('export-jsonl').addEventListener('click', () => download('jsonl'));
+    $('audit-verify').addEventListener('click', async () => {
+      const { status, data } = await api('/api/v1/admin/audit/verify');
+      const out = $('verify-result');
+      out.hidden = false;
+      if (status !== 200) {
+        out.className = 'notice notice-error';
+        out.textContent = errorText(status);
+        return;
+      }
+      out.className = `notice ${data.ok ? 'notice-ok' : 'notice-error'}`;
+      out.textContent = data.ok ? t('admin.verifyOk', { n: data.entries }) : t('admin.verifyBad', { n: data.errors.length, line: data.errors[0].line, problem: data.errors[0].problem });
+    });
+    load();
+  }
+  if (card.dataset.tokens === '1') {
+    $('admin-tokens-card').hidden = false;
+    const loadTokens = async () => {
+      const { status, data } = await api('/api/v1/admin/tokens');
+      if (status !== 200) return showError($('admin-tokens-error'), errorText(status));
+      $('admin-token-rows').replaceChildren(...data.tokens.map((/** @type {any} */ tok) => tokenRow(tok, true, loadTokens)));
+      labelCells($('admin-token-rows'));
+      $('admin-tokens-none').hidden = data.tokens.length > 0;
+    };
+    loadTokens();
+  }
+}
+
 const page = leaving ? '' : document.body.dataset.page;
 if (page === 'home') initHome();
 else if (page === 'secret') initSecret();
 else if (page === 'receipt') initReceipt();
+else if (page === 'tokens') initTokens();
+else if (page === 'admin') initAdmin();

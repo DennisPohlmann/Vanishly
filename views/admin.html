@@ -1,0 +1,61 @@
+<section class="card card-wide" id="admin-card" data-audit="{{ audit }}" data-verify="{{ verify }}" data-tokens="{{ tokens }}">
+  <h1>{{ t:admin.title }}</h1>
+  <p class="lead">{{ t:admin.intro }}</p>
+  <div id="audit-box" hidden>
+    <form id="audit-filter" class="filter-grid" autocomplete="off">
+      <div class="field"><label for="f-type">{{ t:admin.f.type }}</label>
+        <select id="f-type" name="type">
+          <option value="">{{ t:admin.any }}</option>
+          <option value="secret.">secret.*</option>
+          <option value="secret.created">secret.created</option>
+          <option value="secret.revealed">secret.revealed</option>
+          <option value="secret.reveal_denied">secret.reveal_denied</option>
+          <option value="secret.burned">secret.burned</option>
+          <option value="receipt.">receipt.*</option>
+          <option value="api.">api.*</option>
+          <option value="api.token_created">api.token_created</option>
+          <option value="api.token_used">api.token_used</option>
+          <option value="api.ip_denied">api.ip_denied</option>
+          <option value="api.token_expired">api.token_expired</option>
+          <option value="auth.">auth.*</option>
+          <option value="admin.">admin.*</option>
+          <option value="system.">system.*</option>
+        </select></div>
+      <div class="field"><label for="f-outcome">{{ t:admin.f.outcome }}</label>
+        <select id="f-outcome" name="outcome"><option value="">{{ t:admin.any }}</option><option value="success">success</option><option value="denied">denied</option><option value="error">error</option></select></div>
+      <div class="field"><label for="f-actor">{{ t:admin.f.actor }}</label><input type="text" id="f-actor" name="actor" maxlength="200"></div>
+      <div class="field"><label for="f-recipient">{{ t:admin.f.recipient }}</label><input type="text" id="f-recipient" name="recipient" maxlength="200"></div>
+      <div class="field"><label for="f-run">{{ t:admin.f.runId }}</label><input type="text" id="f-run" name="runId" maxlength="128" spellcheck="false"></div>
+      <div class="field"><label for="f-q">{{ t:admin.f.q }}</label><input type="search" id="f-q" name="q" maxlength="200"></div>
+      <div class="field"><label for="f-from">{{ t:admin.f.from }}</label><input type="datetime-local" id="f-from" name="from"></div>
+      <div class="field"><label for="f-to">{{ t:admin.f.to }}</label><input type="datetime-local" id="f-to" name="to"></div>
+      <div class="filter-actions">
+        <button type="submit" class="btn btn-primary">{{ t:admin.apply }}</button>
+        <button type="button" class="btn" id="export-csv">{{ t:admin.exportCsv }}</button>
+        <button type="button" class="btn" id="export-jsonl">{{ t:admin.exportJson }}</button>
+        <button type="button" class="btn btn-ghost" id="audit-verify" hidden>{{ t:admin.verify }}</button>
+      </div>
+    </form>
+    <p class="notice" id="verify-result" role="status" hidden></p>
+    <p class="notice notice-error" id="audit-error" role="alert" hidden></p>
+    <p class="hint" id="audit-count" role="status"></p>
+    <div class="table-wrap">
+      <table class="data" id="audit-table">
+        <thead><tr><th scope="col">{{ t:admin.col.time }}</th><th scope="col">{{ t:admin.col.event }}</th><th scope="col">{{ t:admin.col.actor }}</th><th scope="col">{{ t:admin.col.recipients }}</th><th scope="col">{{ t:admin.col.comment }}</th><th scope="col">{{ t:admin.col.runId }}</th><th scope="col">{{ t:admin.col.source }}</th></tr></thead>
+        <tbody id="audit-rows"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="card card-wide" id="admin-tokens-card" hidden>
+  <h2>{{ t:admin.tokens }}</h2>
+  <p class="notice notice-error" id="admin-tokens-error" role="alert" hidden></p>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th scope="col">{{ t:admin.col.owner }}</th><th scope="col">{{ t:tokens.col.name }}</th><th scope="col">{{ t:tokens.col.token }}</th><th scope="col">{{ t:tokens.col.expires }}</th><th scope="col">{{ t:tokens.col.lastUsed }}</th><th scope="col">{{ t:tokens.col.networks }}</th><th scope="col">{{ t:tokens.col.state }}</th><th scope="col"><span class="sr-only">{{ t:tokens.revoke }}</span></th></tr></thead>
+      <tbody id="admin-token-rows"></tbody>
+    </table>
+  </div>
+  <p class="hint" id="admin-tokens-none" hidden>{{ t:tokens.none }}</p>
+</section>

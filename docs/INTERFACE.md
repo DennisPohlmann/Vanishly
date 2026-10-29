@@ -34,6 +34,16 @@ and `rule` give the rule of the form's checkbox in the language of the request:
 | `GET /api/v1/me` | who is signed in (sign-in on; `ENABLE_ME_API`) |
 | `GET /api/v1/groups?q=` | search groups for recipients (`RECIPIENT_GROUPS=*`) |
 | `GET /api/v1/people?q=` | search people for recipients (`RECIPIENT_USER_GROUP`, in the provider's directory): `{ people: [{ name, user, mail }] }`, put `user` into `recipients` |
+| `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{id}/revoke` | personal API tokens (`API_TOKENS`; session only), see [API tokens](#api-tokens-and-admin-api) |
+| `GET /api/v1/admin/audit`, `/admin/audit/verify`, `/admin/tokens` | audit log and all tokens for admins (`ADMIN_USERS`, `ADMIN_GROUPS`) |
+
+With `AUDIT_LOG` every answer carries `X-Run-Id` and `X-Request-Id` (the
+caller's own or a new UUID) and each action is an audit event
+([Audit log](#audit-log)). With `API_TOKENS` scripts authenticate with
+`Authorization: Bearer vnly_...`; with `API_TOKEN_REQUIRED=true` only so
+(`401 token_required`). Refusals: `401 invalid_token` / `token_expired`,
+`403 ip_not_allowed` / `insufficient_scope`; with `AUDIT_LOG_FAIL=closed`
+`503 audit_unavailable` when the log cannot be written.
 
 Pages of the sign-in (not part of the API): `GET /auth/login?return=/s/<id>`,
 `GET /auth/callback` (the provider's redirect), `POST /auth/logout`.
@@ -107,13 +117,109 @@ All keys start with `REDIS_PREFIX` (default `vanishly:`).
 | Key | Type | Content | Lifetime |
 |---|---|---|---|
 | `s:<id>` | hash | `ct`, `iv`, `salt`, `it`, `vh` (verifier hash), `views` left, `attempts`, `rid`, `created`, `expires`, `to` (recipients as HMAC-SHA256 with `AUTH_SECRET`, only when restricted) | until expiry, last view or burn |
-| `r:<rid>` | hash | `sid`, `created`, `expires`, `maxViews`, `viewsLeft`, `state`, `pass`, `burned`, `rc` (number of recipients), with `STATUS_ACCESS=signed-in` `cr` (creator), `rs` (responsible, HMAC-SHA256 like `to`) and `who` (names and addresses of creator and responsible, to show) | expiry + `RECEIPT_KEEP` |
+| `r:<rid>` | hash | `sid`, `created`, `expires`, `maxViews`, `viewsLeft`, `state`, `pass`, `burned`, `rc` (number of recipients), `cm` (the comment, `AUDIT_COMMENT`), with `STATUS_ACCESS=signed-in` `cr` (creator), `rs` (responsible, HMAC-SHA256 like `to`) and `who` (names and addresses of creator and responsible, to show) | expiry + `RECEIPT_KEEP` |
 | `r:<rid>:o` | set | HMACs of who opened the secret signed in (`STATUS_ACCESS=signed-in`: they may see the status) | like `r:<rid>` |
 | `r:<rid>:v` | list | view times (ms); with `RECEIPT_SHOW_VIEWER` `time<TAB>name<TAB>address` of the signed-in viewer | like the receipt |
 | `sess:<hash>` | hash | a sign-in: `name`, `user`, `ids` (the recipient hashes of the user's addresses and groups), `created`, with `AUTH_LOGOUT=provider` `it` (the ID token, only sent back to the provider as `id_token_hint` at sign-out); the key is the SHA-256 of the cookie | `AUTH_SESSION_TTL` |
 | `oidc:<state>` | hash | a sign-in in progress: PKCE verifier, nonce, return path | 10 minutes, used once |
 | `rl:<bucket>:<hash>` | string | request counter; the IP is stored only as a truncated SHA-256 | `RATE_LIMIT_WINDOW` |
+| `rl:tok:<hash>` | string | calls of one API token (`API_TOKEN_RATE_LIMIT`) | `RATE_LIMIT_WINDOW` |
+| `tok:<id>` | hash | an API token: `h` (HMAC-SHA256 of the token with a key derived from `AUTH_SECRET`, never the token), `own`/`nm` (owner address and name), `ids` (the owner's recipient hashes, renewed at each sign-in), `name`, `created`, `expires`, `ips`, `scopes`, `used`, `revoked`, `by` | until 30 days after expiry or revocation; without expiry kept |
+| `tok:u:<hash>`, `tok:all` | set | token ids of a user (HMAC of the address) and of all users | as long as the tokens |
+| `audit` | stream | `AUDIT_LOG_REDIS`: field `e`, the audit event as written | kept (`AUDIT_LOG_REDIS_MAXLEN` trims) |
+| `audit:head:<instance>` | string | `{"seq":n,"hash":"..."}`: the chain head of an instance, to continue after a restart | kept |
 
 A view is taken by one Lua script (`EXISTS`, `HINCRBY views -1`, `DEL` at
 zero, receipt update), so parallel requests cannot read a one-view secret
 twice.
+
+## Audit log
+
+`AUDIT_LOG=true` (settings: [CONFIG.md](CONFIG.md#audit-log-audit_log-audit_comment)).
+One JSON object per event, one per line (`AUDIT_LOG_PRETTY=true`: indented),
+in UTF-8, keys in a fixed order, empty values left out, times in ISO 8601
+UTC with milliseconds.
+
+### Events
+
+| Type | When | Outcome |
+|---|---|---|
+| `system.startup`, `system.shutdown` | start (with the settings that shape the log), stop | success |
+| `audit.checkpoint` | every `AUDIT_LOG_CHECKPOINT` events: `details.head_seq`, `head_hash` | success |
+| `secret.created` | a secret was stored: creator, recipients (addresses, groups), responsible, comment, `details` (`encrypted` browser/server, `ttl_s`, `expires`, `max_views`, `passphrase` yes/no, `restricted`, `size` bucket) | success |
+| `secret.revealed` | a view was handed out (`details.via` browser/server, `views_left`) | success |
+| `secret.reveal_denied` | `login_required`, `not_recipient`, `bad_passphrase` (`attempts_left`), `not_found` | denied |
+| `secret.burned` | `reason`: `manual` (status page) or `passphrase_attempts` | success |
+| `secret.burn_denied`, `receipt.viewed`, `receipt.denied` | the status page | success / denied |
+| `auth.login`, `auth.logout`, `auth.failed` | sign-in | success / denied |
+| `api.token_created`, `api.token_revoked`, `api.token_create_denied` | the API token page (`details.token` id and name, `expires`, `networks`, `scopes`) | success / denied |
+| `api.token_used` | every call with a token, with `http.response.status_code` and the error `reason` | success / denied / error |
+| `api.token_denied`, `api.token_expired`, `api.ip_denied` | refused token (`reason`: unknown, revoked, malformed; expired; other address, with the allowed networks) | denied |
+| `api.denied`, `api.request_denied` | `API_TOKEN_REQUIRED` without a token; any other 401/403/429 of the API | denied |
+| `admin.audit_viewed`, `admin.audit_exported`, `admin.audit_verified`, `admin.tokens_listed`, `admin.token_revoked`, `admin.denied` | the admin page | success / denied |
+
+Not logged: a secret that expires unopened (Redis drops it; its receipt
+shows `expired`).
+
+### Formats
+
+| Content | `ecs` (default) | `otel` | `plain` |
+|---|---|---|---|
+| time | `@timestamp` | `Timestamp`, `ObservedTimestamp` | `ts` |
+| event | `event.action`, `event.id`, `event.category`, `event.type`, `event.outcome` (success/failure), `event.reason`, `vanishly.event.outcome` (success/denied/error) | `Attributes["event.name"]` = `vanishly.<type>`, `vanishly.event.*` | `type`, `id`, `outcome`, `reason` |
+| level | `log.level` (info, warn, error) | `SeverityText`, `SeverityNumber` (9, 13, 17) | from `outcome` |
+| text | `message` | `Body` | `message` |
+| actor | `user.id`/`user.name`/`user.email` (address), `user.full_name`, `vanishly.actor.type`, `.token`, `.on_behalf_of`, `labels.token_name` | `user.*`, `vanishly.actor.*` | `actor` |
+| for whom | `vanishly.recipients`, `vanishly.responsible`, `related.user` | `vanishly.recipients.*` | `recipients`, `responsible` |
+| secret | `vanishly.secret.ref`, `.receipt_ref` (HMACs) | `vanishly.secret.*` | `secret` |
+| request | `source.ip`, `user_agent.original`, `http.request.method`, `http.request.id` (run id), `url.path` (route, no ids), `http.response.status_code`, `trace.id`, `labels.run_id` | `client.address`, `user_agent.original`, `http.request.method`, `http.route`, `http.response.status_code`, `TraceId`, `SpanId`, `vanishly.run_id` | `source`, `http`, `run_id`, `trace_id` |
+| service | `service.name`, `.version`, `.node.name` | `Resource["service.*"]` | `service` |
+| chain | `vanishly.audit.{schema,seq,instance,prev_hash,hash,sig}` | `Attributes["vanishly.audit.*"]` | `audit.*` |
+
+The OTLP exporter (`AUDIT_LOG_OTLP_URL`) sends the same events as OTLP/JSON
+`resourceLogs` (attributes flattened, `traceId` from `traceparent`); syslog
+(`AUDIT_LOG_SYSLOG`) as RFC 5424 with the event JSON as message, MSGID the
+event type; the webhook the event (Splunk: `{"time", "host", "source",
+"sourcetype": "_json", "event"}`).
+
+### Hash chain and verify
+
+```
+hash = SHA-256( canonical JSON of the event without hash and sig )   # keys sorted, no spaces
+sig  = HMAC-SHA256( AUDIT_LOG_HMAC_KEY, hash )                         # optional
+prev_hash of the first event of an instance = 64 × "0", seq = 1
+```
+
+```sh
+npm run audit:verify -- /var/log/vanishly/audit.jsonl [--key-file key] [--json] [--expect-head vanishly-0=<hash>]
+# /var/log/vanishly/audit.jsonl: OK - 1532 events, signatures checked
+#   instance vanishly-0: seq 1..1532 (1532 events, 1532 signed), head 3c1e...
+```
+
+Exit 0: intact; 1: changed, missing, inserted or moved events (line and
+reason listed); 2: usage or read error. The check works for every format
+and for files with several instances. The admin page runs the same check
+("Check the hash chain") on `AUDIT_LOG_FILE`.
+
+What it proves and what not: without the HMAC key an attacker with write
+access could rewrite the whole file from the changed event on; with
+`AUDIT_LOG_HMAC_KEY` (kept away from where the log is stored) that fails
+the signature check. Removing events at the end is only visible against a
+copy elsewhere (stdout shipping, syslog, OTLP, Redis, a checkpoint) and
+`--expect-head`.
+
+## API tokens and admin API
+
+| Endpoint | Who | What |
+|---|---|---|
+| `GET /api/v1/tokens` | session | own tokens, the choices (lifetimes, scopes, IP binding), `yourIp` |
+| `POST /api/v1/tokens` | session | `{name, expires, ips, scopes}` → `201 {token, ...}` (token shown once) |
+| `POST /api/v1/tokens/{id}/revoke` | session | revoke an own token |
+| `GET /api/v1/admin/tokens`, `POST /api/v1/admin/tokens/{id}/revoke` | admin session | all tokens |
+| `GET /api/v1/admin/audit?type=&outcome=&actor=&recipient=&runId=&q=&from=&to=&limit=&format=json\|csv\|jsonl` | admin session | the audit log, newest first; CSV cells that start with `= + - @` are prefixed with `'` |
+| `GET /api/v1/admin/audit/verify` | admin session | the chain check of `AUDIT_LOG_FILE` |
+
+A token never manages tokens. Calls with a token:
+`Authorization: Bearer vnly_<id>_<secret>`; optional headers `X-Run-Id`
+(or `X-Request-Id`), `X-Audit-Comment` (UTF-8 percent-encoded or ASCII),
+`X-On-Behalf-Of`, `traceparent`.

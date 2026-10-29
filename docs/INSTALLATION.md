@@ -247,3 +247,101 @@ redirect URI `<BASE_URL>/auth/callback`.
 To try it on your own machine: [docker-compose/keycloak](../docker-compose/keycloak/README.md)
 (Keycloak with demo users alice, bob and carol) or the
 [test login server](providers/oidc.md#try-it-locally).
+
+## 11. Audit log shipping
+
+The audit log (`AUDIT_LOG=true`, see [CONFIG.md](CONFIG.md#audit-log)) is
+one JSON object per line, on stdout and/or in `AUDIT_LOG_FILE`; the format
+(`AUDIT_LOG_FORMAT`) decides the field names: `ecs` for Elastic and most
+others, `otel` for OpenTelemetry pipelines. The chain fields stay inside
+every event, so a shipped copy can be checked with `audit:verify` too.
+Keep the file on a volume (the container's root file system is read-only):
+
+```yaml
+# docker-compose.override.yml
+services:
+  vanishly:
+    environment:
+      AUDIT_LOG: "true"
+      AUDIT_LOG_FILE: /var/log/vanishly/audit.jsonl
+      AUDIT_LOG_STDOUT: "true"
+      AUDIT_LOG_HMAC_KEY_FILE: /run/secrets/audit_hmac_key
+    volumes:
+      - audit:/var/log/vanishly
+volumes:
+  audit:
+```
+
+(The image runs as user `node`, uid 1000: the volume must be writable for it.)
+
+**Grafana Loki (Promtail)**, from the file:
+
+```yaml
+scrape_configs:
+  - job_name: vanishly-audit
+    static_configs:
+      - targets: [localhost]
+        labels: { job: vanishly-audit, __path__: /var/log/vanishly/audit.jsonl }
+    pipeline_stages:
+      - json:
+          expressions: { ts: '"@timestamp"', action: event.action, outcome: event.outcome, user: user.name }
+      - labels: { action: , outcome: }
+      - timestamp: { source: ts, format: RFC3339Nano }
+```
+
+In Kubernetes the pod logs (`AUDIT_LOG_STDOUT=true`) reach Loki through
+Promtail / Grafana Alloy as usual; select them with
+`{app="vanishly"} | json | event_dataset="vanishly.audit"`.
+
+**Elastic (Filebeat)** with `AUDIT_LOG_FORMAT=ecs`:
+
+```yaml
+filebeat.inputs:
+  - type: filestream
+    id: vanishly-audit
+    paths: [/var/log/vanishly/audit.jsonl]
+    parsers:
+      - ndjson: { target: "", overwrite_keys: true, expand_keys: true }
+output.elasticsearch:
+  hosts: ["https://elastic.example.com:9200"]
+  index: "logs-vanishly.audit-default"
+```
+
+**Splunk (HTTP Event Collector)**, straight from Vanishly:
+
+```sh
+AUDIT_LOG_WEBHOOK_URL=https://splunk.example.com:8088/services/collector/event
+AUDIT_LOG_WEBHOOK_AUTH_FILE=/run/secrets/splunk_hec   # file content: Splunk <HEC token>
+AUDIT_LOG_WEBHOOK_FORMAT=splunk
+```
+
+(or the universal forwarder on the file with `sourcetype = _json`).
+
+**OpenTelemetry Collector**, OTLP/HTTP from Vanishly:
+
+```sh
+AUDIT_LOG_FORMAT=otel
+AUDIT_LOG_OTLP_URL=http://otel-collector:4318/v1/logs
+```
+
+```yaml
+# collector
+receivers:
+  otlp:
+    protocols: { http: { endpoint: 0.0.0.0:4318 } }
+  filelog:                      # or read the file instead
+    include: [/var/log/vanishly/audit.jsonl]
+    operators: [{ type: json_parser }]
+exporters:
+  otlphttp/loki: { endpoint: http://loki:3100/otlp }
+service:
+  pipelines:
+    logs: { receivers: [otlp], exporters: [otlphttp/loki] }
+```
+
+**Syslog** (rsyslog, syslog-ng, a SIEM): `AUDIT_LOG_SYSLOG=tls://siem.example.com:6514`
+(RFC 5424, facility authpriv, the event JSON as message).
+
+The exporters (syslog, OTLP, webhook) are best effort: they retry for
+about two minutes and keep up to 10 000 events in memory; the file, stdout
+and Redis copies are written before the action goes on.

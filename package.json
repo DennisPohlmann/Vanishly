@@ -12,7 +12,8 @@
     "lint": "tsc -p jsconfig.json",
     "test": "node --test tests/*.test.js",
     "test:a11y": "node --test --test-concurrency=1 tests/a11y.e2e.js",
-    "vendor": "node scripts/vendor.js"
+    "vendor": "node scripts/vendor.js",
+    "audit:verify": "node src/audit-verify.js"
   },
   "dependencies": {
     "express": "^5.1.0",

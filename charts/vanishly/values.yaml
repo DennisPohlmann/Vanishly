@@ -243,6 +243,83 @@ config:
   RESPONSIBLE: ""
   # Who sees the status page: link or signed-in (signed-in with sign-in, else link).
   STATUS_ACCESS: ""
+  # == Audit log (docs/CONFIG.md#audit-log)
+  # Audit events (who, what, when, for whom), hash-chained (false).
+  AUDIT_LOG: ""
+  # Field names: ecs, otel or plain (ecs).
+  AUDIT_LOG_FORMAT: ""
+  # Pretty-printed over several lines, development only (false).
+  AUDIT_LOG_PRETTY: ""
+  # Append-only file, e.g. /var/log/vanishly/audit.jsonl on a volume from extraVolumes (none).
+  AUDIT_LOG_FILE: ""
+  # fsync every event (true).
+  AUDIT_LOG_FSYNC: ""
+  # Events on stdout for log shipping (true without file and Redis stream).
+  AUDIT_LOG_STDOUT: ""
+  # Into the Redis stream, feeds the admin view across replicas (false).
+  AUDIT_LOG_REDIS: ""
+  # Keep about this many events in the stream, 0 = all (0).
+  AUDIT_LOG_REDIS_MAXLEN: ""
+  # AUDIT_LOG_HMAC_KEY (signs every event) is a credential: set it through secretConfig or existingSecret.
+  # File with the HMAC key instead (none).
+  AUDIT_LOG_HMAC_KEY_FILE: ""
+  # closed: refuse or undo actions whose event cannot be written; open: go on (closed).
+  AUDIT_LOG_FAIL: ""
+  # Source address in events: full, hash or off (full).
+  AUDIT_LOG_IP: ""
+  # Browser name in events (true).
+  AUDIT_LOG_USER_AGENT: ""
+  # Name of this instance in the chain (the pod name).
+  AUDIT_LOG_INSTANCE: ""
+  # A checkpoint event every n events, 0 = off (100).
+  AUDIT_LOG_CHECKPOINT: ""
+  # Syslog RFC 5424: udp://, tcp:// or tls://host:port (off).
+  AUDIT_LOG_SYSLOG: ""
+  # PEM file of the CA for tls:// syslog (system CAs).
+  AUDIT_LOG_SYSLOG_CA_FILE: ""
+  # OTLP/HTTP logs endpoint, e.g. http://otel-collector:4318/v1/logs (off).
+  AUDIT_LOG_OTLP_URL: ""
+  # AUDIT_LOG_OTLP_HEADERS and AUDIT_LOG_WEBHOOK_AUTH are credentials: secretConfig or existingSecret.
+  AUDIT_LOG_OTLP_HEADERS_FILE: ""
+  # POST every event as JSON to this address (off).
+  AUDIT_LOG_WEBHOOK_URL: ""
+  # File with the webhook's Authorization header value (none).
+  AUDIT_LOG_WEBHOOK_AUTH_FILE: ""
+  # Webhook body: json or splunk (HEC envelope) (json).
+  AUDIT_LOG_WEBHOOK_FORMAT: ""
+  # Comment per secret for the audit log: off, optional or required (off).
+  AUDIT_COMMENT: ""
+  # Most characters of a comment, 10-2000 (500).
+  AUDIT_COMMENT_MAX: ""
+  # == API tokens and admins (need sign-in)
+  # Personal API tokens, "API tokens" in the user menu (false).
+  API_TOKENS: ""
+  # Outside the server's own pages the API takes only these tokens (false).
+  API_TOKEN_REQUIRED: ""
+  # Only these addresses may make tokens (everyone signed in).
+  API_TOKEN_USERS: ""
+  # Only these groups may make tokens (everyone signed in).
+  API_TOKEN_GROUPS: ""
+  # Every token must name its IP networks: optional or required (optional).
+  API_TOKEN_IP_BINDING: ""
+  # Lifetimes to pick: d days, m months, y years, never (30d,60d,90d,never).
+  API_TOKEN_EXPIRY_OPTIONS: ""
+  # Preselected lifetime (90d).
+  API_TOKEN_DEFAULT_EXPIRY: ""
+  # Longest lifetime allowed, e.g. 1y (never = no cap).
+  API_TOKEN_MAX_EXPIRY: ""
+  # Active tokens per user, 1-100 (10).
+  API_TOKEN_MAX_PER_USER: ""
+  # Calls per token per RATE_LIMIT_WINDOW, 0 = off (0).
+  API_TOKEN_RATE_LIMIT: ""
+  # Comment required on every POST with a token: optional or required (optional).
+  API_TOKEN_COMMENT: ""
+  # Admins (addresses): audit log page and all API tokens (none).
+  ADMIN_USERS: ""
+  # Admin groups, as in the groups claim (none).
+  ADMIN_GROUPS: ""
+  # The audit log page for admins (true).
+  AUDIT_ADMIN_VIEW: ""
 
 # -- Set BASE_URL to https://<first host> of ingress or httpRoute when config.BASE_URL is empty.
 baseUrlFromIngress: true

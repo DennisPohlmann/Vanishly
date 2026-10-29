@@ -7,7 +7,8 @@ the server keeps only ciphertext in Redis (`src/store.js`) and never sees the
 key, which lives in the URL fragment. HTTP app and API in `src/app.js`, optional sign-in (OIDC/Entra ID and provider presets,
 recipients) in `src/auth.js`, directory backends for the people/group search
 (one per provider) in `src/directory/`,
-settings in `src/config.js` (`.env.example`), passphrase rules in
+audit log in `src/audit.js` (verify: `src/audit-verify.js`), personal API
+tokens in `src/tokens.js`, settings in `src/config.js` (`.env.example`), passphrase rules in
 `public/js/rules.js` (shared like the crypto module), design templates and page
 rendering in `src/theme.js` (`templates/`, `views/`, `translations/`). API
 contract: `openapi/openapi.json`, API reference (Scalar) at `/api/docs`.
@@ -103,7 +104,14 @@ current, audit summary at the end.
   for scripts only as `<script type="application/json">` with `<` escaped.
 - Template output is escaped (`{{ }}`); `{{{ }}}` only for HTML built in
   `src/theme.js`/`src/app.js`. Template files: plain files, no symlinks.
-- Logs never contain ids (`:id`), IPs, user agents, keys or secrets.
+- Logs never contain ids (`:id`), IPs, user agents, keys or secrets. The
+  audit log (`src/audit.js`, `AUDIT_LOG`) is the one exception for IPs and
+  user agents (`AUDIT_LOG_IP`, `AUDIT_LOG_USER_AGENT`); it refers to secrets
+  only by HMAC refs and never holds content, keys, passphrases, fragments
+  or full API tokens. Its hash chain (`hashOf`, canonical JSON) must stay
+  verifiable by `src/audit-verify.js` for all formats.
+- API tokens (`src/tokens.js`) are stored only as HMACs, shown once, and
+  cannot manage tokens; IP binding is checked on `req.ip` (`TRUST_PROXY`).
 - `.env`, `.env.local` stay ignored; examples use `change-me` or
   `example.com`.
 - The crypto format is versioned (`v: 1`); a change needs a new version and

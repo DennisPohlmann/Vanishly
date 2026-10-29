@@ -980,6 +980,350 @@
               "pattern": "^$|^(link|signed-in)$"
             }
           ]
+        },
+        "AUDIT_LOG": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "AUDIT_LOG_FORMAT": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(ecs|otel|plain)$"
+            }
+          ]
+        },
+        "AUDIT_LOG_PRETTY": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "AUDIT_LOG_FILE": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^/\\S+$"
+            }
+          ]
+        },
+        "AUDIT_LOG_FSYNC": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "AUDIT_LOG_STDOUT": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "AUDIT_LOG_REDIS": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "AUDIT_LOG_REDIS_MAXLEN": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000000
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^[0-9]+$"
+            }
+          ]
+        },
+        "AUDIT_LOG_HMAC_KEY_FILE": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^/\\S+$"
+            }
+          ]
+        },
+        "AUDIT_LOG_FAIL": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(closed|open)$"
+            }
+          ]
+        },
+        "AUDIT_LOG_IP": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(full|hash|off)$"
+            }
+          ]
+        },
+        "AUDIT_LOG_USER_AGENT": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "AUDIT_LOG_INSTANCE": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[\\w.-]{0,64}$"
+            }
+          ]
+        },
+        "AUDIT_LOG_CHECKPOINT": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^[0-9]+$"
+            }
+          ]
+        },
+        "AUDIT_LOG_SYSLOG": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(udp|tcp|tls)://\\S+:[0-9]{1,5}$"
+            }
+          ]
+        },
+        "AUDIT_LOG_SYSLOG_CA_FILE": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^/\\S+$"
+            }
+          ]
+        },
+        "AUDIT_LOG_OTLP_URL": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^https?://\\S+$"
+            }
+          ]
+        },
+        "AUDIT_LOG_OTLP_HEADERS_FILE": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^/\\S+$"
+            }
+          ]
+        },
+        "AUDIT_LOG_WEBHOOK_URL": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^https?://\\S+$"
+            }
+          ]
+        },
+        "AUDIT_LOG_WEBHOOK_AUTH_FILE": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^/\\S+$"
+            }
+          ]
+        },
+        "AUDIT_LOG_WEBHOOK_FORMAT": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(json|splunk)$"
+            }
+          ]
+        },
+        "AUDIT_COMMENT": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(off|optional|required)$"
+            }
+          ]
+        },
+        "AUDIT_COMMENT_MAX": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 2000
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^[0-9]+$"
+            }
+          ]
+        },
+        "API_TOKENS": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "API_TOKEN_REQUIRED": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "API_TOKEN_USERS": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "API_TOKEN_GROUPS": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "API_TOKEN_IP_BINDING": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(optional|required)$"
+            }
+          ]
+        },
+        "API_TOKEN_EXPIRY_OPTIONS": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^[\\s,;]*(?i:[0-9]{1,4}[dmy]|never|0)([\\s,;]+(?i:[0-9]{1,4}[dmy]|never|0))*[\\s,;]*$"
+            }
+          ]
+        },
+        "API_TOKEN_DEFAULT_EXPIRY": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:[0-9]{1,4}[dmy]|never|0)$"
+            }
+          ]
+        },
+        "API_TOKEN_MAX_EXPIRY": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:[0-9]{1,4}[dmy]|never|0)$"
+            }
+          ]
+        },
+        "API_TOKEN_MAX_PER_USER": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^[0-9]+$"
+            }
+          ]
+        },
+        "API_TOKEN_RATE_LIMIT": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^[0-9]+$"
+            }
+          ]
+        },
+        "API_TOKEN_COMMENT": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(optional|required)$"
+            }
+          ]
+        },
+        "ADMIN_USERS": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "ADMIN_GROUPS": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "AUDIT_ADMIN_VIEW": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
         }
       },
       "propertyNames": {

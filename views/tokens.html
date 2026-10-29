@@ -1,0 +1,52 @@
+<section class="card card-wide" id="tokens-card" data-allowed="{{ allowed }}" data-ips-required="{{ ipsRequired }}" data-origin="{{ origin }}">
+  <h1>{{ t:tokens.title }}</h1>
+  <p class="lead">{{ t:tokens.intro }}</p>
+  <p class="notice" id="tokens-not-allowed" hidden>{{ t:tokens.notAllowed }}</p>
+  <form id="token-form" autocomplete="off" novalidate>
+    <div class="field">
+      <label for="token-name">{{ t:tokens.name }}</label>
+      <input type="text" id="token-name" maxlength="64" required aria-describedby="token-name-hint">
+      <div class="hint" id="token-name-hint">{{ t:tokens.nameHint }}</div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="token-expires">{{ t:tokens.expires }}</label>
+        <select id="token-expires">{{{ expirySelect }}}</select>
+      </div>
+      <fieldset class="field scopes">
+        <legend>{{ t:tokens.scopes }}</legend>
+        {{{ scopeBoxes }}}
+      </fieldset>
+    </div>
+    <div class="field">
+      <label for="token-ips">{{ ipsLabel }}</label>
+      <textarea id="token-ips" rows="3" spellcheck="false" aria-describedby="token-ips-hint"></textarea>
+      <div class="hint" id="token-ips-hint">{{ ipsHint }}</div>
+    </div>
+    <p class="notice notice-error" id="token-error" role="alert" hidden></p>
+    <button type="submit" class="btn btn-primary btn-block" id="token-submit">{{ t:tokens.create }}</button>
+  </form>
+  <div id="token-new" hidden>
+    <p class="notice notice-ok" role="status">{{ t:tokens.created }}</p>
+    <label for="token-value">{{ t:tokens.yourToken }}</label>
+    <div class="copy-row">
+      <input type="text" id="token-value" readonly spellcheck="false">
+      <button type="button" class="btn btn-primary" data-copy="token-value">{{ t:created.copy }}</button>
+    </div>
+    <label for="token-example">{{ t:tokens.example }}</label>
+    <textarea id="token-example" rows="6" readonly spellcheck="false"></textarea>
+    <p class="hint">{{ commentNote }}</p>
+  </div>
+</section>
+
+<section class="card card-wide" id="token-list-card">
+  <h2>{{ t:tokens.list }}</h2>
+  <p class="notice notice-error" id="token-list-error" role="alert" hidden></p>
+  <div class="table-wrap">
+    <table class="data" id="token-table">
+      <thead><tr><th scope="col">{{ t:tokens.col.name }}</th><th scope="col">{{ t:tokens.col.token }}</th><th scope="col">{{ t:tokens.col.expires }}</th><th scope="col">{{ t:tokens.col.lastUsed }}</th><th scope="col">{{ t:tokens.col.networks }}</th><th scope="col">{{ t:tokens.col.scopes }}</th><th scope="col">{{ t:tokens.col.state }}</th><th scope="col"><span class="sr-only">{{ t:tokens.revoke }}</span></th></tr></thead>
+      <tbody id="token-rows"></tbody>
+    </table>
+  </div>
+  <p class="hint" id="token-none" hidden>{{ t:tokens.none }}</p>
+</section>

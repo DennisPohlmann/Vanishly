@@ -11,11 +11,16 @@
 | `/api/openapi.json` | OpenAPI 3.1 document |
 | `/healthz` | `ok` (200) when Redis answers and accepts writes, otherwise 503 |
 | `/auth/login`, `/auth/logout`, `/auth/logged-out` | Sign in and out; `/auth/logged-out` is where the provider returns after a sign-out (only with `AUTH_PROVIDER`) |
+| `/settings/tokens` | "API tokens" (user menu, `API_TOKENS=true`): make a personal API token (name, lifetime, allowed addresses, scopes; shown once), list your tokens with expiry, last use and state, revoke them |
+| `/admin` | "Audit log" (user menu, admins only, `ADMIN_USERS` / `ADMIN_GROUPS`): filter the audit log by event, outcome, who, for whom, run id, text and time; export CSV or JSON lines; check the hash chain; all API tokens with "Revoke" |
 
 The header has the language switch and the light/dark switch (remembered in
 the browser) and, with sign-in, "Sign in", or the full name with the
 e-mail address below it and "Sign out". "Sign out" also signs out at the
 provider (`AUTH_LOGOUT=provider`, the default except with Entra ID).
+With `AUDIT_COMMENT=optional` or `required` the form has a "Comment" field
+(what the secret is for, e.g. a ticket number): it goes into the audit log
+and onto the status page, not into the secret.
 
 ## How sharing works
 

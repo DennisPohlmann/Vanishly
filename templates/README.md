@@ -112,13 +112,16 @@ Security Policy blocks external fonts, images and scripts.
 ## Own views (`views/`)
 
 A template can replace `layout.html`, `home.html`, `secret.html`,
-`receipt.html`, `error.html` or `login.html` (the sign-in prompt) of the
+`receipt.html`, `error.html`, `login.html` (the sign-in prompt), `tokens.html`
+(API tokens, `API_TOKENS`) or `admin.html` (audit log for admins) of the
 app's `views/` folder. Start from the
 original. Placeholders:
 
 - `{{ name }}`: a value, HTML-escaped
 - `{{{ name }}}`: HTML built by Vanishly (`content`, `ttlSelect`, `footerLinks`, `logoHtml`, `i18n`,
-  and with sign-in `authNav` in the layout and `recipientsBlock` in the home view)
+  and with sign-in `authNav` in the layout and `recipientsBlock` in the home view,
+  which also carries the comment field of `AUDIT_COMMENT`; `expirySelect` and
+  `scopeBoxes` in `tokens.html`)
 - `{{ t:key }}`: a text from `translations/*.json` or `strings`
 
 Keep the element ids the page script uses (`create-form`, `secret`,
@@ -145,3 +148,8 @@ secrets, but the page lacks the buttons. The body classes `no-new-link`
 (nobody signed in, creating needs a sign-in: base.css hides `.nav-new` and
 a `.site-nav > a[href="/"]`) and `auto-login` (`AUTH_AUTO_LOGIN`) come
 with `{{ featureClasses }}` on `<body>`.
+
+The user menu in `{{{ authNav }}}` also holds "API tokens" (`API_TOKENS`)
+and, for admins, "Audit log". An own `receipt.html` shows the comment
+(`AUDIT_COMMENT`) only with the `.r-comment-row` elements and `#r-comment`
+of `views/receipt.html`.

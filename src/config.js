@@ -63,6 +63,46 @@ export function parseDurations(v) {
 }
 
 /**
+ * An API token lifetime: "30d" (days), "6m" (calendar months), "1y"
+ * (calendar years) or "never". Returns it normalized ("never" also for 0).
+ * Note: m means months here, unlike TTL_OPTIONS (minutes).
+ * @param {string} v
+ */
+export function parseExpiry(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (s === 'never' || s === '0') return 'never';
+  const m = /^(\d{1,4})([dmy])$/.exec(s);
+  const max = /** @type {Record<string, number>} */ ({ d: 3660, m: 120, y: 10 });
+  if (!m || Number(m[1]) < 1 || Number(m[1]) > max[m[2]]) {
+    throw new Error(`"${v}" is not a lifetime like 30d, 6m, 1y or never (d days up to 3660, m months up to 120, y years up to 10)`);
+  }
+  return `${Number(m[1])}${m[2]}`;
+}
+
+/**
+ * When a token made at `now` with this lifetime expires (ms); 0 = never.
+ * Months and years are calendar ones; the 31st becomes the last day of a
+ * shorter month (Jan 31 + 1m = Feb 28/29).
+ * @param {string} opt from parseExpiry
+ * @param {number} now
+ */
+export function expiryAt(opt, now) {
+  if (opt === 'never') return 0;
+  const n = Number(opt.slice(0, -1));
+  const unit = opt.slice(-1);
+  if (unit === 'd') return now + n * 86400000;
+  const d = new Date(now);
+  const months = d.getUTCMonth() + (unit === 'y' ? 12 * n : n);
+  const year = d.getUTCFullYear() + Math.floor(months / 12);
+  const month = months % 12;
+  const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return Date.UTC(year, month, Math.min(d.getUTCDate(), last), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds());
+}
+
+// Lifetimes are compared at this fixed date (a month is not always 30 days).
+const EXPIRY_REF = Date.UTC(2001, 0, 1);
+
+/**
  * @template T
  * @param {string} name
  * @param {() => T} fn
@@ -105,12 +145,22 @@ export const SETTINGS = [
   'ENABLE_PASSPHRASE', 'ENABLE_VIEWS', 'ENABLE_RECEIPTS', 'ENABLE_BURN', 'ENABLE_VIEW_LOG',
   'ENABLE_RECEIPT_SHARE_LINK', 'ENABLE_GENERATOR', 'ENABLE_LANG_SWITCH', 'ENABLE_THEME_TOGGLE',
   'ENABLE_GITHUB_LINK', 'VANISHLY_VERSION',
+  'AUDIT_LOG', 'AUDIT_LOG_FORMAT', 'AUDIT_LOG_PRETTY', 'AUDIT_LOG_FILE', 'AUDIT_LOG_FSYNC', 'AUDIT_LOG_STDOUT',
+  'AUDIT_LOG_REDIS', 'AUDIT_LOG_REDIS_MAXLEN', 'AUDIT_LOG_HMAC_KEY', 'AUDIT_LOG_HMAC_KEY_FILE', 'AUDIT_LOG_FAIL',
+  'AUDIT_LOG_IP', 'AUDIT_LOG_USER_AGENT', 'AUDIT_LOG_INSTANCE', 'AUDIT_LOG_CHECKPOINT', 'AUDIT_LOG_SYSLOG',
+  'AUDIT_LOG_SYSLOG_CA_FILE', 'AUDIT_LOG_OTLP_URL', 'AUDIT_LOG_OTLP_HEADERS', 'AUDIT_LOG_OTLP_HEADERS_FILE',
+  'AUDIT_LOG_WEBHOOK_URL', 'AUDIT_LOG_WEBHOOK_AUTH', 'AUDIT_LOG_WEBHOOK_AUTH_FILE', 'AUDIT_LOG_WEBHOOK_FORMAT',
+  'AUDIT_COMMENT', 'AUDIT_COMMENT_MAX',
   'AUTH_PROVIDER', 'ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET', 'ENTRA_CLIENT_SECRET_FILE',
   'ENTRA_AUTHORITY', 'ENTRA_GRAPH', 'ENTRA_GRAPH_URL', 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET',
   'OIDC_CLIENT_SECRET_FILE', 'OIDC_SCOPES', 'OIDC_GROUPS_CLAIM', 'AUTH_ALLOWED_DOMAINS', 'DIRECTORY_API', 'DIRECTORY_URL',
   'DIRECTORY_CLIENT_ID', 'DIRECTORY_CLIENT_SECRET', 'DIRECTORY_CLIENT_SECRET_FILE', 'DIRECTORY_API_TOKEN',
   'DIRECTORY_API_TOKEN_FILE', 'DIRECTORY_GOOGLE_CREDENTIALS_FILE', 'DIRECTORY_GOOGLE_ADMIN', 'AUTH_SECRET', 'AUTH_SECRET_FILE', 'AUTH_SESSION_TTL', 'AUTH_LOGOUT', 'AUTH_AUTO_LOGIN', 'AUTH_CREATE', 'AUTH_API_AUDIENCE', 'RECIPIENTS', 'RECIPIENTS_MAX', 'RECIPIENT_GROUPS',
   'RECIPIENT_USER_GROUP', 'RECIPIENT_DOMAINS', 'RECEIPT_SHOW_VIEWER',
+  'ADMIN_USERS', 'ADMIN_GROUPS', 'AUDIT_ADMIN_VIEW',
+  'API_TOKENS', 'API_TOKEN_REQUIRED', 'API_TOKEN_USERS', 'API_TOKEN_GROUPS', 'API_TOKEN_IP_BINDING',
+  'API_TOKEN_EXPIRY_OPTIONS', 'API_TOKEN_DEFAULT_EXPIRY', 'API_TOKEN_MAX_EXPIRY', 'API_TOKEN_MAX_PER_USER',
+  'API_TOKEN_RATE_LIMIT', 'API_TOKEN_COMMENT',
 ];
 const AUTH_SETTINGS = SETTINGS.slice(SETTINGS.indexOf('ENTRA_TENANT_ID'));
 /**
@@ -471,6 +521,32 @@ function authConfig(env, baseUrl) {
   }
   /** @param {string} name @param {number} def @param {number} min @param {number} max */
   const num = (name, def, min, max) => named(name, () => int(env[name], def, min, max));
+  /** @param {string} name @param {boolean} def */
+  const sw = (name, def) => named(name, () => flag(env[name], def));
+  /** A list of addresses (ADMIN_USERS, API_TOKEN_USERS). @param {string} name */
+  const addresses = (name) =>
+    named(name, () => {
+      const list = (env[name] || '').toLowerCase().split(/[\s,;]+/).filter(Boolean);
+      for (const a of list) if (!/^[^\s@<>"',;]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(a)) throw new Error(`"${a}" is no e-mail address`);
+      return list;
+    });
+  /** A list of groups as in the groups claim (ADMIN_GROUPS, API_TOKEN_GROUPS). @param {string} name */
+  const groupList = (name) =>
+    named(name, () => {
+      const list = (env[name] || '').split(',').map((g) => g.trim()).filter(Boolean);
+      for (const g of list) if (g.length > 200 || /[\x00-\x1f]/.test(g) || (entra && !GUID.test(g))) throw new Error(`"${g}" is no ${entra ? 'group object id (GUID)' : 'group'}`);
+      if (list.length && !groupsClaim && !directory) throw new Error(`groups need OIDC_GROUPS_CLAIM (or the directory) with AUTH_PROVIDER=${provider}`);
+      return list.map((g) => groupValue(g, lower, groupPaths));
+    });
+  // Admins: may read the audit log and see and revoke every API token.
+  const admin = { users: addresses('ADMIN_USERS'), groups: groupList('ADMIN_GROUPS'), auditView: sw('AUDIT_ADMIN_VIEW', true) };
+  // API_TOKENS: personal API tokens (src/tokens.js).
+  const tokensOn = sw('API_TOKENS', false);
+  if (!tokensOn) {
+    const set = ['API_TOKEN_REQUIRED', 'API_TOKEN_USERS', 'API_TOKEN_GROUPS', 'API_TOKEN_IP_BINDING', 'API_TOKEN_EXPIRY_OPTIONS', 'API_TOKEN_DEFAULT_EXPIRY', 'API_TOKEN_MAX_EXPIRY', 'API_TOKEN_MAX_PER_USER', 'API_TOKEN_RATE_LIMIT', 'API_TOKEN_COMMENT'].find((k) => env[k]);
+    if (set) throw new Error(`${set} needs API_TOKENS=true`);
+  }
+  const tokens = tokensOn ? tokenConfig(env, { num, sw, addresses, groupList }) : null;
   return {
     provider,
     tenant,
@@ -500,6 +576,150 @@ function authConfig(env, baseUrl) {
     // the provider still knows them; otherwise the page stays as it is.
     autoLogin: named('AUTH_AUTO_LOGIN', () => flag(env.AUTH_AUTO_LOGIN, false)),
     showViewer: named('RECEIPT_SHOW_VIEWER', () => flag(env.RECEIPT_SHOW_VIEWER, false)),
+    admin,
+    tokens,
+    // Groups the identity must keep besides RECIPIENT_GROUPS (admins, token makers).
+    extraGroups: [...new Set([...admin.groups, ...(tokens?.groups || [])])],
+  };
+}
+
+/**
+ * API_TOKEN_*: who may make tokens, their lifetimes, IP binding, limits.
+ * @param {NodeJS.ProcessEnv} env
+ * @param {{ num: (n: string, d: number, min: number, max: number) => number, sw: (n: string, d: boolean) => boolean,
+ *   addresses: (n: string) => string[], groupList: (n: string) => string[] }} h
+ */
+function tokenConfig(env, h) {
+  /** @param {string} name @param {string} v */
+  const life = (name, v) => named(name, () => parseExpiry(v));
+  /** @param {string} o */
+  const length = (o) => (o === 'never' ? Infinity : expiryAt(o, EXPIRY_REF) - EXPIRY_REF);
+  const maxExpiry = env.API_TOKEN_MAX_EXPIRY ? life('API_TOKEN_MAX_EXPIRY', env.API_TOKEN_MAX_EXPIRY) : 'never';
+  let options = named('API_TOKEN_EXPIRY_OPTIONS', () => {
+    const list = (env.API_TOKEN_EXPIRY_OPTIONS || '30d,60d,90d,never').split(/[\s,;]+/).filter(Boolean).map(parseExpiry);
+    if (!list.length) throw new Error('empty');
+    return [...new Set(list)];
+  });
+  // A cap removes "never" and everything longer from the choices.
+  if (maxExpiry !== 'never') {
+    options = options.filter((o) => length(o) <= length(maxExpiry));
+    if (!options.length) throw new Error(`API_TOKEN_EXPIRY_OPTIONS: no lifetime within API_TOKEN_MAX_EXPIRY=${maxExpiry}`);
+  }
+  options.sort((a, b) => length(a) - length(b));
+  let defaultExpiry;
+  if (env.API_TOKEN_DEFAULT_EXPIRY) {
+    defaultExpiry = life('API_TOKEN_DEFAULT_EXPIRY', env.API_TOKEN_DEFAULT_EXPIRY);
+    if (length(defaultExpiry) > length(maxExpiry)) throw new Error(`API_TOKEN_DEFAULT_EXPIRY=${defaultExpiry} is above API_TOKEN_MAX_EXPIRY=${maxExpiry}`);
+    if (!options.includes(defaultExpiry)) options.push(defaultExpiry);
+  } else {
+    // 90 days, else the longest finite choice.
+    defaultExpiry = options.includes('90d') ? '90d' : options.filter((o) => o !== 'never').pop() || options[0];
+  }
+  options.sort((a, b) => length(a) - length(b));
+  const ipBinding = env.API_TOKEN_IP_BINDING || 'optional';
+  if (!/^(optional|required)$/.test(ipBinding)) throw new Error('API_TOKEN_IP_BINDING: optional or required');
+  const comment = env.API_TOKEN_COMMENT || 'optional';
+  if (!/^(optional|required)$/.test(comment)) throw new Error('API_TOKEN_COMMENT: optional or required');
+  return {
+    // API_TOKEN_REQUIRED: outside this server's own pages, the API takes only these tokens.
+    required: h.sw('API_TOKEN_REQUIRED', false),
+    users: h.addresses('API_TOKEN_USERS'),
+    groups: h.groupList('API_TOKEN_GROUPS'),
+    ipBinding: /** @type {'optional' | 'required'} */ (ipBinding),
+    expiryOptions: options,
+    defaultExpiry,
+    maxExpiry,
+    maxPerUser: h.num('API_TOKEN_MAX_PER_USER', 10, 1, 100),
+    rateLimit: h.num('API_TOKEN_RATE_LIMIT', 0, 0, 100000),
+    comment: /** @type {'optional' | 'required'} */ (comment),
+  };
+}
+
+/**
+ * AUDIT_LOG: the audit log (src/audit.js); null = off.
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} authSecret for the refs when AUDIT_LOG_HMAC_KEY is not set
+ */
+function auditConfig(env, authSecret) {
+  /** @param {string} name @param {boolean} def */
+  const sw = (name, def) => named(name, () => flag(env[name], def));
+  if (!sw('AUDIT_LOG', false)) {
+    const set = SETTINGS.filter((k) => k.startsWith('AUDIT_LOG_') || k.startsWith('AUDIT_COMMENT')).find((k) => env[k] && !(k === 'AUDIT_COMMENT' && env[k] === 'off'));
+    if (set) throw new Error(`${set} needs AUDIT_LOG=true`);
+    return null;
+  }
+  /** @param {string} name @param {RegExp} re @param {string} def @param {string} what */
+  const pick = (name, re, def, what) => {
+    const v = env[name] || def;
+    if (!re.test(v)) throw new Error(`${name}: ${what}`);
+    return v;
+  };
+  /** @param {string} name */
+  const httpUrl = (name) => {
+    const v = env[name] || '';
+    if (v && !/^https?:\/\/[^/\s]+(\/\S*)?$/.test(v)) throw new Error(`${name}: an http(s):// address`);
+    return v;
+  };
+  const file = pick('AUDIT_LOG_FILE', /^(|\/\S+)$/, '', 'an absolute path, e.g. /var/log/vanishly/audit.jsonl');
+  const redis = sw('AUDIT_LOG_REDIS', false);
+  const stdout = sw('AUDIT_LOG_STDOUT', !file && !redis);
+  if (!file && !redis && !stdout) throw new Error('AUDIT_LOG=true needs a sink: AUDIT_LOG_FILE, AUDIT_LOG_STDOUT or AUDIT_LOG_REDIS');
+  const hmacKey = named('AUDIT_LOG_HMAC_KEY', () => secretValue(env, 'AUDIT_LOG_HMAC_KEY'));
+  if (hmacKey && hmacKey.length < 32) throw new Error('AUDIT_LOG_HMAC_KEY: at least 32 characters (e.g. openssl rand -base64 48)');
+  const syslog = named('AUDIT_LOG_SYSLOG', () => {
+    const v = env.AUDIT_LOG_SYSLOG || '';
+    if (!v) return null;
+    const m = /^(udp|tcp|tls):\/\/(\[[0-9a-fA-F:]+\]|[\w.-]+):(\d{1,5})$/.exec(v);
+    if (!m || Number(m[3]) < 1 || Number(m[3]) > 65535) throw new Error('udp://host:514, tcp://host:514 or tls://host:6514');
+    let ca = '';
+    if (env.AUDIT_LOG_SYSLOG_CA_FILE) {
+      if (m[1] !== 'tls') throw new Error('AUDIT_LOG_SYSLOG_CA_FILE needs a tls:// AUDIT_LOG_SYSLOG');
+      try {
+        ca = readFileSync(env.AUDIT_LOG_SYSLOG_CA_FILE, 'utf8');
+      } catch (err) {
+        throw new Error(`AUDIT_LOG_SYSLOG_CA_FILE: cannot read it (${/** @type {NodeJS.ErrnoException} */ (err).code || 'error'})`);
+      }
+    }
+    return { proto: /** @type {'udp' | 'tcp' | 'tls'} */ (m[1]), host: m[2].replace(/^\[|\]$/g, ''), port: Number(m[3]), ca };
+  });
+  if (env.AUDIT_LOG_SYSLOG_CA_FILE && !syslog) throw new Error('AUDIT_LOG_SYSLOG_CA_FILE needs AUDIT_LOG_SYSLOG');
+  const otlpUrl = httpUrl('AUDIT_LOG_OTLP_URL');
+  const otlpHeaders = named('AUDIT_LOG_OTLP_HEADERS', () => {
+    const v = secretValue(env, 'AUDIT_LOG_OTLP_HEADERS');
+    if (v && !otlpUrl) throw new Error('needs AUDIT_LOG_OTLP_URL');
+    /** @type {Record<string, string>} */
+    const out = {};
+    for (const part of v.split(',').map((p) => p.trim()).filter(Boolean)) {
+      const m = /^([\w-]{1,64})=([\x20-\x7e]{1,4096})$/.exec(part);
+      if (!m) throw new Error('name=value pairs, comma-separated');
+      out[m[1]] = m[2].trim();
+    }
+    return out;
+  });
+  const webhookUrl = httpUrl('AUDIT_LOG_WEBHOOK_URL');
+  const webhookAuth = named('AUDIT_LOG_WEBHOOK_AUTH', () => secretValue(env, 'AUDIT_LOG_WEBHOOK_AUTH'));
+  if (webhookAuth && !/^[\x20-\x7e]{1,4096}$/.test(webhookAuth)) throw new Error('AUDIT_LOG_WEBHOOK_AUTH: the Authorization header value, e.g. "Bearer ..." or "Splunk ..."');
+  const webhookFormat = pick('AUDIT_LOG_WEBHOOK_FORMAT', /^(json|splunk)$/, 'json', 'json or splunk');
+  if ((webhookAuth || env.AUDIT_LOG_WEBHOOK_FORMAT) && !webhookUrl) throw new Error('AUDIT_LOG_WEBHOOK_AUTH and AUDIT_LOG_WEBHOOK_FORMAT need AUDIT_LOG_WEBHOOK_URL');
+  return {
+    format: /** @type {'ecs' | 'otel' | 'plain'} */ (pick('AUDIT_LOG_FORMAT', /^(ecs|otel|plain)$/, 'ecs', 'ecs, otel or plain')),
+    pretty: sw('AUDIT_LOG_PRETTY', false),
+    file,
+    fsync: sw('AUDIT_LOG_FSYNC', true),
+    stdout,
+    redis,
+    redisMaxLen: named('AUDIT_LOG_REDIS_MAXLEN', () => int(env.AUDIT_LOG_REDIS_MAXLEN, 0, 0, 100000000)),
+    hmacKey,
+    refKey: authSecret,
+    // closed: an action whose event cannot be written is refused (or undone).
+    failClosed: pick('AUDIT_LOG_FAIL', /^(closed|open)$/, 'closed', 'closed or open') === 'closed',
+    ip: /** @type {'full' | 'hash' | 'off'} */ (pick('AUDIT_LOG_IP', /^(full|hash|off)$/, 'full', 'full, hash or off')),
+    userAgent: sw('AUDIT_LOG_USER_AGENT', true),
+    instance: pick('AUDIT_LOG_INSTANCE', /^[\w.-]{0,64}$/, '', 'letters, digits and _ . -, at most 64'),
+    checkpoint: named('AUDIT_LOG_CHECKPOINT', () => int(env.AUDIT_LOG_CHECKPOINT, 100, 0, 1000000)),
+    syslog,
+    otlp: otlpUrl ? { url: otlpUrl, headers: otlpHeaders } : null,
+    webhook: webhookUrl ? { url: webhookUrl, auth: webhookAuth, envelope: webhookFormat } : null,
   };
 }
 
@@ -561,6 +781,7 @@ export function loadConfig(env = process.env) {
     return v;
   };
   const maxSecretChars = num('MAX_SECRET_CHARS', 10000, 1, 1000000);
+  const auth = authConfig(env, baseUrl);
   const config = {
     port: num('PORT', 3000, 1, 65535),
     host: str('HOST', /^[\w.:-]+$/, '0.0.0.0', 'an IP address or host name'),
@@ -652,7 +873,14 @@ export function loadConfig(env = process.env) {
       githubLink: sw('ENABLE_GITHUB_LINK', true),
     },
     accessLog: sw('ACCESS_LOG', true),
-    auth: authConfig(env, baseUrl),
+    auth,
+    audit: auditConfig(env, auth?.secret || ''),
+    // AUDIT_COMMENT: a comment per secret for the audit log (off, optional,
+    // required); it is kept with the receipt, never with the secret.
+    comment: {
+      mode: /** @type {'off' | 'optional' | 'required'} */ (str('AUDIT_COMMENT', /^(off|optional|required)$/, 'off', 'off, optional or required')),
+      max: num('AUDIT_COMMENT_MAX', 500, 10, 2000),
+    },
     // RESPONSIBLE: people/groups who look after a secret (status, burn):
     // off, optional or required. Needs sign-in.
     responsible: str('RESPONSIBLE', /^(off|optional|required)$/, 'off', 'off, optional or required'),
@@ -676,6 +904,12 @@ export function loadConfig(env = process.env) {
   if (!config.features.views) config.maxViews = 1;
   if (!config.auth && config.responsible !== 'off') throw new Error('RESPONSIBLE needs sign-in (AUTH_PROVIDER)');
   if (!config.auth && config.statusAccess === 'signed-in') throw new Error('STATUS_ACCESS=signed-in needs sign-in (AUTH_PROVIDER)');
+  if (auth?.tokens?.comment === 'required' && !config.audit) throw new Error('API_TOKEN_COMMENT=required needs AUDIT_LOG=true (the comment goes into the audit log)');
+  if (auth && config.audit === null && env.AUDIT_ADMIN_VIEW && flag(env.AUDIT_ADMIN_VIEW, true)) throw new Error('AUDIT_ADMIN_VIEW needs AUDIT_LOG=true');
+  if (auth && config.audit && env.AUDIT_ADMIN_VIEW && flag(env.AUDIT_ADMIN_VIEW, true) && !config.audit.file && !config.audit.redis) {
+    throw new Error('AUDIT_ADMIN_VIEW needs AUDIT_LOG_FILE or AUDIT_LOG_REDIS=true (stdout cannot be read back)');
+  }
+  if (auth) auth.admin.auditView = Boolean(auth.admin.auditView && config.audit && (config.audit.file || config.audit.redis) && (auth.admin.users.length || auth.admin.groups.length));
   if (!config.api) {
     config.apiDocs = false;
     config.features.shareApi = false;

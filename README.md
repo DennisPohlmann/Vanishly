@@ -40,6 +40,16 @@ Vanishly runs as a small Node.js container next to Redis.
   `POST /api/v1/open` (open a link with its passphrase) for scripts and
   `curl`. Every endpoint can be switched off on its own (e.g. create and
   reveal only); the docs then show only what is on.
+- **Audit log (optional, `AUDIT_LOG`):** who created, opened, burned what,
+  when, for whom, with comment and run id; one JSON event per line in
+  Elastic Common Schema, OpenTelemetry or a plain format, to a file, stdout,
+  Redis, syslog, OTLP or a webhook. Tamper-evident (hash chain, optional
+  HMAC signatures, `npm run audit:verify`), fail-closed by default, never
+  with the secret itself. Admins filter and export it on `/admin`.
+- **Personal API tokens (optional, `API_TOKENS`):** each user makes their
+  own tokens (lifetime, allowed IP networks, scopes) on "API tokens"; only
+  activated users or groups may, and `API_TOKEN_REQUIRED=true` makes them
+  the only way into the API.
 - **Templates for your branding:** logo, favicon, colours, fonts, pictures,
   footer links, texts and, if you like, own HTML views. Two designs are
   built in, each with light and dark mode and made for phones: `default`
@@ -65,7 +75,7 @@ Vanishly runs as a small Node.js container next to Redis.
   capabilities; CI runs npm audit, CodeQL and Trivy (repository, Dockerfile,
   images).
 - **Privacy:** no cookies except the language choice (and the session when
-  sign-in is on), no IPs stored, no
+  sign-in is on), no IPs stored (except in the optional audit log), no
   third-party requests, strict Content Security Policy, `no-store` caching.
 
 How a secret is protected, step by step and with its limits:

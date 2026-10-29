@@ -19,6 +19,9 @@ Project layout:
 | `src/theme.js` | templates, rendering, translations |
 | `src/config.js` | environment variables |
 | `src/auth.js` | optional sign-in: OpenID Connect, sessions, bearer tokens, recipients |
+| `src/audit.js` | optional audit log: formats (ECS, OTel, plain), hash chain, sinks and exporters, admin query |
+| `src/audit-verify.js` | `npm run audit:verify`: checks the hash chain of an audit log file |
+| `src/tokens.js` | personal API tokens: HMAC storage, expiry, IP networks, scopes |
 | `public/js/vanishly-crypto.js` | crypto format v1 (browser and server) |
 | `public/js/app.js` | browser logic of the pages |
 | `public/css/base.css` | layout and components (uses the template variables) |
@@ -36,7 +39,16 @@ npm run lint    # tsc --checkJs over src, public/js, tests (jsconfig.json)
 npm test        # node --test; API tests need Redis: REDIS_URL or a redis-server in PATH
 npx --yes @redocly/cli@2.72.0 lint --extends=minimal openapi/openapi.json
 npx playwright install chromium && npm run test:a11y   # accessibility, needs Redis too
+npm run audit:verify -- /path/to/audit.jsonl            # hash chain of an audit log
 ```
+
+`tests/audit.test.js` covers the audit log and the API tokens: the chain
+and its check (changed, removed, moved, inserted, forged events; pretty
+output; restarts; several instances; the CLI), the three formats and
+their keys, that no secret, key, id or token reaches any log, token
+rules (IP networks behind a proxy and IPv6, expiry units and caps,
+scopes, revocation, `API_TOKEN_REQUIRED`), comments, the admin view and
+CSV export, fail-closed, and that everything off changes nothing.
 
 Without Redis the API tests are skipped (and say so); CI always runs them
 against a Redis service. The sign-in tests (`tests/auth.test.js`, and the

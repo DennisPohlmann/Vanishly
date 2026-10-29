@@ -2,11 +2,11 @@
 
 | Topic | File | What is in it |
 |---|---|---|
-| Installation | [INSTALLATION.md](INSTALLATION.md) | Compose, container, tar.gz with systemd, Helm, reverse proxy, own templates, update, troubleshooting, removal, sign-in in three steps |
-| Configuration | [CONFIG.md](CONFIG.md) | every setting with its default; Redis, passphrase rules, API access, sign-in, recipients, responsible people, status page, languages |
-| Usage | [USAGE.md](USAGE.md) | the pages, how sharing works, the status page, health and monitoring |
-| Interface and API | [INTERFACE.md](INTERFACE.md) | REST API with examples, crypto format v1, Redis keys; the contract is [openapi.json](../openapi/openapi.json), the reference is served at `/api/docs` |
-| Security | [SECURITY.md](SECURITY.md) | how a secret is protected: encryption in the browser, what Redis stores, passphrase, sign-in, status access, limits |
+| Installation | [INSTALLATION.md](INSTALLATION.md) | Compose, container, tar.gz with systemd, Helm, reverse proxy, own templates, update, troubleshooting, removal, sign-in in three steps, shipping the audit log (Loki, Elastic, Splunk, OpenTelemetry, syslog) |
+| Configuration | [CONFIG.md](CONFIG.md) | every setting with its default; Redis, passphrase rules, API access, sign-in, recipients, responsible people, status page, audit log, API tokens, languages |
+| Usage | [USAGE.md](USAGE.md) | the pages (also API tokens and the audit log page), how sharing works, the status page, health and monitoring |
+| Interface and API | [INTERFACE.md](INTERFACE.md) | REST API with examples, crypto format v1, Redis keys, audit events and formats, hash chain and `audit:verify`, token API; the contract is [openapi.json](../openapi/openapi.json), the reference is served at `/api/docs` |
+| Security | [SECURITY.md](SECURITY.md) | how a secret is protected: encryption in the browser, what Redis stores, passphrase, sign-in, status access, audit log and API tokens, limits |
 | Development | [DEVELOPMENT.md](DEVELOPMENT.md) | local development, tests, CI, security checks, releases |
 | Templates | [templates/README.md](../templates/README.md) | own designs: logo, CSS, pictures, views |
 | Translations | [CONFIG.md](CONFIG.md#languages) | languages, browser detection, own translations (`TRANSLATIONS_DIR`, [translations/](../translations/en.json)) |

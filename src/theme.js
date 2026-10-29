@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const VIEWS = ['layout', 'home', 'secret', 'receipt', 'error', 'login'];
+const VIEWS = ['layout', 'home', 'secret', 'receipt', 'error', 'login', 'tokens', 'admin'];
 const BUILTIN_TRANSLATIONS = join(ROOT, 'translations');
 
 /** @param {string} s */

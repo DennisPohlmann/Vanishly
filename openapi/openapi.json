@@ -3,7 +3,7 @@
   "info": {
     "title": "Vanishly API",
     "version": "0.0.0",
-    "description": "Share secrets with links that work only once (or a few times) and then burn.\n\n**End-to-end encryption.** Secrets are encrypted on the client (AES-256-GCM, format v1, see `public/js/vanishly-crypto.js` and docs/INTERFACE.md). The server stores only the ciphertext. The key travels in the URL fragment (`#...`), which browsers never send to the server.\n\nUse `POST /v1/secrets` with a client-encrypted payload. For scripts without crypto, `POST /v1/share` encrypts on the server, returns the full links with the key and forgets the key.\n\n**Authentication.** By default none: whoever knows a secret or receipt id may use it, so ids are 128-bit random values. With sign-in on (`AUTH_PROVIDER=entra` or `oidc`, see `auth` in `GET /v1/config`) creating may need a signed-in user (`AUTH_CREATE`), and a secret with `recipients` / `recipientGroups` opens only for one of them: `GET /v1/secrets/{id}`, `/reveal` and `/v1/open` answer `401 login_required` without a sign-in and `403 not_recipient` for anybody else, without using a view. Browsers use the session cookie of `/auth/login`; scripts send an access token of the provider as `Authorization: Bearer` when the server sets `AUTH_API_AUDIENCE`.\n\n**Switches.** An operator can turn parts off (see `features` in `GET /v1/config`). Switched-off endpoints answer 404: `/v1/share` (`ENABLE_SHARE_API`), the receipt endpoints (`ENABLE_RECEIPTS`), burn (`ENABLE_BURN`). With `ENABLE_API=false` the whole API answers 404 except for the server's own pages.",
+    "description": "Share secrets with links that work only once (or a few times) and then burn.\n\n**End-to-end encryption.** Secrets are encrypted on the client (AES-256-GCM, format v1, see `public/js/vanishly-crypto.js` and docs/INTERFACE.md). The server stores only the ciphertext. The key travels in the URL fragment (`#...`), which browsers never send to the server.\n\nUse `POST /v1/secrets` with a client-encrypted payload. For scripts without crypto, `POST /v1/share` encrypts on the server, returns the full links with the key and forgets the key.\n\n**Authentication.** By default none: whoever knows a secret or receipt id may use it, so ids are 128-bit random values. With sign-in on (`AUTH_PROVIDER=entra` or `oidc`, see `auth` in `GET /v1/config`) creating may need a signed-in user (`AUTH_CREATE`), and a secret with `recipients` / `recipientGroups` opens only for one of them: `GET /v1/secrets/{id}`, `/reveal` and `/v1/open` answer `401 login_required` without a sign-in and `403 not_recipient` for anybody else, without using a view. Browsers use the session cookie of `/auth/login`; scripts send an access token of the provider as `Authorization: Bearer` when the server sets `AUTH_API_AUDIENCE`.\n\n**Switches.** An operator can turn parts off (see `features` in `GET /v1/config`). Switched-off endpoints answer 404: `/v1/share` (`ENABLE_SHARE_API`), the receipt endpoints (`ENABLE_RECEIPTS`), burn (`ENABLE_BURN`). With `ENABLE_API=false` the whole API answers 404 except for the server's own pages.\n\n**Audit and API tokens.** With AUDIT_LOG every call gets a run id (`X-Run-Id` / `X-Request-Id` from the caller, else a UUID; returned in both headers) and the W3C `traceparent` is honoured. Personal API tokens (`Authorization: Bearer vnly_...`, API_TOKENS) act as their owner, only from their IP networks; `X-Audit-Comment` and `X-On-Behalf-Of` go into the audit log. With API_TOKEN_REQUIRED=true scripts need such a token.",
     "license": {
       "name": "GPL-3.0-or-later",
       "identifier": "GPL-3.0-or-later"
@@ -21,6 +21,9 @@
     },
     {
       "sessionCookie": []
+    },
+    {
+      "apiToken": []
     }
   ],
   "tags": [
@@ -35,6 +38,14 @@
     {
       "name": "meta",
       "description": "Server settings"
+    },
+    {
+      "name": "tokens",
+      "description": "Personal API tokens (API_TOKENS)"
+    },
+    {
+      "name": "admin",
+      "description": "Audit log and all API tokens, for admins (ADMIN_USERS, ADMIN_GROUPS)"
     }
   ],
   "paths": {
@@ -104,10 +115,49 @@
                   "$ref": "#/components/schemas/Config"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "401": {
+            "description": "with API tokens: `token_required` (API_TOKEN_REQUIRED=true and no API token), `invalid_token` (unknown, revoked or malformed), `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
             }
           }
         },
-        "description": "Switched off with ENABLE_CONFIG_API=false (404); the web pages do not use it."
+        "description": "Switched off with ENABLE_CONFIG_API=false (404); the web pages do not use it.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ]
       }
     },
     "/v1/secrets": {
@@ -136,15 +186,25 @@
                   "$ref": "#/components/schemas/Created"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "400": {
-            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short` (below MIN_SECRET_CHARS, judged from the ciphertext size) or `passphrase_required` (REQUIRE_PASSPHRASE=true and no verifier, or REQUIRE_PASSPHRASE=unless-recipients with neither verifier nor recipients) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `responsibles_disabled`, `responsibles_required`, `invalid_responsible`, `responsible_domain`, `too_many_responsibles`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
+            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short` (below MIN_SECRET_CHARS, judged from the ciphertext size) or `passphrase_required` (REQUIRE_PASSPHRASE=true and no verifier, or REQUIRE_PASSPHRASE=unless-recipients with neither verifier nor recipients) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `responsibles_disabled`, `responsibles_required`, `invalid_responsible`, `responsible_domain`, `too_many_responsibles`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients` With AUDIT_COMMENT: `comment_required`, `comment_disabled`, `invalid_comment`; with API_TOKEN_COMMENT=required also for every POST with a token.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -156,6 +216,11 @@
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "429": {
@@ -166,6 +231,9 @@
                   "type": "integer"
                 },
                 "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             },
             "content": {
@@ -177,7 +245,32 @@
             }
           },
           "401": {
-            "description": "Sign-in needed (`login_required`): creating needs a signed-in user (AUTH_CREATE=signed-in), or recipients were given without one",
+            "description": "Sign-in needed (`login_required`): creating needs a signed-in user (AUTH_CREATE=signed-in), or recipients were given without one; with API tokens: `token_required` (API_TOKEN_REQUIRED=true and no API token), `invalid_token` (unknown, revoked or malformed), `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "403": {
+            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`audit_unavailable`: AUDIT_LOG_FAIL=closed and the audit log cannot be written; nothing was done (a new secret is removed again, a secret is not handed out)",
             "content": {
               "application/json": {
                 "schema": {
@@ -187,7 +280,21 @@
             }
           }
         },
-        "description": "ENABLE_CREATE_API=false: only this server's form may call it (404 for scripts)."
+        "description": "ENABLE_CREATE_API=false: only this server's form may call it (404 for scripts).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ]
       }
     },
     "/v1/share": {
@@ -240,15 +347,25 @@
                   ]
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "400": {
-            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short`, `passphrase_required` (REQUIRE_PASSPHRASE=true without passphrase, or unless-recipients with neither passphrase nor recipients), `passphrase_too_short` (MIN_PASSPHRASE_LENGTH) or `passphrase_too_weak` (PASSPHRASE_COMPLEXITY; `missing` lists the classes) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `responsibles_disabled`, `responsibles_required`, `invalid_responsible`, `responsible_domain`, `too_many_responsibles`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients`",
+            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short`, `passphrase_required` (REQUIRE_PASSPHRASE=true without passphrase, or unless-recipients with neither passphrase nor recipients), `passphrase_too_short` (MIN_PASSPHRASE_LENGTH) or `passphrase_too_weak` (PASSPHRASE_COMPLEXITY; `missing` lists the classes) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `responsibles_disabled`, `responsibles_required`, `invalid_responsible`, `responsible_domain`, `too_many_responsibles`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients` With AUDIT_COMMENT: `comment_required`, `comment_disabled`, `invalid_comment`; with API_TOKEN_COMMENT=required also for every POST with a token.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -260,6 +377,11 @@
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "429": {
@@ -270,6 +392,9 @@
                   "type": "integer"
                 },
                 "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             },
             "content": {
@@ -288,10 +413,40 @@
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "401": {
-            "description": "Sign-in needed (`login_required`): creating needs a signed-in user (AUTH_CREATE=signed-in), or recipients were given without one",
+            "description": "Sign-in needed (`login_required`): creating needs a signed-in user (AUTH_CREATE=signed-in), or recipients were given without one; with API tokens: `token_required` (API_TOKEN_REQUIRED=true and no API token), `invalid_token` (unknown, revoked or malformed), `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "403": {
+            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`audit_unavailable`: AUDIT_LOG_FAIL=closed and the audit log cannot be written; nothing was done (a new secret is removed again, a secret is not handed out)",
             "content": {
               "application/json": {
                 "schema": {
@@ -300,7 +455,21 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ]
       }
     },
     "/v1/secrets/{id}": {
@@ -321,6 +490,18 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{22}$"
             }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
           }
         ],
         "responses": {
@@ -332,6 +513,11 @@
                   "$ref": "#/components/schemas/SecretMeta"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "404": {
@@ -341,6 +527,11 @@
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -352,6 +543,9 @@
                   "type": "integer"
                 },
                 "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             },
             "content": {
@@ -363,22 +557,32 @@
             }
           },
           "401": {
-            "description": "The secret has recipients and nobody is signed in (`login_required`); no view used",
+            "description": "The secret has recipients and nobody is signed in (`login_required`); no view used; with API tokens: `token_required` (API_TOKEN_REQUIRED=true and no API token), `invalid_token` (unknown, revoked or malformed), `token_expired`",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "403": {
-            "description": "Signed in, but not a recipient (`not_recipient`); no view used",
+            "description": "Signed in, but not a recipient (`not_recipient`); no view used; `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           }
@@ -403,6 +607,18 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{22}$"
             }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
           }
         ],
         "requestBody": {
@@ -431,10 +647,15 @@
                   "$ref": "#/components/schemas/Revealed"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "403": {
-            "description": "Wrong passphrase; or `not_recipient`: signed in, but not a recipient (no view used)",
+            "description": "Wrong passphrase; or `not_recipient`: signed in, but not a recipient (no view used); `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
             "content": {
               "application/json": {
                 "schema": {
@@ -453,6 +674,11 @@
                   ]
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "404": {
@@ -462,6 +688,11 @@
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -473,6 +704,11 @@
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "429": {
@@ -483,6 +719,9 @@
                   "type": "integer"
                 },
                 "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             },
             "content": {
@@ -494,7 +733,22 @@
             }
           },
           "401": {
-            "description": "The secret has recipients and nobody is signed in (`login_required`); no view used",
+            "description": "The secret has recipients and nobody is signed in (`login_required`); no view used; with API tokens: `token_required` (API_TOKEN_REQUIRED=true and no API token), `invalid_token` (unknown, revoked or malformed), `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "503": {
+            "description": "`audit_unavailable`: AUDIT_LOG_FAIL=closed and the audit log cannot be written; nothing was done (a new secret is removed again, a secret is not handed out)",
             "content": {
               "application/json": {
                 "schema": {
@@ -523,6 +777,18 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{22}$"
             }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
           }
         ],
         "responses": {
@@ -534,6 +800,11 @@
                   "$ref": "#/components/schemas/Receipt"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "404": {
@@ -543,6 +814,11 @@
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -554,6 +830,9 @@
                   "type": "integer"
                 },
                 "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             },
             "content": {
@@ -565,22 +844,32 @@
             }
           },
           "401": {
-            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret",
+            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret; with API tokens: `token_required` (API_TOKEN_REQUIRED=true and no API token), `invalid_token` (unknown, revoked or malformed), `token_expired`",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "403": {
-            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret",
+            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret; `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           }
@@ -605,6 +894,18 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{22}$"
             }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
           }
         ],
         "responses": {
@@ -621,6 +922,11 @@
                   }
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "404": {
@@ -630,6 +936,11 @@
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -641,6 +952,11 @@
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "429": {
@@ -651,6 +967,9 @@
                   "type": "integer"
                 },
                 "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             },
             "content": {
@@ -662,17 +981,37 @@
             }
           },
           "401": {
-            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret",
+            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret; with API tokens: `token_required` (API_TOKEN_REQUIRED=true and no API token), `invalid_token` (unknown, revoked or malformed), `token_expired`",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "403": {
-            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret",
+            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret; `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "503": {
+            "description": "`audit_unavailable`: AUDIT_LOG_FAIL=closed and the audit log cannot be written; nothing was done (a new secret is removed again, a secret is not handed out)",
             "content": {
               "application/json": {
                 "schema": {
@@ -741,6 +1080,11 @@
                   }
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "400": {
@@ -751,15 +1095,25 @@
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "403": {
-            "description": "Wrong passphrase; `attemptsLeft` says how many tries remain, no view is used; or `not_recipient`: signed in, but not a recipient (no view used)",
+            "description": "Wrong passphrase; `attemptsLeft` says how many tries remain, no view is used; or `not_recipient`: signed in, but not a recipient (no view used); `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -771,6 +1125,11 @@
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "410": {
@@ -780,6 +1139,11 @@
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -791,6 +1155,11 @@
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "429": {
@@ -801,6 +1170,9 @@
                   "type": "integer"
                 },
                 "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             },
             "content": {
@@ -812,7 +1184,22 @@
             }
           },
           "401": {
-            "description": "The secret has recipients and nobody is signed in (`login_required`); no view used",
+            "description": "The secret has recipients and nobody is signed in (`login_required`); no view used; with API tokens: `token_required` (API_TOKEN_REQUIRED=true and no API token), `invalid_token` (unknown, revoked or malformed), `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "503": {
+            "description": "`audit_unavailable`: AUDIT_LOG_FAIL=closed and the audit log cannot be written; nothing was done (a new secret is removed again, a secret is not handed out)",
             "content": {
               "application/json": {
                 "schema": {
@@ -821,7 +1208,21 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ]
       }
     },
     "/v1/me": {
@@ -860,9 +1261,48 @@
                   }
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "401": {
+            "description": "with API tokens: `token_required` (API_TOKEN_REQUIRED=true and no API token), `invalid_token` (unknown, revoked or malformed), `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ]
       }
     },
     "/v1/groups": {
@@ -883,6 +1323,18 @@
               "minLength": 2,
               "maxLength": 64
             }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
           }
         ],
         "responses": {
@@ -910,15 +1362,25 @@
                   }
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "401": {
-            "description": "Not signed in",
+            "description": "Not signed in; with API tokens: `token_required` (API_TOKEN_REQUIRED=true and no API token), `invalid_token` (unknown, revoked or malformed), `token_expired`",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -930,6 +1392,11 @@
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "502": {
@@ -939,6 +1406,11 @@
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -950,8 +1422,21 @@
                   "type": "integer"
                 },
                 "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
             "content": {
               "application/json": {
                 "schema": {
@@ -981,6 +1466,18 @@
               "minLength": 2,
               "maxLength": 64
             }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
           }
         ],
         "responses": {
@@ -1015,15 +1512,25 @@
                   }
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "401": {
-            "description": "Not signed in, or an app token",
+            "description": "Not signed in, or an app token; with API tokens: `token_required` (API_TOKEN_REQUIRED=true and no API token), `invalid_token` (unknown, revoked or malformed), `token_expired`",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -1035,6 +1542,11 @@
                   "$ref": "#/components/schemas/Error"
                 }
               }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
             }
           },
           "502": {
@@ -1044,6 +1556,11 @@
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           },
@@ -1055,6 +1572,9 @@
                   "type": "integer"
                 },
                 "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             },
             "content": {
@@ -1064,8 +1584,627 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
+      }
+    },
+    "/v1/tokens": {
+      "get": {
+        "tags": [
+          "tokens"
+        ],
+        "operationId": "listTokens",
+        "summary": "Your API tokens",
+        "description": "Only with the session of the web sign-in (the API tokens page), not with a token. API_TOKENS=true.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Your tokens (never the tokens themselves)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mayCreate": {
+                      "type": "boolean",
+                      "description": "API_TOKEN_USERS / API_TOKEN_GROUPS allow this user"
+                    },
+                    "options": {
+                      "$ref": "#/components/schemas/TokenOptions"
+                    },
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Token"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "tokens"
+        ],
+        "operationId": "createToken",
+        "summary": "Make an API token",
+        "description": "The token is in this answer only; the server keeps only an HMAC of it. Logged as `api.token_created`.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Made",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Token"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "token"
+                      ],
+                      "properties": {
+                        "token": {
+                          "type": "string",
+                          "pattern": "^vnly_[0-9a-f]{16}_[A-Za-z0-9_-]{43}$",
+                          "description": "Shown once"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_name`, `invalid_expiry`, `invalid_ips`, `ips_required`, `invalid_scopes`, `too_many_tokens` (API_TOKEN_MAX_PER_USER)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`tokens_not_allowed` (not in API_TOKEN_USERS / API_TOKEN_GROUPS), `session_required` (called with a token)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ]
+      }
+    },
+    "/v1/tokens/{id}/revoke": {
+      "post": {
+        "tags": [
+          "tokens"
+        ],
+        "operationId": "revokeToken",
+        "summary": "Revoke one of your tokens",
+        "description": "Works at once. Logged as `api.token_revoked`.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TokenId"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/tokens": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "adminListTokens",
+        "summary": "All API tokens",
+        "description": "Admins only (session). Logged as `admin.tokens_listed`.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "All tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Token"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ]
+      }
+    },
+    "/v1/admin/tokens/{id}/revoke": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "adminRevokeToken",
+        "summary": "Revoke any token",
+        "description": "Admins only. Logged as `admin.token_revoked` with the admin and the owner.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TokenId"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/audit": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "auditLog",
+        "summary": "Read and export the audit log",
+        "description": "Admins only (session), AUDIT_ADMIN_VIEW with AUDIT_LOG_REDIS=true or AUDIT_LOG_FILE. Newest first. Every look is logged (`admin.audit_viewed`, `admin.audit_exported`); with AUDIT_LOG_FAIL=closed nothing is shown when that event cannot be written.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "description": "Event type, or a prefix ending in `.` (`secret.`)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "required": false,
+            "description": "success, denied or error",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "success",
+                "denied",
+                "error"
+              ]
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "description": "Part of the actor's address, name or token name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recipient",
+            "in": "query",
+            "required": false,
+            "description": "Part of a recipient address or group",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runId",
+            "in": "query",
+            "required": false,
+            "description": "Run id, exact",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Text anywhere in the event",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "From (ISO 8601)",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "To (ISO 8601)",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "1 to 5000 (200)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "json (default), csv or jsonl (download)",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv",
+                "jsonl"
+              ]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "redis",
+                        "file"
+                      ]
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "ecs",
+                        "otel",
+                        "plain"
+                      ]
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuditEvent"
+                      }
+                    }
+                  }
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_time`, `invalid_limit`, `invalid_outcome`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`audit_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/audit/verify": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "auditVerify",
+        "summary": "Check the hash chain of the audit log file",
+        "description": "Admins only, with AUDIT_LOG_FILE. The same check as `npm run audit:verify` (with the HMAC key when AUDIT_LOG_HMAC_KEY is set).",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ]
       }
     }
   },
@@ -1161,6 +2300,11 @@
               "maxLength": 200
             },
             "description": "Groups whose members are responsible (like recipientGroups)"
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "AUDIT_COMMENT: what the secret is for (e.g. a ticket number), at most AUDIT_COMMENT_MAX characters. Goes into the audit log and the receipt, never into the secret. Required with AUDIT_COMMENT=required; refused (`comment_disabled`) with AUDIT_COMMENT=off."
           }
         }
       },
@@ -1288,6 +2432,10 @@
           "restricted": {
             "type": "boolean",
             "description": "true when recipients were given"
+          },
+          "comment": {
+            "type": "string",
+            "description": "The stored comment (AUDIT_COMMENT)"
           }
         }
       },
@@ -1474,6 +2622,10 @@
           "mayBurn": {
             "type": "boolean",
             "description": "Whether the caller may burn it (STATUS_ACCESS=signed-in: the creator and the responsible people)"
+          },
+          "comment": {
+            "type": "string",
+            "description": "The comment given when the secret was created (AUDIT_COMMENT)"
           }
         }
       },
@@ -1771,6 +2923,316 @@
             "description": "The endpoints switched on on this server, e.g. \"POST /api/v1/secrets\""
           }
         }
+      },
+      "Token": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "created",
+          "expires",
+          "ips",
+          "scopes",
+          "state"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "prefix": {
+            "type": "string",
+            "description": "`vnly_<id>_`: the start of the token, to recognize it"
+          },
+          "owner": {
+            "type": "string",
+            "description": "The owner's address"
+          },
+          "ownerName": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "null = never"
+          },
+          "lastUsed": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "ips": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowed IP networks (CIDR); empty = any address (only with API_TOKEN_IP_BINDING=optional)"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "create",
+                "read",
+                "status"
+              ]
+            }
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "expired",
+              "revoked"
+            ]
+          },
+          "revoked": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "TokenCreate": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "What uses it, e.g. api_aap"
+          },
+          "expires": {
+            "type": "string",
+            "description": "One of API_TOKEN_EXPIRY_OPTIONS (e.g. `30d`, `6m`, `1y`, `never`; d days, m calendar months, y calendar years); default API_TOKEN_DEFAULT_EXPIRY. Never beyond API_TOKEN_MAX_EXPIRY."
+          },
+          "ips": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string"
+            },
+            "description": "IPv4/IPv6 addresses or networks, e.g. `203.0.113.10`, `2001:db8::/48`. Required with API_TOKEN_IP_BINDING=required."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "create",
+                "read",
+                "status"
+              ]
+            },
+            "description": "create: POST /v1/secrets and /v1/share; read: open secrets; status: receipts and burn. Default create, status."
+          }
+        }
+      },
+      "TokenOptions": {
+        "type": "object",
+        "properties": {
+          "expiry": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "defaultExpiry": {
+            "type": "string"
+          },
+          "maxExpiry": {
+            "type": "string"
+          },
+          "ipBinding": {
+            "type": "string",
+            "enum": [
+              "optional",
+              "required"
+            ]
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "maxPerUser": {
+            "type": "integer"
+          },
+          "comment": {
+            "type": "string",
+            "enum": [
+              "optional",
+              "required"
+            ]
+          },
+          "yourIp": {
+            "type": "string",
+            "description": "The caller's address as the server sees it (TRUST_PROXY)"
+          }
+        }
+      },
+      "AuditEvent": {
+        "type": "object",
+        "description": "An audit event in one shape whatever AUDIT_LOG_FORMAT is; `raw` is the event as written (with the hash chain fields)",
+        "properties": {
+          "ts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "type": {
+            "type": "string",
+            "examples": [
+              "secret.created"
+            ]
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "success",
+              "denied",
+              "error"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "api_token",
+                  "app",
+                  "anonymous",
+                  "system"
+                ]
+              },
+              "user": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "token": {
+                "type": "string"
+              },
+              "onBehalfOf": {
+                "type": "string"
+              }
+            }
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "comment": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "route": {
+            "type": "string"
+          },
+          "secretRef": {
+            "type": "string",
+            "description": "HMAC reference of the secret, not its id"
+          },
+          "seq": {
+            "type": "integer"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "raw": {
+            "type": "object"
+          }
+        }
+      },
+      "VerifyResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "entries": {
+            "type": "integer"
+          },
+          "instances": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "instance": {
+                  "type": "string"
+                },
+                "entries": {
+                  "type": "integer"
+                },
+                "firstSeq": {
+                  "type": "integer"
+                },
+                "lastSeq": {
+                  "type": "integer"
+                },
+                "head": {
+                  "type": "string"
+                },
+                "signed": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line": {
+                  "type": "integer"
+                },
+                "seq": {
+                  "type": "integer"
+                },
+                "instance": {
+                  "type": "string"
+                },
+                "problem": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -1785,6 +3247,72 @@
         "in": "cookie",
         "name": "__Host-vanishly-session",
         "description": "Session of the web sign-in (`vanishly-session` without HTTPS)"
+      },
+      "apiToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "vnly_<id>_<secret>",
+        "description": "Personal API token (API_TOKENS=true), made on the API tokens page (`/settings/tokens`). Acts as its owner, only from its IP networks, with its scopes (create, read, status), until it expires or is revoked. With API_TOKEN_REQUIRED=true the only way to call the API outside the server's own pages."
+      }
+    },
+    "parameters": {
+      "RunId": {
+        "name": "X-Run-Id",
+        "in": "header",
+        "required": false,
+        "description": "Correlation id of the call (letters, digits and `_ . : @ / + = -`, at most 128). With AUDIT_LOG it goes into every audit event of the call and comes back in `X-Run-Id` and `X-Request-Id`; without one the server makes a UUID. `X-Request-Id` works the same.",
+        "schema": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[\\w.:@/+=-]{1,128}$"
+        }
+      },
+      "AuditComment": {
+        "name": "X-Audit-Comment",
+        "in": "header",
+        "required": false,
+        "description": "What the call is for, into the audit log (e.g. `reset a user pw`). UTF-8 percent-encoded or plain ASCII; control characters are removed, cut at AUDIT_COMMENT_MAX. A `comment` field in the body wins. Required on every POST with an API token when API_TOKEN_COMMENT=required.",
+        "schema": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "OnBehalfOf": {
+        "name": "X-On-Behalf-Of",
+        "in": "header",
+        "required": false,
+        "description": "For API tokens and apps: on whose behalf the call is made (a person, a ticket), into the audit log. At most 200 characters.",
+        "schema": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "Traceparent": {
+        "name": "traceparent",
+        "in": "header",
+        "required": false,
+        "description": "W3C trace context; its trace id goes into the audit events (`trace.id`, `TraceId`) and comes back in `traceparent`.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "TokenId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "The id of the token (16 hex digits, the part after `vnly_`)",
+        "schema": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        }
+      }
+    },
+    "headers": {
+      "RunId": {
+        "description": "The run id of the call (AUDIT_LOG)",
+        "schema": {
+          "type": "string"
+        }
       }
     }
   }
