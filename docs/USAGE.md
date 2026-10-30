@@ -22,6 +22,12 @@ With `AUDIT_COMMENT=optional` or `required` the form has a "Comment" field
 (what the secret is for, e.g. a ticket number): it goes into the audit log
 and onto the status page, not into the secret.
 
+Screenshots of these pages, in English and in both built-in templates, are
+in the [README](../README.md#screenshots) and in [screenshots/](screenshots/):
+the API tokens page (`desktop-light-7-api-tokens.png`) and the admin tabs
+for the audit log and all API tokens (`desktop-light-8-admin-audit.png`,
+`desktop-light-9-admin-tokens.png`).
+
 ## How sharing works
 
 1. The browser creates a random 256-bit key, encrypts the secret with
