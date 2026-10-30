@@ -20,9 +20,10 @@ import { createDirectory } from './directory/index.js';
 /** @typedef {NonNullable<import('./config.js').Config['auth']>} AuthConfig */
 /**
  * @typedef {{ name: string, user: string, ids: string[], app?: boolean,
- *   token?: { id: string, name: string, scopes: string[] } }} User
+ *   token?: { id: string, name: string, scopes: string[] }, service?: string }} User
  * ids: the recipient hashes this user matches (addresses and groups);
- * token: set when the request came with a personal API token (src/tokens.js)
+ * token: set when the request came with an API token (src/tokens.js); service: the
+ * technical user it belongs to (then user is "svc:<name>")
  */
 
 const EMAIL = /^[^\s@<>"',;]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
@@ -196,7 +197,9 @@ export class Auth {
     const { any, list } = this.c.groups;
     // Admin and token groups (ADMIN_GROUPS, API_TOKEN_GROUPS) count too.
     const extra = this.c.extraGroups || [];
-    if (!any && !list.length && !extra.length) return [];
+    // API_TOKEN_ADMIN_POLICY: admins may set token policies for any group, so all count.
+    const all = any || Boolean(this.c.tokens?.adminPolicy);
+    if (!all && !list.length && !extra.length) return [];
     const claim = this.c.groupsClaim ? claims[this.c.groupsClaim] : undefined;
     let groups = typeof claim === 'string' ? [claim] : strings(claim);
     const key = String(claims.oid || claims.sub || '');
@@ -213,7 +216,7 @@ export class Auth {
       }
     }
     groups = groups.map((g) => this.group(g)).filter(Boolean);
-    return any ? groups : groups.filter((g) => list.some((l) => l.id === g) || extra.includes(g));
+    return all ? groups : groups.filter((g) => list.some((l) => l.id === g) || extra.includes(g));
   }
 
   /**

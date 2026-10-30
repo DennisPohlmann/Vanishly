@@ -1,0 +1,18 @@
+{{- define "vanishly.redis.pvc" -}}
+{{- $r := .Values.redis -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+{{ include "vanishly.metadata" (dict "context" . "name" (printf "%s-data" (include "vanishly.redis.fullname" .)) "component" "redis") }}
+spec:
+  accessModes:
+    {{- toYaml $r.persistence.accessModes | nindent 4 }}
+  {{- with $r.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $r.persistence.size }}
+{{- end -}}
+{{- if and .Values.redis.enabled .Values.redis.persistence.enabled (not .Values.redis.persistence.existingClaim) }}
+{{ include "vanishly.render" (dict "context" . "key" "redisPvc" "object" (include "vanishly.redis.pvc" .)) }}
+{{- end }}

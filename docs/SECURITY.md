@@ -236,6 +236,14 @@ Optional (`AUDIT_LOG`, `API_TOKENS`, see [CONFIG.md](CONFIG.md#audit-log)).
   session (the browser marks them `Sec-Fetch-Site: same-origin`; a script
   could fake that header, but only with a signed-in session of its own, and
   every call is then logged under that user).
+- **Technical users and admin tokens:** technical users have no sign-in, only
+  the tokens an admin issues; disabling or deleting one revokes them all.
+  The scope `admin` (the admin API) exists only with
+  `API_ADMIN_TOKENS=true`, only for technical users, only given by a
+  signed-in admin (not by another admin token unless
+  `API_ADMIN_TOKEN_CAN_ISSUE_ADMIN=true`), bound to IP networks and for at
+  most 90 days by default, and every call needs a comment. The admin
+  interface shows secrets' metadata only, never content or keys.
 
 ## What Vanishly cannot protect against
 

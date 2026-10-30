@@ -3,6 +3,7 @@ templates:
   - templates/redis/deployment.yaml
   - templates/redis/secret.yaml
   - templates/redis/service.yaml
+  - templates/redis/pvc.yaml
 release:
   name: t
   namespace: ots
@@ -87,3 +88,37 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  - it: keeps the data on a volume with redis.persistence (append-only file)
+    template: templates/redis/deployment.yaml
+    set:
+      redis.persistence.enabled: true
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: '--save "" --appendonly yes --appendfsync everysec --dir /data'
+      - equal:
+          path: spec.template.spec.volumes[0].persistentVolumeClaim.claimName
+          value: t-vanishly-redis-data
+
+  - it: makes the claim, unless an existing one is named
+    template: templates/redis/pvc.yaml
+    set:
+      redis.persistence.enabled: true
+      redis.persistence.size: 2Gi
+    asserts:
+      - isKind:
+          of: PersistentVolumeClaim
+      - equal:
+          path: spec.resources.requests.storage
+          value: 2Gi
+
+  - it: no claim without persistence or with an existing claim
+    template: templates/redis/pvc.yaml
+    set:
+      redis.persistence.enabled: true
+      redis.persistence.existingClaim: my-claim
+    asserts:
+      - hasDocuments:
+          count: 0
+

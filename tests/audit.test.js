@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { createApp, csvCell } from '../src/app.js';
-import { Audit, canonical, chainOf, clean, formatEvent, hashOf, normalize, parseTraceparent, sanitizeText, splitObjects, verifyText } from '../src/audit.js';
+import { Audit, canonical, chainOf, clean, formatEvent, hashOf, normalize, parseTraceparent, sanitizeText, secretsOverview, splitObjects, verifyText } from '../src/audit.js';
 import { expiryAt, loadConfig, parseExpiry } from '../src/config.js';
 import { Store } from '../src/store.js';
 import { loadTheme } from '../src/theme.js';
@@ -25,6 +25,8 @@ const TENANT = '11111111-2222-3333-4444-555555555555';
 const CLIENT = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 const SECRET = 'client-secret-for-tests';
 const ALICE = { oid: '00000000-0000-0000-0000-00000000000a', tid: TENANT, name: 'Alice Example', preferred_username: 'alice@example.com' };
+const IT = '0f0f0f0f-1111-2222-3333-444444444444';
+const HR = '0e0e0e0e-1111-2222-3333-444444444444';
 const BOB = { oid: '00000000-0000-0000-0000-00000000000b', tid: TENANT, name: 'Bob Example', preferred_username: 'bob@example.com' };
 const PLAIN = 'Hunter2-very-secret-plaintext-0815';
 const dir = mkdtempSync(join(tmpdir(), 'vanishly-audit-'));
@@ -205,6 +207,10 @@ test('token lifetimes: units d, m, y; calendar months; config caps and errors', 
   assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_EXPIRY_OPTIONS: '1y,never', API_TOKEN_MAX_EXPIRY: '30d' }), /no lifetime within/);
   assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_EXPIRY_OPTIONS: '30x' }), /API_TOKEN_EXPIRY_OPTIONS: "30x"/);
   assert.throws(() => loadConfig({ ...base, API_TOKEN_REQUIRED: 'true' }), /needs API_TOKENS=true/);
+  assert.equal(loadConfig({ ...base, API_TOKENS: 'true' }).auth?.tokens?.maxPerUser, 10, 'default: 10 active tokens per user');
+  assert.equal(loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_MAX_PER_USER: '0' }).auth?.tokens?.maxPerUser, 0, '0 = no limit');
+  assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_MAX_PER_USER: '-1' }), /API_TOKEN_MAX_PER_USER/);
+  assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_MAX_PER_USER: '1001' }), /API_TOKEN_MAX_PER_USER/);
   assert.throws(() => loadConfig({ API_TOKENS: 'true' }), /needs AUTH_PROVIDER/);
   // Audit settings
   assert.equal(loadConfig({}).audit, null);
@@ -445,6 +451,368 @@ test('IP binding: other address (behind a proxy, IPv6) refused and logged; expir
   const last = await a.events();
   assert.ok(last.some((e) => e.type === 'admin.token_revoked' && e.actor.user === 'alice@example.com'));
   assert.ok(last.some((e) => e.type === 'api.token_denied' && e.reason === 'revoked'));
+});
+
+test('API_TOKEN_MAX_PER_USER: active tokens only, revoked and expired ones do not count, the refusal is logged; 0 = no limit', opts, async () => {
+  const a = await startApp({ API_TOKEN_MAX_PER_USER: '3' });
+  const cookie = await a.login(ALICE);
+  /** @param {string} name */
+  const make = (name) => a.call('/api/v1/tokens', { cookie, body: { name } });
+  for (const name of ['one', 'two', 'three']) assert.equal((await make(name)).status, 201);
+  let list = await a.call('/api/v1/tokens', { cookie });
+  assert.equal(list.data.active, 3);
+  assert.equal(list.data.options.maxPerUser, 3);
+  const fourth = await make('four');
+  assert.equal(fourth.status, 400);
+  assert.equal(fourth.data.error, 'too_many_tokens');
+  assert.deepEqual([fourth.data.active, fourth.data.max], [3, 3]);
+  const denied = (await a.events()).find((e) => e.type === 'api.token_create_denied');
+  assert.equal(denied?.reason, 'limit_reached');
+  assert.deepEqual(denied?.raw.vanishly.details, { active: 3, max: 3 });
+  assert.equal(denied?.actor.user, 'alice@example.com');
+  // A revoked token frees a place.
+  const one = list.data.tokens.find((/** @type {any} */ t) => t.name === 'one');
+  await a.call(`/api/v1/tokens/${one.id}/revoke`, { cookie, body: {} });
+  assert.equal((await a.call('/api/v1/tokens', { cookie })).data.active, 2);
+  assert.equal((await make('four')).status, 201);
+  assert.equal((await make('five')).data.error, 'too_many_tokens');
+  // So does an expired one.
+  list = await a.call('/api/v1/tokens', { cookie });
+  const two = list.data.tokens.find((/** @type {any} */ t) => t.name === 'two');
+  await a.store.redis.hSet(`${a.store.p}tok:${two.id}`, 'expires', String(Date.now() - 1000));
+  assert.equal((await a.call('/api/v1/tokens', { cookie })).data.active, 2);
+  assert.equal((await make('five')).status, 201);
+  // The page knows the limit (it shows "x of 3"; the default would be 10).
+  assert.match(await (await fetch(`${a.base}/settings/tokens`, { headers: { Cookie: cookie } })).text(), /data-max="3"/);
+  // Requests at the same time do not get past the limit together.
+  const bob = await a.login(BOB);
+  const race = await Promise.all(Array.from({ length: 6 }, (_, i) => a.call('/api/v1/tokens', { cookie: bob, body: { name: `p${i}` } })));
+  assert.ok(race.filter((r) => r.status === 201).length <= 3);
+  assert.ok((await a.call('/api/v1/tokens', { cookie: bob })).data.active <= 3);
+
+  const free = await startApp({ API_TOKEN_MAX_PER_USER: '0' });
+  const c2 = await free.login(ALICE);
+  for (let i = 0; i < 6; i++) assert.equal((await free.call('/api/v1/tokens', { cookie: c2, body: { name: `t${i}` } })).status, 201);
+  assert.equal((await free.call('/api/v1/tokens', { cookie: c2 })).data.active, 6);
+});
+
+test('scopes: API_TOKEN_ALLOWED_SCOPES, _DEFAULT_SCOPES, _SCOPES_BY_GROUP and API_TOKEN_ADMIN_POLICY are checked at start', () => {
+  const base = { BASE_URL: 'https://ots.example.com', AUTH_PROVIDER: 'entra', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_CLIENT_SECRET: SECRET, AUTH_SECRET: 'x'.repeat(40), API_TOKENS: 'true' };
+  let t = loadConfig(base).auth?.tokens;
+  assert.deepEqual([t?.allowedScopes, t?.defaultScopes, t?.scopesByGroup, t?.adminPolicy], [['create', 'read', 'status'], ['create', 'status'], [], false]);
+  t = loadConfig({ ...base, API_TOKEN_ALLOWED_SCOPES: 'read', API_TOKEN_SCOPES_BY_GROUP: `${IT}=create+read; ${HR}=none` }).auth?.tokens;
+  assert.deepEqual(t?.allowedScopes, ['read']);
+  assert.deepEqual(t?.defaultScopes, [], 'create,status filtered by the allowed ones');
+  assert.deepEqual(t?.scopesByGroup, [{ group: IT, scopes: ['create', 'read'] }, { group: HR, scopes: [] }]);
+  assert.ok(loadConfig({ ...base, API_TOKEN_SCOPES_BY_GROUP: `${IT}=read` }).auth?.extraGroups.includes(IT), 'the group is kept in the identity');
+  assert.throws(() => loadConfig({ ...base, API_TOKEN_ALLOWED_SCOPES: 'create,delete' }), /API_TOKEN_ALLOWED_SCOPES: "delete" is not one of/);
+  assert.throws(() => loadConfig({ ...base, API_TOKEN_ALLOWED_SCOPES: 'create', API_TOKEN_DEFAULT_SCOPES: 'read' }), /read is not in API_TOKEN_ALLOWED_SCOPES/);
+  assert.throws(() => loadConfig({ ...base, API_TOKEN_SCOPES_BY_GROUP: 'it-read' }), /API_TOKEN_SCOPES_BY_GROUP/);
+  assert.throws(() => loadConfig({ ...base, API_TOKEN_SCOPES_BY_GROUP: 'not-a-guid=read' }), /group object id/);
+  assert.throws(() => loadConfig({ ...base, API_TOKEN_ADMIN_POLICY: 'true' }), /needs ADMIN_USERS or ADMIN_GROUPS/);
+  assert.equal(loadConfig({ ...base, API_TOKEN_ADMIN_POLICY: 'true', ADMIN_USERS: 'alice@example.com' }).auth?.tokens?.adminPolicy, true);
+});
+
+test('scopes per token: only create, only retrieve, both, status; refusals are api.scope_denied', opts, async () => {
+  const a = await startApp();
+  const alice = await a.login(ALICE);
+  const bob = await a.login(BOB);
+  /** @param {string[]} scopes */
+  const token = async (scopes) => (await a.call('/api/v1/tokens', { cookie: alice, body: { name: scopes.join('+'), scopes } })).data.token;
+  const tok = { create: await token(['create']), read: await token(['read']), both: await token(['create', 'read']), status: await token(['status']) };
+  // A secret for bob or anyone: made on the page by bob.
+  const fresh = async () => (await a.call('/api/v1/share', { cookie: bob, body: { secret: PLAIN, ttl: 600 } })).data;
+  /** @param {string} t */
+  const share = (t) => a.call('/api/v1/share', { bearer: t, body: { secret: 'x', ttl: 600 } });
+  /** @param {string} t */
+  const open = async (t) => a.call('/api/v1/open', { bearer: t, body: { link: (await fresh()).shareUrl } });
+  /** @param {string} t */
+  const status = async (t) => a.call(`/api/v1/receipts/${(await share(tok.create)).data.receiptId}`, { bearer: t });
+  const table = {
+    create: [201, 403, 403],
+    read: [403, 200, 403],
+    both: [201, 200, 403],
+    status: [403, 403, 200],
+  };
+  for (const [name, [s, o, st]] of Object.entries(table)) {
+    const t = tok[/** @type {keyof typeof tok} */ (name)];
+    assert.equal((await share(t)).status, s, `${name}: share`);
+    const op = await open(t);
+    assert.equal(op.status, o, `${name}: open`);
+    if (o === 200) assert.equal(op.data.secret, PLAIN);
+    else assert.equal(op.data.error, 'insufficient_scope');
+    assert.equal((await status(t)).status, st, `${name}: status`);
+  }
+  const denied = (await a.events()).filter((e) => e.type === 'api.scope_denied');
+  assert.ok(denied.length >= 6);
+  assert.equal(denied[0].reason, 'not_granted');
+  assert.equal(denied[0].actor.user, 'alice@example.com');
+  assert.ok(denied[0].raw.vanishly.details.scope);
+  // The default when no scopes are sent: create and status.
+  const d = (await a.call('/api/v1/tokens', { cookie: alice, body: { name: 'default' } })).data;
+  assert.deepEqual(d.scopes, ['create', 'status']);
+  // The form: "only create", "only retrieve", "both" and the status box.
+  const html = await (await fetch(`${a.base}/settings/tokens`, { headers: { Cookie: alice } })).text();
+  for (const id of ['access-create', 'access-read', 'access-both', 'scope-status']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /id="access-create"[^>]*checked/, 'default create,status: "only create" and status');
+});
+
+test('API_TOKEN_ALLOWED_SCOPES: only these can be given; the form offers only them', opts, async () => {
+  const a = await startApp({ API_TOKEN_ALLOWED_SCOPES: 'create', API_TOKEN_DEFAULT_SCOPES: 'create' });
+  const alice = await a.login(ALICE);
+  const r = await a.call('/api/v1/tokens', { cookie: alice, body: { name: 'x', scopes: ['create', 'read'] } });
+  assert.equal(r.data.error, 'scope_not_allowed');
+  assert.deepEqual(r.data.allowed, ['create']);
+  assert.ok((await a.events()).some((e) => e.type === 'api.token_create_denied' && e.reason === 'scope_not_allowed'));
+  assert.deepEqual((await a.call('/api/v1/tokens', { cookie: alice, body: { name: 'y' } })).data.scopes, ['create']);
+  const list = await a.call('/api/v1/tokens', { cookie: alice });
+  assert.deepEqual(list.data.options.allowedScopes, ['create']);
+  const html = await (await fetch(`${a.base}/settings/tokens`, { headers: { Cookie: alice } })).text();
+  assert.match(html, /id="access-create"/);
+  assert.doesNotMatch(html, /id="access-read"|id="access-both"|id="scope-status"/);
+});
+
+test('API_TOKEN_ADMIN_POLICY: per user beats per group beats env; tighter policies apply at once; every change logged', opts, async () => {
+  const env = { API_TOKEN_ADMIN_POLICY: 'true', API_TOKEN_SCOPES_BY_GROUP: `${HR}=status` };
+  const a = await startApp(env);
+  const alice = await a.login(ALICE);
+  const CAROL = { oid: '00000000-0000-0000-0000-00000000000c', tid: TENANT, name: 'Carol', preferred_username: 'carol@example.com', groups: [IT, HR] };
+  const DAVE = { oid: '00000000-0000-0000-0000-00000000000d', tid: TENANT, name: 'Dave', preferred_username: 'dave@example.com', groups: [HR] };
+  const bob = await a.login(BOB);
+  const carol = await a.login(CAROL);
+  const dave = await a.login(DAVE);
+  /** @param {string} c */
+  const policy = async (c) => (await a.call('/api/v1/tokens', { cookie: c })).data.options;
+  // Without admin settings: env by group for dave, the defaults for bob.
+  assert.deepEqual([(await policy(dave)).allowedScopes, (await policy(dave)).policy], [['status'], 'env-group']);
+  assert.deepEqual((await policy(bob)).allowedScopes, ['create', 'read', 'status']);
+  // Only admins set policies.
+  assert.equal((await a.call('/api/v1/admin/token-policies', { cookie: bob, body: { type: 'user', subject: 'bob@example.com', scopes: ['create'] } })).status, 403);
+  /** @param {any} body */
+  const set = (body) => a.call('/api/v1/admin/token-policies', { cookie: alice, body });
+  // bob: only retrieve, at most 1 token.
+  assert.equal((await set({ type: 'user', subject: 'Bob@Example.com', scopes: ['read'], max: 1 })).status, 200);
+  assert.deepEqual([(await policy(bob)).allowedScopes, (await policy(bob)).maxPerUser, (await policy(bob)).policy], [['read'], 1, 'user']);
+  assert.equal((await a.call('/api/v1/tokens', { cookie: bob, body: { name: 'c', scopes: ['create'] } })).data.error, 'scope_not_allowed');
+  const bt = await a.call('/api/v1/tokens', { cookie: bob, body: { name: 'r' } });
+  assert.deepEqual(bt.data.scopes, ['read'], 'default within the policy');
+  assert.equal((await a.call('/api/v1/tokens', { cookie: bob, body: { name: 'r2' } })).data.error, 'too_many_tokens');
+  // Group IT: create+read; carol (IT and HR) gets the IT policy (admin groups beat env groups).
+  await set({ type: 'group', subject: IT, scopes: ['create', 'read'] });
+  assert.deepEqual([(await policy(carol)).allowedScopes, (await policy(carol)).policy], [['create', 'read'], 'group']);
+  // A user policy beats the group.
+  await set({ type: 'user', subject: 'carol@example.com', scopes: ['status'] });
+  assert.deepEqual((await policy(carol)).allowedScopes, ['status']);
+  await set({ type: 'user', subject: 'carol@example.com', remove: true });
+  assert.deepEqual((await policy(carol)).allowedScopes, ['create', 'read']);
+  // Tightening: bob's read token stops reading at once (no revoke) ...
+  const secret = (await a.call('/api/v1/share', { cookie: alice, body: { secret: PLAIN, ttl: 600 } })).data;
+  await set({ type: 'user', subject: 'bob@example.com', scopes: ['create'], max: 1 });
+  const op = await a.call('/api/v1/open', { bearer: bt.data.token, body: { link: secret.shareUrl } });
+  assert.equal(op.status, 403);
+  assert.equal(op.data.error, 'insufficient_scope');
+  const sd = (await a.events()).filter((e) => e.type === 'api.scope_denied').pop();
+  assert.equal(sd?.reason, 'policy');
+  const mine = (await a.call('/api/v1/tokens', { cookie: bob })).data.tokens[0];
+  assert.deepEqual([mine.scopes, mine.allowedNow, mine.state], [['read'], [], 'active']);
+  // ... and with "revoke existing" it is revoked.
+  const r = await set({ type: 'user', subject: 'bob@example.com', scopes: ['create'], max: 1, revokeExceeding: true });
+  assert.deepEqual(r.data.revoked.map((/** @type {any} */ x) => x.owner), ['bob@example.com']);
+  assert.equal((await a.call('/api/v1/tokens', { cookie: bob })).data.tokens[0].state, 'revoked');
+  // The admin page lists them; every change is in the log with old and new.
+  const list = await a.call('/api/v1/admin/token-policies', { cookie: alice });
+  assert.deepEqual(list.data.policies.map((/** @type {any} */ p) => [p.type, p.subject]), [['user', 'bob@example.com'], ['group', IT]]);
+  const changes = (await a.events()).filter((e) => /^admin\.token_policy_/.test(e.type));
+  assert.equal(changes.length, 6);
+  const first = changes[0].raw.vanishly.details;
+  assert.deepEqual([first.subject_type, first.subject, first.old, first.new], ['user', 'bob@example.com', undefined, { scopes: ['read'], max: 1 }]);
+  assert.ok((await a.events()).some((e) => e.type === 'admin.token_revoked' && e.reason === 'policy'));
+  const page = await (await fetch(`${a.base}/admin`, { headers: { Cookie: alice } })).text();
+  assert.match(page, /data-policies="1"/);
+  assert.match(page, /id="policy-form"/);
+  // Off: no endpoint.
+  const off = await startApp();
+  const c2 = await off.login(ALICE);
+  assert.equal((await off.call('/api/v1/admin/token-policies', { cookie: c2 })).data.error, 'endpoint_disabled');
+});
+
+test('secrets overview: states from the audit events (open, partly opened, opened, expired, burned) and filters', () => {
+  const ev = (/** @type {any} */ e) => ({ actor: { type: 'user', user: '', name: '', token: '' }, recipients: [], responsible: [], comment: '', runId: '', reason: '', receiptRef: '', details: {}, ...e });
+  const now = Date.parse('2026-10-30T12:00:00Z');
+  const created = (/** @type {string} */ ref, /** @type {any} */ x = {}) => ev({ type: 'secret.created', secretRef: ref, ts: '2026-10-30T10:00:00Z', actor: { type: 'api_token', user: 'svc:api_aap', name: 'api_aap', token: 'prod' }, recipients: ['bob@example.com'], comment: 'reset a user pw', details: { expires: '2026-10-30T13:00:00Z', max_views: 1, encrypted: 'server' }, ...x });
+  const events = [
+    created('a'),
+    created('b', { details: { expires: '2026-10-30T11:00:00Z', max_views: 1 } }),
+    created('c', { details: { expires: '2026-10-30T13:00:00Z', max_views: 2 }, recipients: [] }),
+    ev({ type: 'secret.revealed', secretRef: 'c', ts: '2026-10-30T10:30:00Z', actor: { type: 'user', user: 'bob@example.com', name: 'Bob', token: '' }, details: { via: 'browser' } }),
+    created('d'),
+    ev({ type: 'secret.revealed', secretRef: 'd', ts: '2026-10-30T10:40:00Z', actor: { type: 'service_account', user: 'svc:pull', name: 'pull', token: 't1' }, details: { via: 'server' } }),
+    created('e'),
+    ev({ type: 'secret.burned', secretRef: 'e', ts: '2026-10-30T10:50:00Z', reason: 'manual' }),
+    ev({ type: 'secret.revealed', secretRef: 'zz', ts: '2026-10-30T10:55:00Z' }),
+  ];
+  const all = secretsOverview(events, {}, now);
+  assert.deepEqual(all.map((x) => [x.ref, x.status]), [['e', 'burned'], ['d', 'opened'], ['c', 'partly_opened'], ['b', 'expired'], ['a', 'open']]);
+  assert.equal(all[1].views[0].via, 'token');
+  assert.equal(all[2].views[0].via, 'browser');
+  assert.equal(all[4].creator.token, 'prod');
+  assert.deepEqual(secretsOverview(events, { status: 'opened' }, now).map((x) => x.ref), ['d']);
+  assert.deepEqual(secretsOverview(events, { recipient: 'bob' }, now).map((x) => x.ref), ['e', 'd', 'b', 'a']);
+  assert.equal(secretsOverview(events, { creator: 'nobody' }, now).length, 0);
+});
+
+/** An app with the admin interface, technical users and admin tokens. @param {Record<string, string>} [env] */
+const adminApp = (env = {}) => startApp({ API_TOKEN_ADMIN_POLICY: 'true', API_ADMIN_TOKENS: 'true', TRUST_PROXY: 'loopback', ...env });
+
+test('admin interface: tabs, Redis warnings, secrets overview from the audit stream (metadata only)', opts, async () => {
+  const a = await adminApp();
+  const alice = await a.login(ALICE);
+  const bob = await a.login(BOB);
+  const html = await (await fetch(`${a.base}/admin?tab=secrets`, { headers: { Cookie: alice } })).text();
+  for (const tab of ['audit', 'secrets', 'tokens', 'services', 'policies']) assert.match(html, new RegExp(`href="/admin\\?tab=${tab}"`));
+  assert.match(html, /aria-current="page">Secrets</);
+  assert.match(html, /data-tab="secrets"/);
+  // The test Redis runs without persistence: the page says so.
+  assert.match(html, /Redis keeps nothing over a restart/);
+  const st = await a.call('/api/v1/admin/status', { cookie: alice });
+  assert.deepEqual([st.data.auditRedis, st.data.persistence.aof, st.data.warnings], [true, false, ['no_persistence']]);
+  // Secrets: one for bob (opened), one anyone (open).
+  const one = await a.call('/api/v1/share', { cookie: alice, body: { secret: PLAIN, ttl: 600, recipients: ['bob@example.com'], comment: 'reset a user pw' } });
+  await a.call('/api/v1/share', { cookie: alice, body: { secret: 'other', ttl: 600 } });
+  await a.call('/api/v1/open', { cookie: bob, body: { link: one.data.shareUrl } });
+  const list = await a.call('/api/v1/admin/secrets', { cookie: alice });
+  assert.equal(list.data.count, 2);
+  const s = list.data.secrets.find((/** @type {any} */ x) => x.comment === 'reset a user pw');
+  assert.deepEqual([s.status, s.recipients, s.creator.user, s.views[0].by, s.views[0].via], ['opened', ['bob@example.com'], 'alice@example.com', 'bob@example.com', 'api']);
+  for (const bad of [PLAIN, 'other', one.data.id, one.data.shareUrl.split('#')[1]]) assert.ok(!list.text.includes(bad), 'no content, id or key');
+  assert.equal((await a.call('/api/v1/admin/secrets?status=opened', { cookie: alice })).data.count, 1);
+  assert.equal((await a.call('/api/v1/admin/secrets?status=nope', { cookie: alice })).data.error, 'invalid_status');
+  assert.ok((await a.events()).some((e) => e.type === 'admin.secrets_viewed'));
+  // Without the audit stream in Redis: no secrets tab, a warning.
+  const b = await adminApp({ AUDIT_LOG_REDIS: 'false' });
+  const c2 = await b.login(ALICE);
+  const h2 = await (await fetch(`${b.base}/admin`, { headers: { Cookie: c2 } })).text();
+  assert.doesNotMatch(h2, /tab=secrets/);
+  assert.match(h2, /AUDIT_LOG_REDIS=false/);
+  assert.equal((await b.call('/api/v1/admin/secrets', { cookie: c2 })).data.error, 'endpoint_disabled');
+  // ADMIN_UI=false: no admin pages, no admin API.
+  const off = await startApp({ ADMIN_UI: 'false' });
+  const c3 = await off.login(ALICE);
+  assert.equal((await fetch(`${off.base}/admin`, { headers: { Cookie: c3 } })).status, 404);
+  assert.equal((await off.call('/api/v1/admin/status', { cookie: c3 })).data.error, 'endpoint_disabled');
+});
+
+test('technical users: create, tokens act as the technical user, disable/delete revoke, rotate with grace', opts, async () => {
+  const a = await adminApp();
+  const alice = await a.login(ALICE);
+  /** @param {string} path @param {any} body */
+  const admin = (path, body) => a.call(`/api/v1/admin/service-accounts${path}`, { cookie: alice, body });
+  assert.equal((await admin('', { name: 'API AAP' })).data.error, 'invalid_name');
+  const c = await admin('', { name: 'api_aap', description: 'password resets', responsible: 'alice@example.com', ips: ['127.0.0.1/32'] });
+  assert.equal(c.status, 201);
+  assert.equal((await admin('', { name: 'api_aap' })).status, 409);
+  const issued = await admin('/api_aap/tokens', { name: 'prod', scopes: ['create'], expires: '30d' });
+  assert.equal(issued.status, 201);
+  assert.deepEqual([issued.data.kind, issued.data.service, issued.data.ips], ['service', 'api_aap', ['127.0.0.1/32']], 'the default networks');
+  const tok = issued.data.token;
+  const shared = await a.call('/api/v1/share', { bearer: tok, headers: { 'X-Audit-Comment': 'reset a user pw', 'X-Run-Id': 'svc-run' }, body: { secret: PLAIN, ttl: 600 } });
+  assert.equal(shared.status, 201);
+  const created = (await a.events()).find((e) => e.type === 'secret.created' && e.runId === 'svc-run');
+  assert.deepEqual([created?.actor.type, created?.actor.user, created?.actor.name, created?.actor.token], ['service_account', 'svc:api_aap', 'api_aap', 'prod']);
+  // With "status" it sees and burns its own secrets (STATUS_ACCESS=signed-in).
+  const st = (await admin('/api_aap/tokens', { name: 'status', scopes: ['create', 'status'] })).data.token;
+  const own = await a.call('/api/v1/share', { bearer: st, body: { secret: 'x', ttl: 600 } });
+  assert.equal((await a.call(`/api/v1/receipts/${own.data.receiptId}`, { bearer: st })).status, 200);
+  assert.equal((await a.call(`/api/v1/receipts/${own.data.receiptId}/burn`, { bearer: st, body: {} })).status, 200);
+  assert.equal((await a.call(`/api/v1/receipts/${shared.data.receiptId}`, { bearer: (await a.call('/api/v1/tokens', { cookie: alice, body: { name: 'other', scopes: ['status'] } })).data.token })).status, 403, 'not for others');
+  // A technical user cannot sign in, has no session and cannot manage tokens.
+  assert.equal((await a.call('/api/v1/tokens', { bearer: tok })).status, 403);
+  // Rotate with grace: both work for now; the old one expires later.
+  const rot = await admin(`/api_aap/tokens/${issued.data.id}/rotate`, { graceSeconds: 3600 });
+  assert.equal(rot.status, 201);
+  assert.equal(rot.data.replaced.id, issued.data.id);
+  assert.equal((await a.call('/api/v1/share', { bearer: tok, body: { secret: 'x', ttl: 600 } })).status, 201);
+  assert.equal((await a.call('/api/v1/share', { bearer: rot.data.token, body: { secret: 'x', ttl: 600 } })).status, 201);
+  // Rotate without grace: the old one stops at once.
+  const rot2 = await admin(`/api_aap/tokens/${rot.data.id}/rotate`, {});
+  assert.equal((await a.call('/api/v1/share', { bearer: rot.data.token, body: { secret: 'x', ttl: 600 } })).data.error, 'invalid_token');
+  // Disable: all tokens revoked; enable does not bring them back.
+  const dis = await admin('/api_aap', { enabled: false });
+  assert.ok(dis.data.revoked.length >= 2);
+  assert.equal((await a.call('/api/v1/share', { bearer: rot2.data.token, body: { secret: 'x', ttl: 600 } })).status, 401);
+  assert.equal((await admin('/api_aap/tokens', { name: 'x' })).data.error, 'disabled');
+  await admin('/api_aap', { enabled: true });
+  const t3 = (await admin('/api_aap/tokens', { name: 'again', scopes: ['read'] })).data;
+  const del = await admin('/api_aap/delete', {});
+  assert.deepEqual(del.data.revoked.map((/** @type {any} */ x) => x.id), [t3.id]);
+  assert.equal((await a.call('/api/v1/admin/service-accounts', { cookie: alice })).data.services.length, 0);
+  const types = (await a.events()).map((e) => e.type);
+  for (const t of ['admin.service_created', 'admin.service_token_issued', 'admin.service_token_rotated', 'admin.service_changed', 'admin.service_deleted']) assert.ok(types.includes(t), t);
+});
+
+test('admin API with an admin token: IP binding, comment, max expiry, no admin from admin; non-admin tokens get 403 everywhere', opts, async () => {
+  const a = await adminApp();
+  const alice = await a.login(ALICE);
+  const bob = await a.login(BOB);
+  /** @param {string} path @param {any} body */
+  const admin = (path, body) => a.call(`/api/v1/admin/service-accounts${path}`, { cookie: alice, body });
+  await admin('', { name: 'ops', description: 'automation' });
+  await admin('', { name: 'pusher' });
+  assert.equal((await admin('/ops/tokens', { name: 'adm', scopes: ['admin'] })).data.error, 'ips_required', 'admin tokens need networks');
+  assert.equal((await admin('/ops/tokens', { name: 'adm', scopes: ['admin'], ips: ['127.0.0.1'], expires: 'never' })).data.error, 'invalid_expiry', 'API_ADMIN_TOKEN_MAX_EXPIRY (90d)');
+  const adm = (await admin('/ops/tokens', { name: 'adm', scopes: ['admin'], ips: ['203.0.113.0/24'], expires: '30d' })).data.token;
+  const svcPlain = (await admin('/pusher/tokens', { name: 'p', scopes: ['create', 'read', 'status'] })).data.token;
+  const personal = (await a.call('/api/v1/tokens', { cookie: bob, body: { name: 'mine', scopes: ['create', 'read', 'status'] } })).data.token;
+  const from = { 'X-Forwarded-For': '203.0.113.7' };
+  // With comment and from its network: the admin API works.
+  const q = await a.call('/api/v1/admin/audit?type=admin.', { bearer: adm, headers: { ...from, 'X-Audit-Comment': 'nightly export', 'X-Run-Id': 'adm-1' } });
+  assert.equal(q.status, 200, q.text);
+  // Without a comment: refused (API_ADMIN_COMMENT=required).
+  assert.equal((await a.call('/api/v1/admin/status', { bearer: adm, headers: from })).data.error, 'comment_required');
+  // From another address: refused and logged.
+  const wrong = await a.call('/api/v1/admin/status', { bearer: adm, headers: { 'X-Forwarded-For': '198.51.100.1', 'X-Audit-Comment': 'x' } });
+  assert.deepEqual([wrong.status, wrong.data.error], [403, 'ip_not_allowed']);
+  // An admin token may not issue admin tokens (API_ADMIN_TOKEN_CAN_ISSUE_ADMIN=false) ...
+  const h = { ...from, 'X-Audit-Comment': 'issue' };
+  const deny = await a.call('/api/v1/admin/service-accounts/pusher/tokens', { bearer: adm, headers: h, body: { name: 'x', scopes: ['admin'], ips: ['203.0.113.0/24'] } });
+  assert.equal(deny.data.error, 'admin_scope_not_allowed');
+  // ... but other tokens, and every admin function: technical users, policies, tokens.
+  assert.equal((await a.call('/api/v1/admin/service-accounts/pusher/tokens', { bearer: adm, headers: h, body: { name: 'x', scopes: ['read'] } })).status, 201);
+  assert.equal((await a.call('/api/v1/admin/token-policies', { bearer: adm, headers: h, body: { type: 'user', subject: 'bob@example.com', scopes: ['read'] } })).status, 200);
+  assert.equal((await a.call('/api/v1/admin/tokens', { bearer: adm, headers: h })).status, 200);
+  const logged = (await a.events()).find((e) => e.type === 'admin.token_policy_changed');
+  assert.deepEqual([logged?.actor.type, logged?.actor.user, logged?.actor.token, logged?.comment], ['service_account', 'svc:ops', 'adm', 'issue']);
+  // Every admin route refuses personal tokens, technical users without "admin" and non-admin sessions.
+  const routes = [
+    ['GET', '/api/v1/admin/status'], ['GET', '/api/v1/admin/audit'], ['GET', '/api/v1/admin/audit/verify'], ['GET', '/api/v1/admin/secrets'],
+    ['GET', '/api/v1/admin/tokens'], ['POST', '/api/v1/admin/tokens/0123456789abcdef/revoke'], ['GET', '/api/v1/admin/token-policies'], ['POST', '/api/v1/admin/token-policies'],
+    ['GET', '/api/v1/admin/service-accounts'], ['POST', '/api/v1/admin/service-accounts'], ['POST', '/api/v1/admin/service-accounts/ops'], ['POST', '/api/v1/admin/service-accounts/ops/delete'],
+    ['GET', '/api/v1/admin/service-accounts/ops/tokens'], ['POST', '/api/v1/admin/service-accounts/ops/tokens'], ['POST', '/api/v1/admin/service-accounts/ops/tokens/0123456789abcdef/rotate'],
+  ];
+  for (const [method, path] of routes) {
+    for (const [who, auth] of /** @type {const} */ ([['personal token', { bearer: personal }], ['technical user without admin', { bearer: svcPlain }], ['non-admin session', { cookie: bob }]])) {
+      const r = await a.call(path, { ...auth, method, headers: { 'X-Audit-Comment': 'probe' }, ...(method === 'POST' ? { body: { type: 'user', subject: 'x@example.com', name: 'zz' } } : {}) });
+      assert.equal(r.status, 403, `${who}: ${method} ${path} -> ${r.status} ${r.text.slice(0, 80)}`);
+    }
+  }
+  assert.ok((await a.events()).some((e) => e.type === 'api.scope_denied' && e.reason === 'personal_token'));
+  // API_ADMIN_TOKENS=false: the scope cannot be given, existing admin tokens lose it.
+  const noAdm = await adminApp({ API_ADMIN_TOKENS: 'false', REDIS_PREFIX: a.store.p });
+  const c4 = await noAdm.login(ALICE);
+  assert.equal((await noAdm.call('/api/v1/admin/service-accounts/pusher/tokens', { cookie: c4, body: { name: 'y', scopes: ['admin'], ips: ['127.0.0.1'] } })).data.error, 'scope_not_allowed');
+  assert.equal((await noAdm.call('/api/v1/admin/status', { bearer: adm, headers: { ...from, 'X-Audit-Comment': 'x' } })).status, 403);
+});
+
+test('admin and technical user settings are checked at start', () => {
+  const base = { BASE_URL: 'https://ots.example.com', AUTH_PROVIDER: 'entra', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_CLIENT_SECRET: SECRET, AUTH_SECRET: 'x'.repeat(40) };
+  assert.throws(() => loadConfig({ ...base, API_ADMIN_TOKENS: 'true' }), /needs API_TOKENS=true/);
+  assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_ADMIN_TOKENS: 'true' }), /API_ADMIN_TOKENS needs/);
+  assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', ADMIN_USERS: 'a@example.com', API_SERVICE_ACCOUNTS: 'false', API_ADMIN_TOKENS: 'true' }), /API_SERVICE_ACCOUNTS=true/);
+  assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', ADMIN_USERS: 'a@example.com', API_ADMIN_TOKENS: 'true', API_ADMIN_TOKEN_MAX_EXPIRY: '5x' }), /API_ADMIN_TOKEN_MAX_EXPIRY/);
+  assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_ADMIN_COMMENT: 'maybe' }), /API_ADMIN_COMMENT/);
+  const t = loadConfig({ ...base, API_TOKENS: 'true', ADMIN_USERS: 'a@example.com' }).auth?.tokens;
+  assert.deepEqual([t?.services, t?.adminTokens], [true, { enabled: false, requireIp: true, maxExpiry: '90d', canIssueAdmin: false, comment: 'required' }]);
+  assert.equal(loadConfig({ ...base, API_TOKENS: 'true' }).auth?.tokens?.services, false, 'no admins: no technical users');
 });
 
 test('API_TOKEN_REQUIRED: scripts need a token, the pages keep working; API_TOKEN_USERS limits who makes tokens', opts, async () => {

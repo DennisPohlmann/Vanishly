@@ -34,7 +34,7 @@ export const GENESIS = '0'.repeat(64);
 const ECS_VERSION = '8.11.0';
 
 /**
- * @typedef {{ type: 'user' | 'api_token' | 'app' | 'anonymous' | 'system', user?: string, name?: string,
+ * @typedef {{ type: 'user' | 'api_token' | 'service_account' | 'app' | 'anonymous' | 'system', user?: string, name?: string,
  *   token?: { id: string, name: string }, onBehalfOf?: string }} Actor
  * @typedef {{ users?: string[], groups?: string[] }} People
  * @typedef {{
@@ -150,7 +150,7 @@ function level(e) {
 
 /** A short line for humans (message / Body). @param {AuditEvent} e */
 export function message(e) {
-  const who = e.actor?.type === 'api_token' ? `${e.actor.user} via token ${e.actor.token?.name}` : e.actor?.user || e.actor?.name || e.actor?.type || 'system';
+  const who = e.actor?.type === 'api_token' || e.actor?.type === 'service_account' ? `${e.actor.user} via token ${e.actor.token?.name}` : e.actor?.user || e.actor?.name || e.actor?.type || 'system';
   const to = [...(e.recipients?.users || []), ...(e.recipients?.groups || [])];
   return `${e.type} ${e.outcome || 'success'}${e.reason ? ` (${e.reason})` : ''} by ${who}${to.length ? ` for ${to.join(', ')}` : ''}`;
 }
@@ -331,6 +331,9 @@ export function normalize(r) {
       ip: at['client.address'] || '',
       route: [at['http.request.method'], at['http.route']].filter(Boolean).join(' '),
       secretRef: at['vanishly.secret.ref'] || '',
+      receiptRef: at['vanishly.secret.receipt_ref'] || '',
+      responsible: [...(at['vanishly.responsible.users'] || []), ...(at['vanishly.responsible.groups'] || [])],
+      details: Object.fromEntries(Object.entries(at).filter(([k]) => k.startsWith('vanishly.details.')).map(([k, x]) => [k.slice(17), x])),
       seq: c.get('seq'),
       instance: c.get('instance'),
     };
@@ -350,9 +353,68 @@ export function normalize(r) {
     ip: c.format === 'ecs' ? r.source?.ip || '' : r.source?.ip || '',
     route: c.format === 'ecs' ? [r.http?.request?.method, r.url?.path].filter(Boolean).join(' ') : [r.http?.method, r.http?.route].filter(Boolean).join(' '),
     secretRef: v.secret?.ref || '',
+    receiptRef: v.secret?.receipt_ref || '',
+    responsible: [...(v.responsible?.users || []), ...(v.responsible?.groups || [])],
+    details: v.details || {},
     seq: c.get('seq'),
     instance: c.get('instance'),
   };
+}
+
+/**
+ * The secrets as the audit log knows them (metadata only, never content or
+ * keys): one entry per secret ref with creator, recipients, comment,
+ * expiry, the openings (who, when, how) and the state, newest first.
+ * @param {Iterable<any>} events normalized events, oldest first
+ * @param {{ creator?: string, recipient?: string, status?: string, from?: number, to?: number, limit?: number }} [f]
+ */
+export function secretsOverview(events, f = {}, now = Date.now()) {
+  /** @type {Map<string, any>} */
+  const all = new Map();
+  for (const e of events) {
+    if (!e.secretRef || !/^(secret|receipt)\./.test(e.type)) continue;
+    let s = all.get(e.secretRef);
+    if (e.type === 'secret.created') {
+      s = {
+        ref: e.secretRef,
+        receiptRef: e.receiptRef,
+        created: e.ts,
+        creator: { type: e.actor.type, user: e.actor.user, name: e.actor.name, token: e.actor.token },
+        recipients: e.recipients,
+        responsible: e.responsible,
+        comment: e.comment,
+        runId: e.runId,
+        expires: e.details.expires || null,
+        maxViews: Number(e.details.max_views || 1),
+        passphrase: Boolean(e.details.passphrase),
+        encrypted: e.details.encrypted || '',
+        views: [],
+        denied: 0,
+        burned: null,
+      };
+      all.set(e.secretRef, s);
+      continue;
+    }
+    if (!s) continue; // created before the log began
+    if (e.type === 'secret.revealed') {
+      s.views.push({ at: e.ts, by: e.actor.user || '', name: e.actor.name || '', type: e.actor.type, token: e.actor.token, via: e.actor.token ? 'token' : e.details.via === 'server' ? 'api' : 'browser' });
+    } else if (e.type === 'secret.reveal_denied') s.denied++;
+    else if (e.type === 'secret.burned') s.burned = { at: e.ts, reason: e.reason, by: e.actor.user || '' };
+  }
+  const t = (/** @type {string} */ v) => String(v || '').toLowerCase();
+  const out = [];
+  for (const s of all.values()) {
+    s.status = s.burned ? 'burned' : s.views.length >= s.maxViews ? 'opened' : s.expires && Date.parse(s.expires) <= now ? 'expired' : s.views.length ? 'partly_opened' : 'open';
+    const created = Date.parse(s.created);
+    if (f.from && created < f.from) continue;
+    if (f.to && created > f.to) continue;
+    if (f.status && s.status !== f.status) continue;
+    if (f.creator && !`${t(s.creator.user)} ${t(s.creator.name)} ${t(s.creator.token)}`.includes(t(f.creator))) continue;
+    if (f.recipient && !s.recipients.some((/** @type {string} */ r) => t(r).includes(t(f.recipient)))) continue;
+    out.push(s);
+  }
+  out.reverse();
+  return out.slice(0, Math.min(Math.max(f.limit || 200, 1), 5000));
 }
 
 // ------------------------------------------------------------------ reading
@@ -925,6 +987,38 @@ export class Audit {
       return { records: all.slice(-limit).reverse(), source: 'file' };
     }
     return { records: [], source: '' };
+  }
+
+  /**
+   * All events in the Redis stream, oldest first, normalized (at most max).
+   * @param {number} [max]
+   */
+  async *streamEvents(max = 200000) {
+    if (!this.redis) return;
+    let start = '-';
+    for (let n = 0; n < max; ) {
+      const page = await this.redis.xRange(`${this.p}audit`, start, '+', { COUNT: 1000 });
+      if (!page.length) return;
+      for (const m of page) {
+        if (m.id === start) continue;
+        n++;
+        try {
+          yield normalize(JSON.parse(m.message.e));
+        } catch {}
+      }
+      if (page.length < 1000) return;
+      start = page[page.length - 1].id;
+    }
+  }
+
+  /**
+   * The secrets overview of the admin page (needs AUDIT_LOG_REDIS).
+   * @param {Parameters<typeof secretsOverview>[1]} f
+   */
+  async secrets(f) {
+    const events = [];
+    for await (const e of this.streamEvents()) events.push(e);
+    return secretsOverview(events, f);
   }
 
   /** Checks the chain of the file (admin view). */

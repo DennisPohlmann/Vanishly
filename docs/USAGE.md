@@ -11,8 +11,8 @@
 | `/api/openapi.json` | OpenAPI 3.1 document |
 | `/healthz` | `ok` (200) when Redis answers and accepts writes, otherwise 503 |
 | `/auth/login`, `/auth/logout`, `/auth/logged-out` | Sign in and out; `/auth/logged-out` is where the provider returns after a sign-out (only with `AUTH_PROVIDER`) |
-| `/settings/tokens` | "API tokens" (user menu, `API_TOKENS=true`): make a personal API token (name, lifetime, allowed addresses, scopes; shown once), list your tokens with expiry, last use and state, revoke them |
-| `/admin` | "Audit log" (user menu, admins only, `ADMIN_USERS` / `ADMIN_GROUPS`): filter the audit log by event, outcome, who, for whom, run id, text and time; export CSV or JSON lines; check the hash chain; all API tokens with "Revoke" |
+| `/settings/tokens` | "API tokens" (user menu, `API_TOKENS=true`): make a personal API token (name, lifetime, allowed addresses, and what it may do: "only create", "only retrieve", "both", plus status and burn, as far as allowed; shown once), list your tokens with expiry, last use and state, revoke them; shows "2 of 3 active tokens" (`API_TOKEN_MAX_PER_USER`) and, at the limit, a notice instead of the form |
+| `/admin` | "Administration" (user menu, admins only, `ADMIN_USERS` / `ADMIN_GROUPS`), tabs: audit log (filter, export, hash chain check), secrets (metadata of every secret: who for whom, comment, state, who opened it), API tokens (all, revoke), technical users (API-only accounts and their tokens: issue, rotate, revoke), token permissions per user and group; warns when Redis has no persistence ([CONFIG.md](CONFIG.md#admin-interface)) |
 
 The header has the language switch and the light/dark switch (remembered in
 the browser) and, with sign-in, "Sign in", or the full name with the

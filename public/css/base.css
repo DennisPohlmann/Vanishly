@@ -352,3 +352,12 @@ fieldset.scopes legend { font-weight: 600; margin: 0 0 .35rem; padding: 0; }
   table.data td:has(> button) { grid-template-columns: 1fr; }
   table.data td[data-label]:has(> button)::before { content: none; }
 }
+/* Admin: tabs */
+.admin-head h1 { margin-bottom: .75rem; }
+.tabs { display: flex; flex-wrap: wrap; gap: .25rem .5rem; border-bottom: 1px solid var(--border); margin: 0 0 1rem; }
+.tabs a { padding: .5rem .75rem; text-decoration: none; color: inherit; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.tabs a:hover { border-bottom-color: var(--border); }
+.tabs a[aria-current="page"] { border-bottom-color: var(--accent); font-weight: 600; }
+.tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#svc-form, #svc-token-form, #svc-detail { margin-top: 1.5rem; }
+#svc-form h3, #svc-token-form h3, #svc-detail h3 { margin: 0 0 .75rem; }

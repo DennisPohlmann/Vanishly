@@ -167,12 +167,23 @@ services:
       API_TOKEN_EXPIRY_OPTIONS: ${API_TOKEN_EXPIRY_OPTIONS:-} # empty: 30d,60d,90d,never (d, m months, y)
       API_TOKEN_DEFAULT_EXPIRY: ${API_TOKEN_DEFAULT_EXPIRY:-} # empty: 90d
       API_TOKEN_MAX_EXPIRY: ${API_TOKEN_MAX_EXPIRY:-}         # empty: never (no cap), e.g. 1y
-      API_TOKEN_MAX_PER_USER: ${API_TOKEN_MAX_PER_USER:-}     # empty: 10
+      API_TOKEN_MAX_PER_USER: ${API_TOKEN_MAX_PER_USER:-}     # active tokens per user, empty: 10, 0 = no limit
       API_TOKEN_RATE_LIMIT: ${API_TOKEN_RATE_LIMIT:-}         # calls per token per window, empty: 0 = off
       API_TOKEN_COMMENT: ${API_TOKEN_COMMENT:-}               # optional (default) or required
+      API_TOKEN_ALLOWED_SCOPES: ${API_TOKEN_ALLOWED_SCOPES:-} # empty: create,read,status
+      API_TOKEN_DEFAULT_SCOPES: ${API_TOKEN_DEFAULT_SCOPES:-} # empty: create,status
+      API_TOKEN_SCOPES_BY_GROUP: ${API_TOKEN_SCOPES_BY_GROUP:-} # <group>=<scopes>;...
+      API_TOKEN_ADMIN_POLICY: ${API_TOKEN_ADMIN_POLICY:-}     # true: scopes and limits per user/group on /admin
       ADMIN_USERS: ${ADMIN_USERS:-}                           # admins: audit log page and all tokens
       ADMIN_GROUPS: ${ADMIN_GROUPS:-}
       AUDIT_ADMIN_VIEW: ${AUDIT_ADMIN_VIEW:-}                 # empty: true
+      ADMIN_UI: ${ADMIN_UI:-}                                 # empty: true; the admin interface /admin and admin API
+      API_SERVICE_ACCOUNTS: ${API_SERVICE_ACCOUNTS:-}         # empty: true; technical users
+      API_ADMIN_TOKENS: ${API_ADMIN_TOKENS:-}                 # true: "admin" scope for technical users' tokens
+      API_ADMIN_TOKEN_REQUIRE_IP: ${API_ADMIN_TOKEN_REQUIRE_IP:-} # empty: true
+      API_ADMIN_TOKEN_MAX_EXPIRY: ${API_ADMIN_TOKEN_MAX_EXPIRY:-} # empty: 90d
+      API_ADMIN_TOKEN_CAN_ISSUE_ADMIN: ${API_ADMIN_TOKEN_CAN_ISSUE_ADMIN:-} # empty: false
+      API_ADMIN_COMMENT: ${API_ADMIN_COMMENT:-}               # required (default) or optional
     ports:
       - "127.0.0.1:3000:3000"
     volumes:

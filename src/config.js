@@ -99,6 +99,23 @@ export function expiryAt(opt, now) {
   return Date.UTC(year, month, Math.min(d.getUTCDate(), last), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds());
 }
 
+/**
+ * What an API token may do: create secrets (POST /v1/secrets, /v1/share),
+ * read (open/pull them: reveal, /v1/open, meta), status (receipts and burn).
+ */
+export const SCOPES = ['create', 'read', 'status'];
+
+/**
+ * "create,read" to a checked, ordered list of SCOPES ("none" = empty).
+ * @param {string} v
+ */
+export function parseScopes(v) {
+  const list = String(v ?? '').toLowerCase().split(/[\s,+]+/).filter(Boolean);
+  if (list.length === 1 && list[0] === 'none') return [];
+  for (const s of list) if (!SCOPES.includes(s)) throw new Error(`"${s}" is not one of ${SCOPES.join(', ')} (or none)`);
+  return SCOPES.filter((s) => list.includes(s));
+}
+
 // Lifetimes are compared at this fixed date (a month is not always 30 days).
 const EXPIRY_REF = Date.UTC(2001, 0, 1);
 
@@ -160,7 +177,9 @@ export const SETTINGS = [
   'ADMIN_USERS', 'ADMIN_GROUPS', 'AUDIT_ADMIN_VIEW',
   'API_TOKENS', 'API_TOKEN_REQUIRED', 'API_TOKEN_USERS', 'API_TOKEN_GROUPS', 'API_TOKEN_IP_BINDING',
   'API_TOKEN_EXPIRY_OPTIONS', 'API_TOKEN_DEFAULT_EXPIRY', 'API_TOKEN_MAX_EXPIRY', 'API_TOKEN_MAX_PER_USER',
-  'API_TOKEN_RATE_LIMIT', 'API_TOKEN_COMMENT',
+  'API_TOKEN_RATE_LIMIT', 'API_TOKEN_COMMENT', 'API_TOKEN_ALLOWED_SCOPES', 'API_TOKEN_DEFAULT_SCOPES',
+  'API_TOKEN_SCOPES_BY_GROUP', 'API_TOKEN_ADMIN_POLICY', 'API_SERVICE_ACCOUNTS', 'API_ADMIN_TOKENS',
+  'API_ADMIN_TOKEN_REQUIRE_IP', 'API_ADMIN_TOKEN_MAX_EXPIRY', 'API_ADMIN_TOKEN_CAN_ISSUE_ADMIN', 'API_ADMIN_COMMENT', 'ADMIN_UI',
 ];
 const AUTH_SETTINGS = SETTINGS.slice(SETTINGS.indexOf('ENTRA_TENANT_ID'));
 /**
@@ -539,14 +558,22 @@ function authConfig(env, baseUrl) {
       return list.map((g) => groupValue(g, lower, groupPaths));
     });
   // Admins: may read the audit log and see and revoke every API token.
-  const admin = { users: addresses('ADMIN_USERS'), groups: groupList('ADMIN_GROUPS'), auditView: sw('AUDIT_ADMIN_VIEW', true) };
+  // ADMIN_UI: the admin pages (/admin) and the admin API at all.
+  const admin = { users: addresses('ADMIN_USERS'), groups: groupList('ADMIN_GROUPS'), auditView: sw('AUDIT_ADMIN_VIEW', true), ui: sw('ADMIN_UI', true) };
   // API_TOKENS: personal API tokens (src/tokens.js).
   const tokensOn = sw('API_TOKENS', false);
   if (!tokensOn) {
-    const set = ['API_TOKEN_REQUIRED', 'API_TOKEN_USERS', 'API_TOKEN_GROUPS', 'API_TOKEN_IP_BINDING', 'API_TOKEN_EXPIRY_OPTIONS', 'API_TOKEN_DEFAULT_EXPIRY', 'API_TOKEN_MAX_EXPIRY', 'API_TOKEN_MAX_PER_USER', 'API_TOKEN_RATE_LIMIT', 'API_TOKEN_COMMENT'].find((k) => env[k]);
+    const set = SETTINGS.filter((k) => k.startsWith('API_TOKEN_')).find((k) => env[k]);
     if (set) throw new Error(`${set} needs API_TOKENS=true`);
+    const svc = ['API_SERVICE_ACCOUNTS', 'API_ADMIN_TOKENS', 'API_ADMIN_TOKEN_REQUIRE_IP', 'API_ADMIN_TOKEN_MAX_EXPIRY', 'API_ADMIN_TOKEN_CAN_ISSUE_ADMIN', 'API_ADMIN_COMMENT'].find((k) => env[k]);
+    if (svc) throw new Error(`${svc} needs API_TOKENS=true`);
   }
-  const tokens = tokensOn ? tokenConfig(env, { num, sw, addresses, groupList }) : null;
+  const tokens = tokensOn ? tokenConfig(env, { num, sw, addresses, groupList, normGroup: (g) => groupValue(g, lower, groupPaths), entra }) : null;
+  const anyAdmin = admin.users.length > 0 || admin.groups.length > 0;
+  if (tokens?.adminPolicy && (!anyAdmin || !admin.ui)) throw new Error('API_TOKEN_ADMIN_POLICY needs ADMIN_USERS or ADMIN_GROUPS (who sets the policies) and ADMIN_UI=true');
+  if (tokens?.adminTokens.enabled && (!tokens.services || !anyAdmin || !admin.ui)) throw new Error('API_ADMIN_TOKENS needs API_SERVICE_ACCOUNTS=true, ADMIN_USERS or ADMIN_GROUPS and ADMIN_UI=true');
+  // Technical users are managed by admins on /admin: without them, none.
+  if (tokens && (!anyAdmin || !admin.ui)) tokens.services = false;
   return {
     provider,
     tenant,
@@ -579,7 +606,7 @@ function authConfig(env, baseUrl) {
     admin,
     tokens,
     // Groups the identity must keep besides RECIPIENT_GROUPS (admins, token makers).
-    extraGroups: [...new Set([...admin.groups, ...(tokens?.groups || [])])],
+    extraGroups: [...new Set([...admin.groups, ...(tokens?.groups || []), ...(tokens?.scopesByGroup.map((g) => g.group) || [])])],
   };
 }
 
@@ -587,7 +614,7 @@ function authConfig(env, baseUrl) {
  * API_TOKEN_*: who may make tokens, their lifetimes, IP binding, limits.
  * @param {NodeJS.ProcessEnv} env
  * @param {{ num: (n: string, d: number, min: number, max: number) => number, sw: (n: string, d: boolean) => boolean,
- *   addresses: (n: string) => string[], groupList: (n: string) => string[] }} h
+ *   addresses: (n: string) => string[], groupList: (n: string) => string[], normGroup: (g: string) => string, entra: boolean }} h
  */
 function tokenConfig(env, h) {
   /** @param {string} name @param {string} v */
@@ -629,9 +656,63 @@ function tokenConfig(env, h) {
     expiryOptions: options,
     defaultExpiry,
     maxExpiry,
-    maxPerUser: h.num('API_TOKEN_MAX_PER_USER', 10, 1, 100),
+    // Active (not revoked, not expired) tokens per user; 0 = no limit.
+    maxPerUser: h.num('API_TOKEN_MAX_PER_USER', 10, 0, 1000),
     rateLimit: h.num('API_TOKEN_RATE_LIMIT', 0, 0, 100000),
     comment: /** @type {'optional' | 'required'} */ (comment),
+    ...tokenScopes(env, h),
+  };
+}
+
+/**
+ * Which scopes users may give their tokens: API_TOKEN_ALLOWED_SCOPES (all
+ * users), API_TOKEN_SCOPES_BY_GROUP (members of a group, wins over the
+ * former), API_TOKEN_ADMIN_POLICY (per user and group on /admin, wins over
+ * both); API_TOKEN_DEFAULT_SCOPES preselected.
+ * @param {NodeJS.ProcessEnv} env
+ * @param {{ sw: (n: string, d: boolean) => boolean, normGroup: (g: string) => string, entra: boolean }} h
+ */
+function tokenScopes(env, h) {
+  const allowedScopes = named('API_TOKEN_ALLOWED_SCOPES', () => parseScopes(env.API_TOKEN_ALLOWED_SCOPES || SCOPES.join(',')));
+  let defaultScopes;
+  if (env.API_TOKEN_DEFAULT_SCOPES) {
+    defaultScopes = named('API_TOKEN_DEFAULT_SCOPES', () => parseScopes(env.API_TOKEN_DEFAULT_SCOPES || ''));
+    const extra = defaultScopes.filter((s) => !allowedScopes.includes(s));
+    if (extra.length) throw new Error(`API_TOKEN_DEFAULT_SCOPES: ${extra.join(', ')} is not in API_TOKEN_ALLOWED_SCOPES`);
+  } else {
+    defaultScopes = ['create', 'status'].filter((s) => allowedScopes.includes(s));
+  }
+  // "/finance=read;/it=create,read,status": the scopes of a group's members.
+  const scopesByGroup = named('API_TOKEN_SCOPES_BY_GROUP', () =>
+    (env.API_TOKEN_SCOPES_BY_GROUP || '')
+      .split(';')
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const i = part.lastIndexOf('=');
+        const group = i > 0 ? part.slice(0, i).trim() : '';
+        if (!group || group.length > 200 || /[\x00-\x1f]/.test(group)) throw new Error(`"${part}" is not <group>=<scopes>, e.g. /finance=read;/it=create,read`);
+        if (h.entra && !GUID.test(group)) throw new Error(`"${group}": with Entra the group object id (a GUID)`);
+        return { group: h.normGroup(group), scopes: parseScopes(part.slice(i + 1)) };
+      }),
+  );
+  const adminComment = env.API_ADMIN_COMMENT || 'required';
+  if (!/^(optional|required)$/.test(adminComment)) throw new Error('API_ADMIN_COMMENT: optional or required');
+  return {
+    allowedScopes,
+    defaultScopes,
+    scopesByGroup,
+    adminPolicy: h.sw('API_TOKEN_ADMIN_POLICY', false),
+    // API_SERVICE_ACCOUNTS: technical users (API only, no sign-in), made by admins.
+    services: h.sw('API_SERVICE_ACCOUNTS', true),
+    // API_ADMIN_TOKENS: the "admin" scope for technical users' tokens (the admin API).
+    adminTokens: {
+      enabled: h.sw('API_ADMIN_TOKENS', false),
+      requireIp: h.sw('API_ADMIN_TOKEN_REQUIRE_IP', true),
+      maxExpiry: named('API_ADMIN_TOKEN_MAX_EXPIRY', () => parseExpiry(env.API_ADMIN_TOKEN_MAX_EXPIRY || '90d')),
+      canIssueAdmin: h.sw('API_ADMIN_TOKEN_CAN_ISSUE_ADMIN', false),
+      comment: /** @type {'optional' | 'required'} */ (adminComment),
+    },
   };
 }
 
@@ -909,7 +990,7 @@ export function loadConfig(env = process.env) {
   if (auth && config.audit && env.AUDIT_ADMIN_VIEW && flag(env.AUDIT_ADMIN_VIEW, true) && !config.audit.file && !config.audit.redis) {
     throw new Error('AUDIT_ADMIN_VIEW needs AUDIT_LOG_FILE or AUDIT_LOG_REDIS=true (stdout cannot be read back)');
   }
-  if (auth) auth.admin.auditView = Boolean(auth.admin.auditView && config.audit && (config.audit.file || config.audit.redis) && (auth.admin.users.length || auth.admin.groups.length));
+  if (auth) auth.admin.auditView = Boolean(auth.admin.auditView && auth.admin.ui && config.audit && (config.audit.file || config.audit.redis) && (auth.admin.users.length || auth.admin.groups.length));
   if (!config.api) {
     config.apiDocs = false;
     config.features.shareApi = false;

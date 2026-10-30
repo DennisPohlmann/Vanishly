@@ -204,11 +204,22 @@ Need sign-in. See [API tokens](#api-tokens) below.
 | `API_TOKEN_EXPIRY_OPTIONS` | `30d,60d,90d,never` | Lifetimes a user may pick: `d` days, `m` calendar months, `y` calendar years, `never` (note: `m` is months here, minutes in `TTL_OPTIONS`) |
 | `API_TOKEN_DEFAULT_EXPIRY` | `90d` (or the longest choice) | Preselected lifetime; added to the choices if missing |
 | `API_TOKEN_MAX_EXPIRY` | `never` (no cap) | Longest lifetime allowed, e.g. `1y`: longer choices and `never` disappear, the server refuses them |
-| `API_TOKEN_MAX_PER_USER` | `10` | Active tokens per user (1 to 100) |
+| `API_TOKEN_MAX_PER_USER` | `10` | Active tokens per user, 0 to 1000 (`0`: no limit). Only active tokens count; revoked and expired ones do not. At the limit the API tokens page shows "10 of 10 active tokens" and a notice instead of the form, and the API refuses with `400 too_many_tokens` (logged as `api.token_create_denied`, reason `limit_reached`) |
 | `API_TOKEN_RATE_LIMIT` | `0` (off) | Calls per token per `RATE_LIMIT_WINDOW` |
 | `API_TOKEN_COMMENT` | `optional` | `required`: every POST with a token needs a comment (`X-Audit-Comment` or `comment`); needs `AUDIT_LOG` |
-| `ADMIN_USERS`, `ADMIN_GROUPS` | (none) | Admins: they see the audit log (page "Audit log", `/admin`) and all API tokens and may revoke any |
-| `AUDIT_ADMIN_VIEW` | `true` | The audit page for admins; needs `AUDIT_LOG` with `AUDIT_LOG_FILE` or `AUDIT_LOG_REDIS=true` |
+| `API_TOKEN_ALLOWED_SCOPES` | `create,read,status` | What users may give their tokens: `create` (create secrets), `read` (retrieve/open them), `status` (status page and burn), or `none`. The form then offers only "only create", "only retrieve", "both" and the status box as far as allowed |
+| `API_TOKEN_DEFAULT_SCOPES` | `create,status` (within the allowed ones) | Preselected in the form and used when the API call names no `scopes`; must be within `API_TOKEN_ALLOWED_SCOPES` |
+| `API_TOKEN_SCOPES_BY_GROUP` | (none) | Other scopes for the members of groups, wins over `API_TOKEN_ALLOWED_SCOPES` (several groups add up): `<group>=<scopes>;...`, e.g. `/support=read;/it=create,read,status` (Entra: object ids). For GitOps |
+| `API_TOKEN_ADMIN_POLICY` | `false` | `true`: admins set the scopes and the token limit per user and per group on `/admin` ("Token permissions", stored in Redis). Order: user > group > `API_TOKEN_SCOPES_BY_GROUP` > `API_TOKEN_ALLOWED_SCOPES` / `API_TOKEN_MAX_PER_USER`. Needs `ADMIN_USERS` or `ADMIN_GROUPS` |
+| `ADMIN_USERS`, `ADMIN_GROUPS` | (none) | Admins get the whole admin interface (`/admin`, "Administration" in the user menu) and the admin API. `ADMIN_GROUPS` as in the groups claim, like `RECIPIENT_GROUPS` (Keycloak: `/vanishly-admins`; Entra: the object id); see [Admin interface](#admin-interface) |
+| `ADMIN_UI` | `true` | The admin interface and the admin API at all (`false`: neither) |
+| `AUDIT_ADMIN_VIEW` | `true` | The "Audit log" tab; needs `AUDIT_LOG` with `AUDIT_LOG_FILE` or `AUDIT_LOG_REDIS=true` |
+| `API_SERVICE_ACCOUNTS` | `true` | Technical users: API-only accounts (e.g. `api_aap`) that admins make on `/admin` and issue tokens for; they cannot sign in |
+| `API_ADMIN_TOKENS` | `false` | The scope `admin` for technical users' tokens: every admin function over the API. Only a signed-in admin can give it |
+| `API_ADMIN_TOKEN_REQUIRE_IP` | `true` | Admin tokens must name the IP networks they work from |
+| `API_ADMIN_TOKEN_MAX_EXPIRY` | `90d` | Longest lifetime of an admin token (`d`, `m`, `y`) |
+| `API_ADMIN_TOKEN_CAN_ISSUE_ADMIN` | `false` | `true`: an admin token may issue further admin tokens |
+| `API_ADMIN_COMMENT` | `required` | Every admin API call with a token needs `X-Audit-Comment` (`optional`: not) |
 
 The container sets `NODE_ENV=production`, `HOST=0.0.0.0`, `PORT=3000` and
 `TEMPLATES_DIR=/var/lib/vanishly/templates`.
@@ -487,7 +498,21 @@ With `API_TOKENS=true` every signed-in user (or only `API_TOKEN_USERS` /
 name (e.g. `api_aap`), lifetime, allowed addresses, scopes (create secrets,
 open secrets, status and burn). The token (`vnly_<id>_<secret>`) is shown
 once; Redis keeps only an HMAC of it. The list shows each token with its
-expiry, last use, addresses and state; a click revokes it. Admins see and
+expiry, last use, addresses and state; a click revokes it. A user may have
+`API_TOKEN_MAX_PER_USER` active tokens (default 10; revoked and expired ones
+do not count); the page shows how many are in use.
+
+**What a token may do** is chosen per token: "only create" (secrets),
+"only retrieve" (open/pull secrets), "both", plus "status and burn". Which
+of these a user may pick: `API_TOKEN_ALLOWED_SCOPES` for everyone,
+`API_TOKEN_SCOPES_BY_GROUP` per group, and with `API_TOKEN_ADMIN_POLICY=true`
+per user or group on `/admin` (also the token limit), in this order: user,
+group (several add up), `API_TOKEN_SCOPES_BY_GROUP`, the defaults. The
+policy of today counts at every call: when an admin takes a scope away,
+existing tokens lose it at once (the list marks it "no longer allowed",
+calls get `403 insufficient_scope` and `api.scope_denied`); "Also revoke
+existing tokens" revokes them instead. Every change is logged
+(`admin.token_policy_changed` / `_deleted` with old and new). Admins see and
 revoke all tokens on `/admin`.
 
 ```sh
@@ -510,6 +535,41 @@ curl -s -X POST https://ots.example.com/api/v1/share \
   `API_TOKEN_COMMENT=required`. Behind a reverse proxy set `TRUST_PROXY`
   right, or the proxy's address is checked instead of the caller's.
 - A token picks up the owner's groups at each sign-in of the owner.
+
+## Admin interface
+
+Admins (`ADMIN_USERS`, or members of `ADMIN_GROUPS`) find "Administration"
+in the user menu (`/admin`), with tabs:
+
+| Tab | What | Needs |
+|---|---|---|
+| Audit log | filter, export (CSV, JSON lines), hash chain check | `AUDIT_LOG` with a file or `AUDIT_LOG_REDIS` |
+| Secrets | every secret with creator, recipients, comment, expiry, state (not opened, opened, expired, burned) and who opened it when and how (web page, API, token); never content or keys | `AUDIT_LOG_REDIS=true` |
+| API tokens | all tokens of all users and technical users: owner, scopes, created, last used, expiry, networks, state; revoke | `API_TOKENS` |
+| Technical users | API-only accounts: create, change, disable, delete (revokes their tokens); issue, rotate (with a grace period) and revoke their tokens | `API_SERVICE_ACCOUNTS` |
+| Token permissions | scopes and token limit per user and group | `API_TOKEN_ADMIN_POLICY` |
+
+Everything there is in the audit log with the admin's name, and also
+available over the API (`/api/v1/admin/...`, [INTERFACE.md](INTERFACE.md#admin-api)).
+
+**Admin group with Keycloak:** put the admins into a group (e.g.
+`vanishly-admins`), make sure the client's groups mapper puts it into the
+`groups` claim (as for `RECIPIENT_GROUPS`), and set
+`ADMIN_GROUPS=/vanishly-admins` (a name without path counts with `/` in
+front). Members are admins from their next sign-in.
+
+**Redis must keep its data.** The secrets tab, the tokens, technical users
+and token permissions live in Redis. Without persistence they are gone
+after a Redis restart; `/admin` then shows a warning. Use Redis with an
+append-only file (`--appendonly yes`) or snapshots: an external Redis, the
+Compose file with a volume, or the Helm chart's `redis.persistence.enabled`.
+Note that the (encrypted) secrets are then on disk too.
+
+**Admin tokens** (`API_ADMIN_TOKENS=true`): a signed-in admin issues a
+technical user a token with the scope `admin` (bound to networks, at most
+90 days by default). It can do every admin function over the API, each
+call with `X-Audit-Comment`; it cannot issue further admin tokens
+(`API_ADMIN_TOKEN_CAN_ISSUE_ADMIN`). Personal tokens never get `admin`.
 
 ## Languages
 

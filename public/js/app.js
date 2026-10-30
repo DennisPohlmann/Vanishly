@@ -825,7 +825,14 @@ function tokenRow(tok, admin, reload) {
   const tr = document.createElement('tr');
   if (admin) tr.append(cell(tok.ownerName && tok.ownerName !== tok.owner ? `${tok.ownerName} · ${tok.owner}` : tok.owner));
   tr.append(cell(tok.name), cell(`${tok.prefix}…`, 'mono'), cell(tok.expires ? fmt(tok.expires) : t('tokens.never')), cell(tok.lastUsed ? fmt(tok.lastUsed) : t('tokens.unused')), cell(tok.ips.length ? tok.ips.join(', ') : t('tokens.anyIp'), 'mono'));
-  if (!admin) tr.append(cell(tok.scopes.map((/** @type {string} */ s) => t(`tokens.scope.${s}`)).join(', ')));
+  // What it may do; a scope the owner's policy took away since is marked.
+  tr.append(
+    cell(
+      tok.scopes
+        .map((/** @type {string} */ s) => (tok.allowedNow && !tok.allowedNow.includes(s) ? t('tokens.scopeBlocked', { scope: t(`tokens.scope.${s}`) }) : t(`tokens.scope.${s}`)))
+        .join(', '),
+    ),
+  );
   const st = document.createElement('td');
   const badge = document.createElement('span');
   badge.className = `badge badge-${tok.state === 'active' ? 'new' : 'burned'}`;
@@ -865,6 +872,14 @@ function initTokens() {
     labelCells($('token-rows'));
     $('token-none').hidden = data.tokens.length > 0;
     $('token-table').hidden = !data.tokens.length;
+    // API_TOKEN_MAX_PER_USER: "2 of 3 active tokens"; at the limit no form, a notice instead.
+    const max = Number(card.dataset.max || 0);
+    const active = Number(data.active || 0);
+    $('token-count').textContent = max ? t('tokens.count', { n: active, max }) : t('tokens.countUnlimited', { n: active });
+    const full = Boolean(max) && active >= max && card.dataset.allowed === '1';
+    $('token-limit').hidden = !full;
+    $('token-limit').textContent = full ? t('tokens.limitReached', { max }) : '';
+    if (card.dataset.allowed === '1') form.hidden = full;
   };
   form.addEventListener('submit', async (/** @type {Event} */ e) => {
     e.preventDefault();
@@ -873,10 +888,17 @@ function initTokens() {
     if (!name) return showError(err, t('tokens.errorName'), $('token-name'));
     const ips = $('token-ips').value.split(/[\s,;]+/).filter(Boolean);
     if (card.dataset.ipsRequired === '1' && !ips.length) return showError(err, t('tokens.errorIps'), $('token-ips'));
-    const scopes = [...document.querySelectorAll('input[name="scopes"]:checked')].map((el) => /** @type {HTMLInputElement} */ (el).value);
+    // "Only create", "only read (pull)", "both", plus the status box.
+    const access = /** @type {HTMLInputElement | null} */ (form.querySelector('input[name="access"]:checked'))?.value || '';
+    const scopes = [...(access === 'both' ? ['create', 'read'] : access ? [access] : []), ...[...form.querySelectorAll('input[name="scopes"]:checked')].map((el) => /** @type {HTMLInputElement} */ (el).value)];
+    if (!scopes.length) return showError(err, t('tokens.errorScopes'), form.querySelector('input[name="access"], input[name="scopes"]'));
     $('token-submit').disabled = true;
     try {
       const { status, data } = await api('/api/v1/tokens', { name, expires: $('token-expires').value, ips, scopes });
+      if (data.error === 'too_many_tokens') {
+        showError(err, t('tokens.limitReached', { max: data.max }));
+        return void (await load());
+      }
       if (status !== 201) return showError(err, status === 400 || status === 403 ? t('tokens.error', { message: data.message || '' }) : errorText(status));
       $('token-value').value = data.token;
       const origin = card.dataset.origin || location.origin;
@@ -901,8 +923,13 @@ function initTokens() {
 
 function initAdmin() {
   const card = $('admin-card');
-  if (card.dataset.audit === '1') {
-    $('audit-box').hidden = false;
+  // One tab at a time (the links reload the page with ?tab=).
+  const tab = card.dataset.tab;
+  if (tab) $(`tab-${tab}`).hidden = false;
+  if (tab === 'secrets') return initSecrets();
+  if (tab === 'services') return initServices();
+  if (tab === 'policies') return initPolicies();
+  if (tab === 'audit') {
     $('audit-verify').hidden = card.dataset.verify !== '1';
     const form = $('audit-filter');
     const query = () => {
@@ -968,8 +995,7 @@ function initAdmin() {
     });
     load();
   }
-  if (card.dataset.tokens === '1') {
-    $('admin-tokens-card').hidden = false;
+  if (tab === 'tokens') {
     const loadTokens = async () => {
       const { status, data } = await api('/api/v1/admin/tokens');
       if (status !== 200) return showError($('admin-tokens-error'), errorText(status));
@@ -979,6 +1005,328 @@ function initAdmin() {
     };
     loadTokens();
   }
+}
+
+/** Admins: the secrets as the audit log knows them (metadata only). */
+function initSecrets() {
+  const form = $('secrets-filter');
+  /** @param {any} s */
+  const who = (s) => (s.creator.token ? `${s.creator.user} (${s.creator.token})` : person(s.creator.name, s.creator.user) || t(`secrets.anonymous`));
+  const load = async () => {
+    const p = new URLSearchParams();
+    for (const el of form.querySelectorAll('input, select')) {
+      const v = /** @type {HTMLInputElement} */ (el).value.trim();
+      if (v) p.set(el.name, el.type === 'datetime-local' ? new Date(v).toISOString() : v);
+    }
+    const { status, data } = await api(`/api/v1/admin/secrets?${p}`);
+    if (status !== 200) return showError($('secrets-error'), data.message || errorText(status));
+    showError($('secrets-error'), '');
+    $('secrets-count').textContent = data.count ? t('secrets.count', { n: data.count }) : t('admin.none');
+    $('secrets-rows').replaceChildren(
+      ...data.secrets.map((/** @type {any} */ s) => {
+        const tr = document.createElement('tr');
+        const st = document.createElement('td');
+        const b = document.createElement('span');
+        b.className = `badge badge-${s.status === 'open' || s.status === 'partly_opened' ? 'new' : 'burned'}`;
+        b.textContent = t(`secrets.status.${s.status}`);
+        st.append(b);
+        const opened = s.views.map((/** @type {any} */ v) => `${fmt(v.at)} · ${v.token ? `${v.by} (${v.token})` : person(v.name, v.by) || t('secrets.anonymous')} · ${t(`secrets.via.${v.via}`)}`).join('; ');
+        const created = s.encrypted ? `${t(`secrets.via.${s.creator.token ? 'token' : s.encrypted === 'server' ? 'api' : 'browser'}`)}` : '';
+        tr.append(cell(fmt(s.created)), cell(`${who(s)}${created ? ` · ${created}` : ''}`), cell(s.recipients.join(', ') || t('secrets.anyone')), cell(s.comment), cell(s.expires ? fmt(s.expires) : ''), st, cell(opened || (s.denied ? t('secrets.denied', { n: s.denied }) : '')), cell(s.ref.slice(0, 10), 'mono'));
+        return tr;
+      }),
+    );
+    labelCells($('secrets-rows'));
+  };
+  form.addEventListener('submit', (/** @type {Event} */ e) => {
+    e.preventDefault();
+    load();
+  });
+  load();
+}
+
+/** Admins: technical users (API only) and their tokens. */
+function initServices() {
+  const card = $('admin-card');
+  const err = $('svc-error');
+  const ok = $('svc-ok');
+  /** @type {string} */ let editing = '';
+  /** @type {string} */ let current = '';
+  /** @param {string} text */
+  const done = (text) => {
+    showError(err, '');
+    ok.hidden = !text;
+    ok.textContent = text;
+  };
+  /** @param {string} url @param {any} body */
+  const post = async (url, body) => {
+    const r = await api(url, body);
+    if (r.status >= 300) {
+      ok.hidden = true;
+      showError(err, r.data.message || errorText(r.status));
+    }
+    return r;
+  };
+  const resetForm = () => {
+    editing = '';
+    $('svc-form').reset();
+    $('svc-name').disabled = false;
+    $('svc-form-title').textContent = t('svc.new');
+    $('svc-cancel').hidden = true;
+  };
+  /** @param {any} s */
+  const edit = (s) => {
+    editing = s.name;
+    $('svc-name').value = s.name;
+    $('svc-name').disabled = true;
+    $('svc-description').value = s.description;
+    $('svc-responsible').value = s.responsible;
+    $('svc-ips').value = s.ips.join('\n');
+    $('svc-max').value = s.max === null ? '' : String(s.max);
+    $('svc-enabled').checked = s.enabled;
+    $('svc-form-title').textContent = t('svc.edit', { name: s.name });
+    $('svc-cancel').hidden = false;
+    $('svc-description').focus();
+  };
+  /** @param {string} name */
+  const detail = async (name) => {
+    current = name;
+    $('svc-detail').hidden = false;
+    $('svc-detail-title').textContent = t('svc.tokensOf', { name });
+    $('svc-token-new').hidden = true;
+    const { status, data } = await api(`/api/v1/admin/service-accounts/${encodeURIComponent(name)}/tokens`);
+    if (status !== 200) return showError(err, errorText(status));
+    $('svc-token-rows').replaceChildren(
+      ...data.tokens.map((/** @type {any} */ tok) => {
+        const tr = tokenRow(tok, false, () => detail(name));
+        if (tok.state === 'active') {
+          const rot = document.createElement('button');
+          rot.type = 'button';
+          rot.className = 'btn btn-small';
+          rot.textContent = t('svc.rotate');
+          rot.setAttribute('aria-label', `${t('svc.rotate')}: ${tok.name}`);
+          rot.addEventListener('click', async () => {
+            const grace = prompt(t('svc.rotateGrace'), '0');
+            if (grace === null) return;
+            const r = await post(`/api/v1/admin/service-accounts/${encodeURIComponent(name)}/tokens/${tok.id}/rotate`, { graceSeconds: Number(grace) || 0 });
+            if (r.status === 201) {
+              await detail(name);
+              showNew(r.data.token);
+            }
+          });
+          /** @type {HTMLElement} */ (tr.lastElementChild).prepend(rot, ' ');
+        }
+        return tr;
+      }),
+    );
+    labelCells($('svc-token-rows'));
+    const svc = list.find((/** @type {any} */ x) => x.name === name);
+    $('svc-token-ips').value = svc ? svc.ips.join('\n') : '';
+    $('svc-token-form').hidden = !svc?.enabled;
+  };
+  /** @param {string} token */
+  const showNew = (token) => {
+    $('svc-token-new').hidden = false;
+    $('svc-token-value').value = token;
+    $('svc-token-value').focus();
+    $('svc-token-value').select();
+    announce(t('tokens.created'));
+  };
+  /** @type {any[]} */ let list = [];
+  const load = async () => {
+    const { status, data } = await api('/api/v1/admin/service-accounts');
+    if (status !== 200) return showError(err, errorText(status));
+    list = data.services;
+    $('svc-scope-admin-wrap').hidden = !data.adminScope;
+    $('svc-token-expires').replaceChildren(
+      ...data.expiry.map((/** @type {string} */ o) => Object.assign(document.createElement('option'), { value: o, textContent: o === 'never' ? t('tokens.never') : o, selected: o === data.defaultExpiry })),
+    );
+    $('svc-rows').replaceChildren(
+      ...list.map((/** @type {any} */ s) => {
+        const tr = document.createElement('tr');
+        const st = document.createElement('td');
+        const b = document.createElement('span');
+        b.className = `badge badge-${s.enabled ? 'new' : 'burned'}`;
+        b.textContent = t(s.enabled ? 'svc.on' : 'svc.off');
+        st.append(b);
+        const act = document.createElement('td');
+        /** @param {string} label @param {string} cls @param {() => void} fn */
+        const btn = (label, cls, fn) => {
+          const x = document.createElement('button');
+          x.type = 'button';
+          x.className = `btn btn-small ${cls}`;
+          x.textContent = label;
+          x.setAttribute('aria-label', `${label}: ${s.name}`);
+          x.addEventListener('click', fn);
+          act.append(x, ' ');
+        };
+        btn(t('svc.tokens'), '', () => detail(s.name));
+        btn(t('policy.edit'), '', () => edit(s));
+        btn(t(s.enabled ? 'svc.disable' : 'svc.enable'), '', async () => {
+          if (s.enabled && !confirm(t('svc.disableConfirm', { name: s.name }))) return;
+          const r = await post(`/api/v1/admin/service-accounts/${encodeURIComponent(s.name)}`, { enabled: !s.enabled });
+          if (r.status === 200) done(t(s.enabled ? 'svc.disabled' : 'svc.enabledDone', { name: s.name, n: r.data.revoked.length }));
+          await load();
+        });
+        btn(t('policy.delete'), 'btn-danger', async () => {
+          if (!confirm(t('svc.deleteConfirm', { name: s.name }))) return;
+          const r = await post(`/api/v1/admin/service-accounts/${encodeURIComponent(s.name)}/delete`, {});
+          if (r.status === 200) done(t('svc.deleted', { name: s.name, n: r.data.revoked.length }));
+          if (current === s.name) $('svc-detail').hidden = true;
+          await load();
+        });
+        tr.append(cell(s.name, 'mono'), cell(s.description), cell(s.responsible), cell(s.ips.length ? s.ips.join(', ') : t('tokens.anyIp'), 'mono'), cell(String(s.activeTokens)), st, act);
+        return tr;
+      }),
+    );
+    labelCells($('svc-rows'));
+    $('svc-none').hidden = list.length > 0;
+    if (current) await detail(current);
+  };
+  $('svc-cancel').addEventListener('click', resetForm);
+  $('svc-form').addEventListener('submit', async (/** @type {Event} */ e) => {
+    e.preventDefault();
+    const body = {
+      name: $('svc-name').value.trim(),
+      description: $('svc-description').value.trim(),
+      responsible: $('svc-responsible').value.trim(),
+      ips: $('svc-ips').value.split(/[\s,;]+/).filter(Boolean),
+      max: $('svc-max').value.trim() === '' ? null : Number($('svc-max').value),
+      enabled: $('svc-enabled').checked,
+    };
+    const r = await post(editing ? `/api/v1/admin/service-accounts/${encodeURIComponent(editing)}` : '/api/v1/admin/service-accounts', body);
+    if (r.status < 300) {
+      done(t(editing ? 'svc.saved' : 'svc.created', { name: r.data.service.name }));
+      resetForm();
+      await load();
+    }
+  });
+  $('svc-token-form').addEventListener('submit', async (/** @type {Event} */ e) => {
+    e.preventDefault();
+    const access = /** @type {HTMLInputElement | null} */ (document.querySelector('input[name="svc-access"]:checked'))?.value || 'create';
+    const scopes = [...(access === 'both' ? ['create', 'read'] : [access]), ...($('svc-scope-status').checked ? ['status'] : []), ...($('svc-scope-admin').checked ? ['admin'] : [])];
+    const r = await post(`/api/v1/admin/service-accounts/${encodeURIComponent(current)}/tokens`, {
+      name: $('svc-token-name').value.trim() || current,
+      expires: $('svc-token-expires').value,
+      scopes,
+      ips: $('svc-token-ips').value.split(/[\s,;]+/).filter(Boolean),
+    });
+    if (r.status === 201) {
+      done('');
+      await detail(current);
+      showNew(r.data.token);
+    }
+  });
+  void card;
+  load();
+}
+
+/** Admins: token permissions per user and group (API_TOKEN_ADMIN_POLICY). */
+function initPolicies() {
+  const form = $('policy-form');
+  const err = $('policy-error');
+  const ok = $('policy-ok');
+  /** @type {any} */ let info = {};
+  /** @param {string[]} sc */
+  const scopeText = (sc) => (sc.length ? sc.map((s) => t(`tokens.scope.${s}`)).join(', ') : t('policy.noScopes'));
+  /** @param {number | null} m */
+  const maxText = (m) => (m === null ? t('policy.maxDefault', { n: info.defaults.maxPerUser || t('policy.unlimited') }) : m === 0 ? t('policy.unlimited') : String(m));
+  /** @param {any} p */
+  const fill = (p) => {
+    $('policy-type').value = p.type;
+    $('policy-subject').value = p.subject;
+    for (const el of form.querySelectorAll('input[name="pol-scope"]')) /** @type {HTMLInputElement} */ (el).checked = p.scopes.includes(/** @type {HTMLInputElement} */ (el).value);
+    $('policy-max').value = p.max === null ? '' : String(p.max);
+    $('policy-subject').focus();
+  };
+  /** @param {any} body */
+  const save = async (body) => {
+    showError(err, '');
+    ok.hidden = true;
+    const { status, data } = await api('/api/v1/admin/token-policies', body);
+    if (status !== 200) return showError(err, data.message || errorText(status));
+    ok.hidden = false;
+    ok.textContent = body.remove ? t('policy.deleted', { subject: body.subject }) : t('policy.saved', { subject: body.subject }) + (data.revoked?.length ? ` ${t('policy.revokedN', { n: data.revoked.length })}` : '');
+    await load();
+  };
+  const load = async () => {
+    const { status, data } = await api('/api/v1/admin/token-policies');
+    if (status !== 200) return showError(err, errorText(status));
+    info = data;
+    const d = data.defaults;
+    $('policy-defaults').textContent =
+      t('policy.defaults', { scopes: scopeText(d.allowedScopes), max: d.maxPerUser || t('policy.unlimited') }) +
+      (d.scopesByGroup.length ? ` ${t('policy.byGroup', { list: d.scopesByGroup.map((/** @type {any} */ g) => `${g.group}: ${scopeText(g.scopes)}`).join('; ') })}` : '');
+    $('policy-rows').replaceChildren(
+      ...data.policies.map((/** @type {any} */ p) => {
+        const tr = document.createElement('tr');
+        const actions = document.createElement('td');
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'btn btn-small';
+        edit.textContent = t('policy.edit');
+        edit.setAttribute('aria-label', `${t('policy.edit')}: ${p.subject}`);
+        edit.addEventListener('click', () => fill(p));
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'btn btn-small btn-danger';
+        del.textContent = t('policy.delete');
+        del.setAttribute('aria-label', `${t('policy.delete')}: ${p.subject}`);
+        del.addEventListener('click', () => confirm(t('policy.deleteConfirm', { subject: p.subject })) && save({ type: p.type, subject: p.subject, remove: true }));
+        actions.append(edit, ' ', del);
+        tr.append(cell(`${t(`policy.type.${p.type}`)}: ${p.subject}`), cell(scopeText(p.scopes)), cell(maxText(p.max)), cell(p.at ? `${fmt(p.at)} · ${p.by}` : p.by), actions);
+        return tr;
+      }),
+    );
+    labelCells($('policy-rows'));
+    $('policy-none').hidden = data.policies.length > 0;
+    suggest();
+  };
+  // Suggestions: the configured groups, or the people / group search of the directory.
+  /** @type {ReturnType<typeof setTimeout> | undefined} */ let timer;
+  const suggest = () => {
+    const list = $('policy-suggest');
+    const type = $('policy-type').value;
+    const q = $('policy-subject').value.trim();
+    clearTimeout(timer);
+    if (type === 'group' && !info.groupSearch) {
+      list.replaceChildren(...(info.groups || []).map((/** @type {any} */ g) => Object.assign(document.createElement('option'), { value: g.id, label: g.name })));
+      return;
+    }
+    if (q.length < 2 || (type === 'user' && !info.peopleSearch)) return void list.replaceChildren();
+    timer = setTimeout(async () => {
+      const { status, data } = await api(`/api/v1/${type === 'user' ? 'people' : 'groups'}?q=${encodeURIComponent(q)}`);
+      if (status !== 200) return;
+      const items = type === 'user' ? data.people.map((/** @type {any} */ p) => [p.user, p.name]) : data.groups.map((/** @type {any} */ g) => [g.id, g.name]);
+      list.replaceChildren(...items.map(([value, label]) => Object.assign(document.createElement('option'), { value, label })));
+    }, 250);
+  };
+  $('policy-type').addEventListener('change', () => {
+    $('policy-subject-label').textContent = t($('policy-type').value === 'user' ? 'policy.subjectUser' : 'policy.subjectGroup');
+    suggest();
+  });
+  $('policy-subject').addEventListener('input', suggest);
+  form.addEventListener('submit', async (/** @type {Event} */ e) => {
+    e.preventDefault();
+    const subject = $('policy-subject').value.trim();
+    if (!subject) return showError(err, t('policy.errorSubject'), $('policy-subject'));
+    const max = $('policy-max').value.trim();
+    if (max && !/^\d{1,4}$/.test(max)) return showError(err, t('policy.errorMax'), $('policy-max'));
+    $('policy-save').disabled = true;
+    try {
+      await save({
+        type: $('policy-type').value,
+        subject,
+        scopes: [...form.querySelectorAll('input[name="pol-scope"]:checked')].map((el) => /** @type {HTMLInputElement} */ (el).value),
+        max: max === '' ? null : Number(max),
+        revokeExceeding: $('policy-revoke').checked,
+      });
+    } finally {
+      $('policy-save').disabled = false;
+    }
+  });
+  $('policy-subject-label').textContent = t('policy.subjectUser');
+  load();
 }
 
 const page = leaving ? '' : document.body.dataset.page;

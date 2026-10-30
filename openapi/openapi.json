@@ -1631,6 +1631,10 @@
                       "items": {
                         "$ref": "#/components/schemas/Token"
                       }
+                    },
+                    "active": {
+                      "type": "integer",
+                      "description": "The caller's active tokens (not revoked, not expired): these count against options.maxPerUser"
                     }
                   }
                 }
@@ -1708,7 +1712,7 @@
             }
           },
           "400": {
-            "description": "`invalid_name`, `invalid_expiry`, `invalid_ips`, `ips_required`, `invalid_scopes`, `too_many_tokens` (API_TOKEN_MAX_PER_USER)",
+            "description": "`invalid_name`, `invalid_expiry`, `invalid_ips`, `ips_required`, `invalid_scopes`; `too_many_tokens`: the user already has API_TOKEN_MAX_PER_USER active tokens (default 3; `active` and `max` in the answer; logged as `api.token_create_denied`); `scope_not_allowed`: a scope outside the caller's allowed scopes (`allowed` lists them; logged as `api.token_create_denied`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1813,10 +1817,13 @@
         ],
         "operationId": "adminListTokens",
         "summary": "All API tokens",
-        "description": "Admins only (session). Logged as `admin.tokens_listed`.",
+        "description": "Admins only (session). Logged as `admin.tokens_listed`. Also with a technical user's token with the scope `admin` (API_ADMIN_TOKENS).",
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "apiToken": []
           }
         ],
         "responses": {
@@ -1876,10 +1883,13 @@
         ],
         "operationId": "adminRevokeToken",
         "summary": "Revoke any token",
-        "description": "Admins only. Logged as `admin.token_revoked` with the admin and the owner.",
+        "description": "Admins only. Logged as `admin.token_revoked` with the admin and the owner. Also with a technical user's token with the scope `admin` (API_ADMIN_TOKENS).",
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "apiToken": []
           }
         ],
         "parameters": [
@@ -1944,10 +1954,13 @@
         ],
         "operationId": "auditLog",
         "summary": "Read and export the audit log",
-        "description": "Admins only (session), AUDIT_ADMIN_VIEW with AUDIT_LOG_REDIS=true or AUDIT_LOG_FILE. Newest first. Every look is logged (`admin.audit_viewed`, `admin.audit_exported`); with AUDIT_LOG_FAIL=closed nothing is shown when that event cannot be written.",
+        "description": "Admins only (session), AUDIT_ADMIN_VIEW with AUDIT_LOG_REDIS=true or AUDIT_LOG_FILE. Newest first. Every look is logged (`admin.audit_viewed`, `admin.audit_exported`); with AUDIT_LOG_FAIL=closed nothing is shown when that event cannot be written. Also with a technical user's token with the scope `admin` (API_ADMIN_TOKENS).",
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "apiToken": []
           }
         ],
         "parameters": [
@@ -2159,10 +2172,13 @@
         ],
         "operationId": "auditVerify",
         "summary": "Check the hash chain of the audit log file",
-        "description": "Admins only, with AUDIT_LOG_FILE. The same check as `npm run audit:verify` (with the HMAC key when AUDIT_LOG_HMAC_KEY is set).",
+        "description": "Admins only, with AUDIT_LOG_FILE. The same check as `npm run audit:verify` (with the HMAC key when AUDIT_LOG_HMAC_KEY is set). Also with a technical user's token with the scope `admin` (API_ADMIN_TOKENS).",
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "apiToken": []
           }
         ],
         "responses": {
@@ -2205,6 +2221,1221 @@
             "$ref": "#/components/parameters/Traceparent"
           }
         ]
+      }
+    },
+    "/v1/admin/token-policies": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "tokenPolicies",
+        "summary": "Token permissions per user and group",
+        "description": "API_TOKEN_ADMIN_POLICY=true, admins only. With the server defaults and API_TOKEN_SCOPES_BY_GROUP. Also with a technical user's token with the scope `admin` (API_ADMIN_TOKENS).",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Policies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "defaults": {
+                      "type": "object"
+                    },
+                    "groups": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "groupSearch": {
+                      "type": "boolean"
+                    },
+                    "peopleSearch": {
+                      "type": "boolean"
+                    },
+                    "policies": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TokenPolicy"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "setTokenPolicy",
+        "summary": "Set or remove the token permissions of a user or group",
+        "description": "Order: user > group (several add up) > API_TOKEN_SCOPES_BY_GROUP > API_TOKEN_ALLOWED_SCOPES. Applies at the next call of every token (scopes taken away are refused at once); `revokeExceeding: true` revokes the tokens that have scopes their owner may no longer give. Logged as `admin.token_policy_changed` / `admin.token_policy_deleted` with old and new, revocations as `admin.token_revoked`. Also with a technical user's token with the scope `admin` (API_ADMIN_TOKENS).",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "subject"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "group"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "create",
+                        "read",
+                        "status"
+                      ]
+                    }
+                  },
+                  "max": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1000
+                  },
+                  "remove": {
+                    "type": "boolean"
+                  },
+                  "revokeExceeding": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "policy": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/TokenPolicy"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revoked": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_type`, `invalid_subject`, `invalid_scopes`, `invalid_max`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`audit_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/status": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "adminStatus",
+        "summary": "What the admin interface has, and warnings",
+        "description": "Audit log in Redis, Redis persistence (aof, rdb; rdb null when CONFIG is not allowed), switched-on parts; `warnings`: audit_not_in_redis, no_persistence, persistence_unknown. Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged with the caller.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`; with a token `invalid_token`, `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/secrets": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "adminSecrets",
+        "summary": "Secrets overview (metadata)",
+        "description": "Every secret as the audit log in Redis knows it (AUDIT_LOG_REDIS): creator, recipients, comment, expiry, state, openings. Newest first. Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged with the caller.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "creator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "part of the creator's address, name or token"
+          },
+          {
+            "name": "recipient",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "part of a recipient"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "partly_opened",
+                "opened",
+                "expired",
+                "burned"
+              ]
+            },
+            "description": "state"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "created from"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "created until"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            },
+            "description": "default 200"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secrets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "secrets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SecretOverview"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`; with a token `invalid_token`, `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_status`, `invalid_time`, `invalid_limit`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/service-accounts": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "listServiceAccounts",
+        "summary": "Technical users",
+        "description": "With the lifetimes to pick and whether the scope `admin` can be given. Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged with the caller.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "adminScope": {
+                      "type": "boolean"
+                    },
+                    "expiry": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "defaultExpiry": {
+                      "type": "string"
+                    },
+                    "services": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ServiceAccount"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`; with a token `invalid_token`, `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "createServiceAccount",
+        "summary": "Create a technical user",
+        "description": "API only, cannot sign in. Logged as `admin.service_created`. Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged with the caller.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "$ref": "#/components/schemas/ServiceAccount"
+                    },
+                    "revoked": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`; with a token `invalid_token`, `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_name`, `invalid_responsible`, `invalid_ips`, `invalid_max`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`exists`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceAccountInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/service-accounts/{name}": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "changeServiceAccount",
+        "summary": "Change a technical user",
+        "description": "`enabled: false` revokes all its tokens. Logged as `admin.service_changed` with old and new. Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged with the caller.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "The technical user's name",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{1,63}$"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "$ref": "#/components/schemas/ServiceAccount"
+                    },
+                    "revoked": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`; with a token `invalid_token`, `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceAccountInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/service-accounts/{name}/delete": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "deleteServiceAccount",
+        "summary": "Delete a technical user",
+        "description": "Revokes all its tokens. Logged as `admin.service_deleted`. Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged with the caller.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "The technical user's name",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{1,63}$"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "string"
+                    },
+                    "revoked": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`; with a token `invalid_token`, `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/service-accounts/{name}/tokens": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "listServiceAccountTokens",
+        "summary": "Tokens of a technical user",
+        "description": " Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged with the caller.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "The technical user's name",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{1,63}$"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string"
+                    },
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Token"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`; with a token `invalid_token`, `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "issueServiceAccountToken",
+        "summary": "Issue a token for a technical user",
+        "description": "Scopes `create`, `read`, `status` and (API_ADMIN_TOKENS, given by a signed-in admin or with API_ADMIN_TOKEN_CAN_ISSUE_ADMIN) `admin`. `ips` default to the technical user's networks; admin tokens need networks (API_ADMIN_TOKEN_REQUIRE_IP) and live at most API_ADMIN_TOKEN_MAX_EXPIRY. Logged as `admin.service_token_issued`. Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged with the caller.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "The technical user's name",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{1,63}$"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Token"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "token"
+                      ],
+                      "properties": {
+                        "token": {
+                          "type": "string",
+                          "description": "Shown once"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`; with a token `invalid_token`, `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_name`, `invalid_expiry`, `invalid_ips`, `ips_required`, `invalid_scopes`, `scope_not_allowed`, `too_many_tokens`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`disabled`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "create",
+                        "read",
+                        "status",
+                        "admin"
+                      ]
+                    }
+                  },
+                  "expires": {
+                    "type": "string"
+                  },
+                  "ips": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/service-accounts/{name}/tokens/{id}/rotate": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "rotateServiceAccountToken",
+        "summary": "Rotate a token of a technical user",
+        "description": "A new token with the same name, scopes and networks; the old one is revoked at once, or keeps working `graceSeconds` longer. Logged as `admin.service_token_rotated`. Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged with the caller.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "The technical user's name",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{1,63}$"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TokenId"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "New token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Token"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "token"
+                          ],
+                          "properties": {
+                            "token": {
+                              "type": "string",
+                              "description": "Shown once"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "replaced": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "until": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`; with a token `invalid_token`, `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_grace` and the errors of issuing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "graceSeconds": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 604800
+                  },
+                  "expires": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -3007,6 +4238,24 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "allowedNow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "(own list) the token's scopes the owner's policy still allows; the others are refused at once"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "service"
+            ]
+          },
+          "service": {
+            "type": "string",
+            "description": "the technical user (kind service)"
           }
         }
       },
@@ -3044,7 +4293,7 @@
                 "status"
               ]
             },
-            "description": "create: POST /v1/secrets and /v1/share; read: open secrets; status: receipts and burn. Default create, status."
+            "description": "create: create secrets (POST /v1/secrets, /v1/share); read: retrieve/open them (reveal, /v1/open, GET /v1/secrets/{id}); status: receipts and burn. \"Only create\" = [create], \"only retrieve\" = [read], \"both\" = [create, read]. Must be within the caller's allowedScopes; default: defaultScopes."
           }
         }
       },
@@ -3077,7 +4326,8 @@
             }
           },
           "maxPerUser": {
-            "type": "integer"
+            "type": "integer",
+            "description": "API_TOKEN_MAX_PER_USER: most active tokens per user; 0 = no limit"
           },
           "comment": {
             "type": "string",
@@ -3089,6 +4339,35 @@
           "yourIp": {
             "type": "string",
             "description": "The caller's address as the server sees it (TRUST_PROXY)"
+          },
+          "allowedScopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "create",
+                "read",
+                "status"
+              ]
+            },
+            "description": "What this user may give a token (API_TOKEN_ALLOWED_SCOPES, by group, admin policy)"
+          },
+          "defaultScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Preselected (API_TOKEN_DEFAULT_SCOPES within allowedScopes)"
+          },
+          "policy": {
+            "type": "string",
+            "enum": [
+              "user",
+              "group",
+              "env-group",
+              "default"
+            ],
+            "description": "Where this user's policy comes from"
           }
         }
       },
@@ -3233,6 +4512,254 @@
             }
           }
         }
+      },
+      "TokenPolicy": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "group"
+            ]
+          },
+          "subject": {
+            "type": "string",
+            "description": "The address, or the group as in the groups claim (Entra: object id)"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "create",
+                "read",
+                "status"
+              ]
+            }
+          },
+          "max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Most active tokens; null = API_TOKEN_MAX_PER_USER; 0 = no limit"
+          },
+          "by": {
+            "type": "string"
+          },
+          "at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ServiceAccount": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "responsible": {
+            "type": "string"
+          },
+          "ips": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "max": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "by": {
+            "type": "string"
+          },
+          "updated": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "activeTokens": {
+            "type": "integer"
+          }
+        }
+      },
+      "ServiceAccountInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{1,63}$",
+            "description": "create only; e.g. api_aap"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "responsible": {
+            "type": "string",
+            "format": "email"
+          },
+          "ips": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "default networks of its tokens"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "false revokes all its tokens"
+          },
+          "max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1000
+          }
+        }
+      },
+      "SecretOverview": {
+        "type": "object",
+        "description": "Metadata only, from the audit log; never content, ids or keys",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "receiptRef": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "creator": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "user": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "token": {
+                "type": "string"
+              }
+            }
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "responsible": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "comment": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "expires": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "maxViews": {
+            "type": "integer"
+          },
+          "passphrase": {
+            "type": "boolean"
+          },
+          "encrypted": {
+            "type": "string",
+            "enum": [
+              "browser",
+              "server",
+              ""
+            ]
+          },
+          "views": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "at": {
+                  "type": "string"
+                },
+                "by": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "token": {
+                  "type": "string"
+                },
+                "via": {
+                  "type": "string",
+                  "enum": [
+                    "browser",
+                    "api",
+                    "token"
+                  ]
+                }
+              }
+            }
+          },
+          "denied": {
+            "type": "integer"
+          },
+          "burned": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "partly_opened",
+              "opened",
+              "expired",
+              "burned"
+            ]
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -3252,7 +4779,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "vnly_<id>_<secret>",
-        "description": "Personal API token (API_TOKENS=true), made on the API tokens page (`/settings/tokens`). Acts as its owner, only from its IP networks, with its scopes (create, read, status), until it expires or is revoked. With API_TOKEN_REQUIRED=true the only way to call the API outside the server's own pages."
+        "description": "Personal API token (API_TOKENS=true), made on the API tokens page (`/settings/tokens`). Acts as its owner, only from its IP networks, with its scopes (create, read, status), until it expires or is revoked. With API_TOKEN_REQUIRED=true the only way to call the API outside the server's own pages. Technical users' tokens (made by admins) may also have the scope `admin` for the admin API (API_ADMIN_TOKENS)."
       }
     },
     "parameters": {

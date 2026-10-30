@@ -10,6 +10,8 @@
 8. [Troubleshooting](#8-troubleshooting)
 9. [Removal](#9-removal)
 10. [Sign-in](#10-sign-in)
+11. [Audit log shipping](#11-audit-log-shipping)
+12. [Redis with persistence (admin interface)](#12-redis-with-persistence-admin-interface)
 
 ## 1. Docker Compose (recommended)
 
@@ -404,3 +406,36 @@ secretConfig:
   jq -c -s 'sort_by(.vanishly.audit.instance, .vanishly.audit.seq)[]' export.jsonl > sorted.jsonl
   npm run audit:verify -- sorted.jsonl --key-file hmac.key
   ```
+
+## 12. Redis with persistence (admin interface)
+
+Vanishly's Redis keeps everything in memory by default: a restart loses the
+secrets, which is often wanted. The admin interface keeps more there: the
+audit log stream (`AUDIT_LOG_REDIS`), API tokens, technical users and token
+permissions. For them Redis needs persistence; `/admin` warns without it.
+The (encrypted) secrets are then on disk as well; their keys still never
+reach the server.
+
+**Compose:** a volume and the append-only file for the Redis service:
+
+```yaml
+# docker-compose.override.yml
+services:
+  redis:
+    command: ["redis-server", "--save", "", "--appendonly", "yes", "--appendfsync", "everysec",
+              "--maxmemory", "256mb", "--maxmemory-policy", "volatile-ttl"]
+    volumes:
+      - redis-data:/data
+volumes:
+  redis-data:
+```
+
+Keep `maxmemory-policy volatile-ttl`: tokens, technical users and the audit
+stream have no expiry and are never evicted; size `maxmemory` for the
+stream or bound it with `AUDIT_LOG_REDIS_MAXLEN`.
+
+**Helm:** `redis.persistence.enabled=true` (a PersistentVolumeClaim,
+`redis.persistence.size`, `storageClass`, or `existingClaim`), or an
+external Redis with persistence (`redis.enabled=false`,
+`redis.external.url`).
+

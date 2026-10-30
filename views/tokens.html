@@ -1,7 +1,9 @@
-<section class="card card-wide" id="tokens-card" data-allowed="{{ allowed }}" data-ips-required="{{ ipsRequired }}" data-origin="{{ origin }}">
+<section class="card card-wide" id="tokens-card" data-allowed="{{ allowed }}" data-ips-required="{{ ipsRequired }}" data-max="{{ maxPerUser }}" data-origin="{{ origin }}">
   <h1>{{ t:tokens.title }}</h1>
   <p class="lead">{{ t:tokens.intro }}</p>
   <p class="notice" id="tokens-not-allowed" hidden>{{ t:tokens.notAllowed }}</p>
+  <p class="hint" id="token-count" aria-live="polite"></p>
+  <p class="notice" id="token-limit" role="status" hidden></p>
   <form id="token-form" autocomplete="off" novalidate>
     <div class="field">
       <label for="token-name">{{ t:tokens.name }}</label>

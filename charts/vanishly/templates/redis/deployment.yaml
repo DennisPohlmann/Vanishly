@@ -58,12 +58,13 @@ spec:
         - name: redis
           image: {{ include "vanishly.redis.image" . }}
           imagePullPolicy: {{ $r.image.pullPolicy }}
-          # Secrets stay in memory only: no snapshots, no append-only file.
+          # Without persistence the secrets stay in memory only: no snapshots, no
+          # append-only file. With redis.persistence: an append-only file in /data.
           command:
             - sh
             - -c
             - |
-              exec redis-server --port {{ $r.service.port }} --save "" --appendonly no \
+              exec redis-server --port {{ $r.service.port }} --save "" {{ if $r.persistence.enabled }}--appendonly yes --appendfsync {{ $r.persistence.appendfsync }} --dir /data{{ else }}--appendonly no{{ end }} \
                 --maxmemory {{ $r.maxmemory }} --maxmemory-policy {{ $r.maxmemoryPolicy }} \
                 {{- if $r.auth.enabled }}
                 --requirepass "$REDIS_PASSWORD" \
@@ -124,11 +125,17 @@ spec:
         {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 8 }}
         {{- end }}
       volumes:
+        {{- if $r.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $r.persistence.existingClaim | default (printf "%s-data" (include "vanishly.redis.fullname" .)) }}
+        {{- else }}
         # Nothing is written here (no persistence); memory-backed anyway.
         - name: data
           emptyDir:
             medium: Memory
             sizeLimit: {{ $r.dataSizeLimit }}
+        {{- end }}
         {{- with $r.extraVolumes }}
         {{- include "vanishly.tplvalues" (dict "value" . "context" $) | nindent 8 }}
         {{- end }}

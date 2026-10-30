@@ -121,6 +121,22 @@ export class Store {
     }
   }
 
+  /**
+   * Whether Redis keeps its data over a restart: append-only file (aof)
+   * and/or snapshots (rdb; null when CONFIG is not allowed, e.g. managed Redis).
+   */
+  async persistence() {
+    const info = String(await this.redis.info('persistence'));
+    const aof = /aof_enabled:1/.test(info);
+    /** @type {boolean | null} */
+    let rdb = null;
+    try {
+      const c = await this.redis.configGet('save');
+      rdb = Boolean(String(c?.save || '').trim());
+    } catch {}
+    return { aof, rdb };
+  }
+
   async close() {
     await this.redis.quit();
   }

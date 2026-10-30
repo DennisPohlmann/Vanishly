@@ -284,7 +284,7 @@ provider: [docs/providers](https://github.com/DennisPohlmann/Vanishly/blob/main/
 | redis.auth.existingSecret | string | `""` | Existing Secret with the password (replaces password). |
 | redis.auth.existingSecretPasswordKey | string | `"redis-password"` | Key of the password in existingSecret. |
 | redis.auth.password | string | `""` | Password; empty: a random one is made once and kept across upgrades. Only URL-safe characters. |
-| redis.dataSizeLimit | string | `"64Mi"` | Size limit of the in-memory /data emptyDir. |
+| redis.dataSizeLimit | string | `"64Mi"` | Size limit of the in-memory /data emptyDir (without persistence). |
 | redis.deploymentAnnotations | object | `{}` | Annotations of the Deployment. |
 | redis.deploymentLabels | object | `{}` | Labels of the Deployment. |
 | redis.enabled | bool | `true` | Run the bundled Redis (a single non-root Deployment). false: use redis.external. |
@@ -306,6 +306,12 @@ provider: [docs/providers](https://github.com/DennisPohlmann/Vanishly/blob/main/
 | redis.maxmemory | string | `"200mb"` | Memory limit of Redis (maxmemory); keep it below resources.limits.memory. |
 | redis.maxmemoryPolicy | string | `"volatile-ttl"` | Eviction policy when maxmemory is reached. |
 | redis.nodeSelector | object | `{}` | Node selector. |
+| redis.persistence.accessModes | list | `["ReadWriteOnce"]` | Access modes of the claim. |
+| redis.persistence.appendfsync | string | `"everysec"` | appendfsync: always, everysec or no. |
+| redis.persistence.enabled | bool | `false` | Keep the data over restarts: append-only file on a PersistentVolumeClaim. Off: memory only. Needed for the admin interface (audit log in Redis, API tokens, technical users, token permissions). Note: the (encrypted) secrets are then written to disk too. |
+| redis.persistence.existingClaim | string | `""` | Use an existing claim instead of creating one. |
+| redis.persistence.size | string | `"1Gi"` | Size of the volume. |
+| redis.persistence.storageClass | string | `""` | Storage class ("" = the cluster default). |
 | redis.podAnnotations | object | `{}` | Annotations of the pod. |
 | redis.podLabels | object | `{}` | Labels of the pod. |
 | redis.podSecurityContext | object | `{"fsGroup":1000,"fsGroupChangePolicy":"OnRootMismatch","runAsGroup":1000,"runAsNonRoot":true,"runAsUser":999,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod security context. |

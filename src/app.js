@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
 import { Audit, normalize, parseTraceparent, sanitizeText, sizeBucket, verifyText } from './audit.js';
-import { Tokens, SCOPES } from './tokens.js';
+import { ADMIN_SCOPE, Tokens, SCOPES } from './tokens.js';
 import { decryptSecret, encryptSecret, PBKDF2_ITERATIONS, unlockKey, verifierFor } from '../public/js/vanishly-crypto.js';
 import { validId } from './store.js';
 import { Auth, RETURN } from './auth.js';
@@ -215,7 +215,9 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
           const r = await tokens.verify(bearer, req.ip || '');
           if (r.ok) {
             const t = r.record;
-            res.locals.user = { name: t.ownerName, user: t.owner, ids: t.ids, token: { id: t.id, name: t.name, scopes: t.scopes } };
+            // scopes: what the token may do under the owner's policy of today.
+            res.locals.user = { name: t.ownerName, user: t.owner, ids: t.ids, token: { id: t.id, name: t.name, scopes: r.scopes }, ...(t.svc ? { service: t.svc } : {}) };
+            res.locals.tokenGranted = t.scopes;
           } else {
             res.locals.user = null;
             res.locals.tokenDenied = r;
@@ -276,6 +278,17 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     [Boolean(tokens && (auth?.c.admin.users.length || auth?.c.admin.groups.length)), 'GET', '/v1/admin/tokens'],
     [Boolean(tokens && (auth?.c.admin.users.length || auth?.c.admin.groups.length)), 'POST', '/v1/admin/tokens/{id}/revoke'],
     [Boolean(auth?.c.admin.auditView), 'GET', '/v1/admin/audit'],
+    [Boolean(tokens?.c.adminPolicy), 'GET', '/v1/admin/token-policies'],
+    [Boolean(auth?.c.admin.ui && (auth.c.admin.users.length || auth.c.admin.groups.length)), 'GET', '/v1/admin/status'],
+    [Boolean(auth?.c.admin.ui && audit?.c.redis && (auth.c.admin.users.length || auth.c.admin.groups.length)), 'GET', '/v1/admin/secrets'],
+    [Boolean(tokens?.c.services), 'GET', '/v1/admin/service-accounts'],
+    [Boolean(tokens?.c.services), 'POST', '/v1/admin/service-accounts'],
+    [Boolean(tokens?.c.services), 'POST', '/v1/admin/service-accounts/{name}'],
+    [Boolean(tokens?.c.services), 'POST', '/v1/admin/service-accounts/{name}/delete'],
+    [Boolean(tokens?.c.services), 'GET', '/v1/admin/service-accounts/{name}/tokens'],
+    [Boolean(tokens?.c.services), 'POST', '/v1/admin/service-accounts/{name}/tokens'],
+    [Boolean(tokens?.c.services), 'POST', '/v1/admin/service-accounts/{name}/tokens/{id}/rotate'],
+    [Boolean(tokens?.c.adminPolicy), 'POST', '/v1/admin/token-policies'],
     [Boolean(auth?.c.admin.auditView && audit?.c.file), 'GET', '/v1/admin/audit/verify'],
   ];
   const endpointsOn = endpointTable.filter(([on]) => on).map(([, method, path]) => /** @type {[string, string]} */ ([method, path]));
@@ -302,6 +315,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   const actorOf = (req, res) => {
     const u = userOf(res);
     if (!u) return /** @type {import('./audit.js').Actor} */ ({ type: 'anonymous' });
+    if (u.token && u.service) return /** @type {import('./audit.js').Actor} */ ({ type: 'service_account', user: u.user, name: u.name, token: { id: u.token.id, name: u.token.name }, onBehalfOf: headerText(req, 'x-on-behalf-of', 200) });
     if (u.token) return /** @type {import('./audit.js').Actor} */ ({ type: 'api_token', user: u.user, name: u.name, token: { id: u.token.id, name: u.token.name }, onBehalfOf: headerText(req, 'x-on-behalf-of', 200) });
     if (u.app) return /** @type {import('./audit.js').Actor} */ ({ type: 'app', name: u.name, onBehalfOf: headerText(req, 'x-on-behalf-of', 200) });
     return /** @type {import('./audit.js').Actor} */ ({ type: 'user', user: u.user, name: u.name });
@@ -412,12 +426,18 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     });
   }
   /**
-   * A token needs the scope for this call (create, read, status).
-   * @param {import('express').Response} res @param {string} scope
+   * A token needs the scope for this call (create, read, status); a refusal
+   * is logged as "api.scope_denied" (the token lacks it, or the owner's
+   * policy took it away since).
+   * @param {import('express').Request} req @param {import('express').Response} res @param {string} scope
    */
-  const needScope = (res, scope) => {
+  const needScope = async (req, res, scope) => {
     const t = userOf(res)?.token;
-    if (t && !t.scopes.includes(scope)) throw new ApiError(403, 'insufficient_scope', `This token lacks the scope "${scope}"`, { scope });
+    if (!t || t.scopes.includes(scope)) return;
+    const granted = /** @type {string[]} */ (res.locals.tokenGranted || []);
+    const reason = granted.includes(scope) ? 'policy' : 'not_granted';
+    await ev(req, res, 'api.scope_denied', { outcome: 'denied', reason, details: { scope, token_scopes: granted, allowed_now: t.scopes } });
+    throw new ApiError(403, 'insufficient_scope', reason === 'policy' ? `The scope "${scope}" of this token is no longer allowed for its owner` : `This token lacks the scope "${scope}"`, { scope });
   };
 
   /** @param {'create' | 'read'} bucket */
@@ -631,7 +651,9 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     if (config.statusAccess !== 'signed-in' || (!r.creator && !r.responsible.length)) return { view: true, burn: true };
     const user = userOf(res);
     if (!user) throw new ApiError(401, 'login_required', 'Sign in to see the status of this secret');
-    const burn = user.ids.includes(r.creator) || Auth.allowed(user, r.responsible);
+    // The creator: by the hashes of the user, or (technical users have none) by their name.
+    const self = user.user && !user.app ? auth?.hash('u', user.user) : '';
+    const burn = user.ids.includes(r.creator) || Boolean(self && self === r.creator) || Auth.allowed(user, r.responsible);
     const view = burn || (Boolean(user.user) && r.openers.includes(auth?.hash('u', user.user)));
     if (action === 'burn' ? !burn : !view) {
       throw new ApiError(403, 'not_allowed', action === 'burn' ? 'Only the creator and the responsible people may burn this secret' : 'This status is only for the creator, the responsible people and who opened the secret');
@@ -759,7 +781,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   api.post('/v1/secrets', limit('create'), async (req, res) => {
     pagesOnly(config.features.createApi, req);
     mayCreate(res);
-    needScope(res, 'create');
+    await needScope(req, res, 'create');
     auditReady();
     const b = req.body || {};
     if (b.v !== undefined && b.v !== 1) throw new ApiError(400, 'invalid_version', 'Only format v1 is known');
@@ -815,7 +837,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   api.post('/v1/share', limit('create'), async (req, res) => {
     if (!config.features.shareApi) throw disabled();
     mayCreate(res);
-    needScope(res, 'create');
+    await needScope(req, res, 'create');
     auditReady();
     const b = req.body || {};
     if (typeof b.secret !== 'string' || b.secret.length === 0) {
@@ -866,7 +888,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   api.get('/v1/secrets/:id', limit('read'), async (req, res) => {
     switchedOff(config.features.secretMetaApi);
-    needScope(res, 'read');
+    await needScope(req, res, 'read');
     const id = String(req.params.id);
     // Restricted: the salt and the views only for a recipient.
     await mayOpenLogged(req, res, id);
@@ -882,7 +904,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     if (verifier !== undefined && verifier !== null && !check(verifier, /^[A-Za-z0-9_-]{43}$/)) {
       throw new ApiError(400, 'invalid_verifier', 'verifier must be 32 bytes, base64url');
     }
-    needScope(res, 'read');
+    await needScope(req, res, 'read');
     auditReady();
     await mayOpenLogged(req, res, id);
     const r = validId(id) ? await store.reveal(id, verifier || undefined, viewerName(res), openerOf(res)) : /** @type {const} */ ({ status: 'notfound' });
@@ -904,7 +926,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   // forgets both. Same trust as /v1/share; browsers decrypt themselves.
   api.post('/v1/open', limit('read'), async (req, res) => {
     if (!config.features.openApi) throw disabled();
-    needScope(res, 'read');
+    await needScope(req, res, 'read');
     auditReady();
     const b = req.body || {};
     const m = typeof b.link === 'string' ? /\/s\/([A-Za-z0-9_-]{22})#([A-Za-z0-9_-]{43})$/.exec(b.link.trim()) : null;
@@ -943,7 +965,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   api.get('/v1/receipts/:id', receiptsOn, limit('read'), async (req, res) => {
     pagesOnly(config.features.receiptApi, req);
-    needScope(res, 'status');
+    await needScope(req, res, 'status');
     const id = String(req.params.id);
     const r = validId(id) ? await store.receipt(id) : null;
     if (!r) throw new ApiError(404, 'not_found', 'Unknown or too old');
@@ -983,7 +1005,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   api.post('/v1/receipts/:id/burn', receiptsOn, limit('read'), async (req, res) => {
     pagesOnly(config.features.receiptApi, req);
     if (!config.features.burn) throw disabled();
-    needScope(res, 'status');
+    await needScope(req, res, 'status');
     const id = String(req.params.id);
     const rec = validId(id) ? await store.receipt(id) : null;
     if (!rec) throw new ApiError(404, 'not_found', 'Unknown or too old');
@@ -1011,21 +1033,45 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     if (u.token) throw new ApiError(403, 'session_required', 'API tokens are managed on the API tokens page, not with a token');
     return u;
   };
-  /** @param {import('express').Response} res */
-  const adminUser = (res) => {
-    const u = sessionUser(res);
-    if (!auth?.isAdmin(u)) throw new ApiError(403, 'not_admin', 'Only admins (ADMIN_USERS, ADMIN_GROUPS)');
-    return u;
+  /**
+   * Who may use the admin API: a signed-in admin (ADMIN_USERS, ADMIN_GROUPS),
+   * or a technical user's token with the scope "admin" (API_ADMIN_TOKENS),
+   * which must carry a comment (API_ADMIN_COMMENT=required). Refusals of
+   * tokens are logged as "api.scope_denied".
+   * @param {import('express').Request} req @param {import('express').Response} res
+   * @returns {Promise<{ user: string, name: string, token: boolean }>}
+   */
+  const adminActor = async (req, res) => {
+    if (!auth?.c.admin.ui) throw disabled();
+    const u = userOf(res);
+    if (u?.token) {
+      if (!u.service || !u.token.scopes.includes(ADMIN_SCOPE)) {
+        await ev(req, res, 'api.scope_denied', { outcome: 'denied', reason: u.service ? 'not_granted' : 'personal_token', details: { scope: ADMIN_SCOPE } });
+        throw new ApiError(403, 'insufficient_scope', 'The admin API takes only tokens of technical users with the scope "admin"', { scope: ADMIN_SCOPE });
+      }
+      if (tokens?.c.adminTokens.comment === 'required' && !commentOf(req, req.body)) {
+        throw new ApiError(400, 'comment_required', 'Admin API calls need a comment (X-Audit-Comment)');
+      }
+      return { user: u.user, name: u.name, token: true };
+    }
+    const s = sessionUser(res);
+    if (!auth.isAdmin(s)) throw new ApiError(403, 'not_admin', 'Only admins (ADMIN_USERS, ADMIN_GROUPS)');
+    return { user: s.user, name: s.name, token: false };
   };
   /** @param {import('express').Request} req */
-  const tokenOptions = (req) =>
+  /** @param {import('express').Request} req @param {import('./tokens.js').Policy} policy */
+  const tokenOptions = (req, policy) =>
     tokens && {
       expiry: tokens.c.expiryOptions,
       defaultExpiry: tokens.c.defaultExpiry,
       maxExpiry: tokens.c.maxExpiry,
       ipBinding: tokens.c.ipBinding,
       scopes: SCOPES,
-      maxPerUser: tokens.c.maxPerUser,
+      // This user's policy: the scopes a token may get, the preselected ones, the limit.
+      allowedScopes: policy.scopes,
+      defaultScopes: tokens.defaultScopes(policy),
+      policy: policy.source,
+      maxPerUser: policy.max,
       comment: tokens.c.comment,
       // The caller's own address as this server sees it (TRUST_PROXY), to bind a token to it.
       yourIp: String(req.ip || '').replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/, '$1'),
@@ -1036,7 +1082,15 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   api.get('/v1/tokens', limit('read'), async (req, res) => {
     if (!tokens) throw disabled();
     const u = sessionUser(res);
-    res.json({ mayCreate: tokens.mayCreate(u), options: tokenOptions(req), tokens: (await tokens.list(u.user)).map((t) => Tokens.view(t)) });
+    const [list, policy] = await Promise.all([tokens.list(u.user), tokens.policy(u.user, u.ids)]);
+    // active: the tokens that count against the limit (options.maxPerUser, 0 = no limit).
+    // allowedNow per token: its scopes within today's policy.
+    res.json({
+      mayCreate: tokens.mayCreate(u) && policy.scopes.length > 0,
+      options: tokenOptions(req, policy),
+      active: list.filter((t) => Tokens.active(t)).length,
+      tokens: list.map((t) => ({ ...Tokens.view(t), allowedNow: t.scopes.filter((sc) => policy.scopes.includes(sc)) })),
+    });
   });
 
   api.post('/v1/tokens', limit('create'), async (req, res) => {
@@ -1048,7 +1102,17 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       throw new ApiError(403, 'tokens_not_allowed', 'Your account may not create API tokens; ask an admin to enable it');
     }
     const r = await tokens.create(u, req.body || {});
-    if ('error' in r) throw new ApiError(400, r.error, r.message);
+    if ('error' in r) {
+      if (r.error === 'too_many_tokens') {
+        await ev(req, res, 'api.token_create_denied', { outcome: 'denied', reason: 'limit_reached', details: { active: r.active, max: r.max } });
+        throw new ApiError(400, r.error, r.message, { active: r.active, max: r.max });
+      }
+      if (r.error === 'scope_not_allowed') {
+        await ev(req, res, 'api.token_create_denied', { outcome: 'denied', reason: 'scope_not_allowed', details: { requested: req.body?.scopes, allowed: r.allowed } });
+        throw new ApiError(400, r.error, r.message, { allowed: r.allowed });
+      }
+      throw new ApiError(400, r.error, r.message);
+    }
     const t = r.record;
     try {
       await ev(req, res, 'api.token_created', { details: { token: tokenRef(t), expires: t.expires ? new Date(t.expires).toISOString() : 'never', networks: t.ips, scopes: t.scopes } }, true);
@@ -1069,17 +1133,215 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     res.json(Tokens.view(t));
   });
 
+  // API_TOKEN_ADMIN_POLICY: per user and per group, which scopes tokens may
+  // have and how many; set by admins on /admin.
+  api.get('/v1/admin/token-policies', limit('read'), async (req, res) => {
+    if (!tokens?.c.adminPolicy) throw disabled();
+    await adminActor(req, res);
+    res.json({
+      scopes: SCOPES,
+      defaults: { allowedScopes: tokens.c.allowedScopes, defaultScopes: tokens.c.defaultScopes, maxPerUser: tokens.c.maxPerUser, scopesByGroup: tokens.c.scopesByGroup },
+      // Groups to pick from (RECIPIENT_GROUPS list); otherwise typed, or searched (RECIPIENT_GROUPS=*).
+      groups: auth?.c.groups.list || [],
+      groupSearch: Boolean(auth?.c.groups.any),
+      peopleSearch: Boolean(auth?.c.userGroup),
+      policies: (await tokens.policies()).map(({ key, ...p }) => ({ ...p, at: p.at ? new Date(p.at).toISOString() : null })),
+    });
+  });
+
+  api.post('/v1/admin/token-policies', limit('create'), async (req, res) => {
+    if (!tokens?.c.adminPolicy || !auth) throw disabled();
+    const admin = await adminActor(req, res);
+    auditReady();
+    const b = req.body || {};
+    if (b.type !== 'user' && b.type !== 'group') throw new ApiError(400, 'invalid_type', 'type: user or group');
+    let subject = typeof b.subject === 'string' ? b.subject.trim() : '';
+    if (b.type === 'user') {
+      if (!Auth.validEmail(subject)) throw new ApiError(400, 'invalid_subject', 'subject: the e-mail address the user signs in with');
+      subject = subject.toLowerCase();
+    } else {
+      if (!subject || subject.length > 200 || /[\x00-\x1f]/.test(subject) || (auth.c.provider === 'entra' && !/^[0-9a-f-]{36}$/i.test(subject))) {
+        throw new ApiError(400, 'invalid_subject', auth.c.provider === 'entra' ? 'subject: the object id of the group' : 'subject: the group as in the groups claim');
+      }
+      subject = auth.group(subject);
+    }
+    const r = await tokens.setPolicy({ type: b.type, subject, scopes: b.scopes, max: b.max, remove: b.remove === true }, admin.user);
+    if ('error' in r) throw new ApiError(400, r.error, r.message);
+    /** @param {import('./tokens.js').StoredPolicy | null} p */
+    const brief = (p) => (p ? { scopes: p.scopes, max: p.max } : null);
+    await ev(req, res, b.remove === true ? 'admin.token_policy_deleted' : 'admin.token_policy_changed', { details: { subject_type: b.type, subject, old: brief(r.old), new: brief(r.new) }, comment: commentOf(req, b) }, true);
+    // Optional: revoke at once what the new policy no longer allows (otherwise
+    // such tokens just lose those scopes while the policy stands).
+    let revoked = [];
+    if (b.revokeExceeding === true) {
+      revoked = await tokens.revokeExceeding(admin.user);
+      for (const t of revoked) await ev(req, res, 'admin.token_revoked', { reason: 'policy', details: { token: tokenRef(t), owner: t.owner, scopes: t.scopes } });
+    }
+    res.json({ policy: r.new && { ...r.new, at: new Date(r.new.at).toISOString() }, revoked: revoked.map((t) => ({ ...tokenRef(t), owner: t.owner })) });
+  });
+
   // ------------------------------------------------------------ admin
+  /** What the admin pages need to know, and what is missing (warnings). */
+  const adminStatus = async () => {
+    const persistence = await store.persistence().catch(() => ({ aof: false, rdb: null }));
+    const auditRedis = Boolean(audit?.c.redis);
+    /** @type {string[]} */
+    const warnings = [];
+    if (!auditRedis) warnings.push('audit_not_in_redis');
+    if (!persistence.aof && persistence.rdb !== true) warnings.push(persistence.rdb === null ? 'persistence_unknown' : 'no_persistence');
+    return {
+      audit: Boolean(audit),
+      auditRedis,
+      auditFile: Boolean(audit?.c.file),
+      persistence,
+      tokens: Boolean(tokens),
+      services: Boolean(tokens?.c.services),
+      adminTokens: Boolean(tokens?.c.adminTokens.enabled),
+      policies: Boolean(tokens?.c.adminPolicy),
+      warnings,
+    };
+  };
+
+  api.get('/v1/admin/status', limit('read'), async (req, res) => {
+    await adminActor(req, res);
+    res.json(await adminStatus());
+  });
+
+  // The secrets as the audit log in Redis knows them: metadata only.
+  api.get('/v1/admin/secrets', limit('read'), async (req, res) => {
+    if (!audit?.c.redis) throw disabled();
+    await adminActor(req, res);
+    const f = auditFilter(req);
+    const status = typeof req.query.status === 'string' ? req.query.status : '';
+    if (status && !/^(open|partly_opened|opened|expired|burned)$/.test(status)) throw new ApiError(400, 'invalid_status', 'status: open, partly_opened, opened, expired or burned');
+    await ev(req, res, 'admin.secrets_viewed', { details: { filter: { creator: f.actor, recipient: f.recipient, status } } }, true);
+    const list = await audit.secrets({ creator: f.actor || (typeof req.query.creator === 'string' ? sanitizeText(req.query.creator, 200) : ''), recipient: f.recipient, status, from: f.from, to: f.to, limit: f.limit });
+    res.json({ count: list.length, secrets: list });
+  });
+
+  // ------------------------------------------------------------ technical users
+  /** @param {import('express').Request} req */
+  const svcOf = async (req) => {
+    const svc = tokens ? await tokens.service(String(req.params.name)) : null;
+    if (!svc) throw new ApiError(404, 'not_found', 'No such technical user');
+    return svc;
+  };
+  /** @param {import('./tokens.js').Service} s */
+  const svcView = (s) => ({ ...s, created: new Date(s.created).toISOString(), updated: s.updated ? new Date(s.updated).toISOString() : null });
+
+  api.get('/v1/admin/service-accounts', limit('read'), async (req, res) => {
+    if (!tokens?.c.services) throw disabled();
+    await adminActor(req, res);
+    const list = await tokens.services();
+    const all = await tokens.list('');
+    res.json({
+      adminScope: tokens.c.adminTokens.enabled,
+      expiry: tokens.c.expiryOptions,
+      defaultExpiry: tokens.c.defaultExpiry,
+      services: list.map((s) => ({ ...svcView(s), activeTokens: all.filter((t) => t.svc === s.name && Tokens.active(t)).length })),
+    });
+  });
+
+  /** @param {boolean} create */
+  const saveSvc = (create) => /** @type {import('express').RequestHandler} */ (async (req, res) => {
+    if (!tokens?.c.services) throw disabled();
+    const admin = await adminActor(req, res);
+    auditReady();
+    const b = { ...(req.body || {}), ...(create ? {} : { name: String(req.params.name) }) };
+    const r = await tokens.saveService(b, admin.user, create);
+    if ('error' in r) throw new ApiError(r.error === 'not_found' ? 404 : r.error === 'exists' ? 409 : 400, r.error, r.message);
+    await ev(req, res, create ? 'admin.service_created' : 'admin.service_changed', { details: { service: r.new.name, old: r.old && svcView(r.old), new: svcView(r.new) }, comment: commentOf(req, req.body) }, true);
+    // Disabled: its tokens are revoked.
+    let revoked = /** @type {import('./tokens.js').TokenRecord[]} */ ([]);
+    if (!r.new.enabled && (create || r.old?.enabled)) {
+      revoked = await tokens.revokeService(r.new.name, admin.user);
+      for (const t of revoked) await ev(req, res, 'admin.token_revoked', { reason: 'service_disabled', details: { token: tokenRef(t), owner: t.owner } });
+    }
+    res.status(create ? 201 : 200).json({ service: svcView(r.new), revoked: revoked.map(tokenRef) });
+  });
+  api.post('/v1/admin/service-accounts', limit('create'), saveSvc(true));
+  api.post('/v1/admin/service-accounts/:name', limit('create'), saveSvc(false));
+
+  api.post('/v1/admin/service-accounts/:name/delete', limit('create'), async (req, res) => {
+    if (!tokens?.c.services) throw disabled();
+    const admin = await adminActor(req, res);
+    auditReady();
+    const svc = await svcOf(req);
+    const revoked = await tokens.revokeService(svc.name, admin.user);
+    await tokens.deleteService(svc.name);
+    await ev(req, res, 'admin.service_deleted', { details: { service: svc.name, revoked: revoked.map(tokenRef) }, comment: commentOf(req, req.body) }, true);
+    res.json({ deleted: svc.name, revoked: revoked.map(tokenRef) });
+  });
+
+  api.get('/v1/admin/service-accounts/:name/tokens', limit('read'), async (req, res) => {
+    if (!tokens?.c.services) throw disabled();
+    await adminActor(req, res);
+    const svc = await svcOf(req);
+    res.json({ service: svc.name, tokens: (await tokens.serviceTokens(svc.name)).map((t) => Tokens.view(t)) });
+  });
+
+  /**
+   * Issues a token for a technical user ("admin" only from a person, or with
+   * API_ADMIN_TOKEN_CAN_ISSUE_ADMIN from an admin token).
+   * @param {import('express').Request} req @param {import('express').Response} res @param {import('./tokens.js').Service} svc
+   * @param {any} b @param {{ user: string, token: boolean }} admin
+   */
+  const issueSvc = async (req, res, svc, b, admin) => {
+    if (!svc.enabled) throw new ApiError(409, 'disabled', 'The technical user is disabled');
+    const wantsAdmin = Array.isArray(b.scopes) && b.scopes.includes(ADMIN_SCOPE);
+    if (wantsAdmin && admin.token && !tokens?.c.adminTokens.canIssueAdmin) {
+      await ev(req, res, 'api.scope_denied', { outcome: 'denied', reason: 'admin_issues_admin', details: { scope: ADMIN_SCOPE, service: svc.name } });
+      throw new ApiError(403, 'admin_scope_not_allowed', 'An admin token may not issue admin tokens (API_ADMIN_TOKEN_CAN_ISSUE_ADMIN)');
+    }
+    const r = await /** @type {Tokens} */ (tokens).issueService(svc, b, true);
+    if ('error' in r) throw new ApiError(400, r.error, r.message, r.allowed ? { allowed: r.allowed } : {});
+    return r;
+  };
+
+  api.post('/v1/admin/service-accounts/:name/tokens', limit('create'), async (req, res) => {
+    if (!tokens?.c.services) throw disabled();
+    const admin = await adminActor(req, res);
+    auditReady();
+    const svc = await svcOf(req);
+    const r = await issueSvc(req, res, svc, req.body || {}, admin);
+    const t = r.record;
+    try {
+      await ev(req, res, 'admin.service_token_issued', { details: { service: svc.name, token: tokenRef(t), scopes: t.scopes, networks: t.ips, expires: t.expires ? new Date(t.expires).toISOString() : 'never' }, comment: commentOf(req, req.body) }, true);
+    } catch (err) {
+      await tokens.revoke(t.id, '', 'audit failure');
+      throw err;
+    }
+    res.status(201).json({ token: r.token, ...Tokens.view(t) });
+  });
+
+  // Rotate: a new token with the same name, scopes and networks; the old one
+  // is revoked at once, or (graceSeconds, up to 7 days) expires a bit later.
+  api.post('/v1/admin/service-accounts/:name/tokens/:id/rotate', limit('create'), async (req, res) => {
+    if (!tokens?.c.services) throw disabled();
+    const admin = await adminActor(req, res);
+    auditReady();
+    const svc = await svcOf(req);
+    const old = await tokens.get(String(req.params.id));
+    if (!old || old.svc !== svc.name || !Tokens.active(old)) throw new ApiError(404, 'not_found', 'No such active token of this technical user');
+    const grace = req.body?.graceSeconds ?? 0;
+    if (!Number.isInteger(grace) || grace < 0 || grace > 7 * 86400) throw new ApiError(400, 'invalid_grace', 'graceSeconds: 0 to 604800');
+    const r = await issueSvc(req, res, svc, { name: old.name, scopes: old.scopes, ips: old.ips, expires: req.body?.expires }, admin);
+    if (grace) await tokens.shorten(old.id, Date.now() + grace * 1000);
+    else await tokens.revoke(old.id, '', admin.user);
+    await ev(req, res, 'admin.service_token_rotated', { details: { service: svc.name, old: tokenRef(old), new: tokenRef(r.record), grace_s: grace }, comment: commentOf(req, req.body) }, true);
+    res.status(201).json({ token: r.token, ...Tokens.view(r.record), replaced: { id: old.id, until: grace ? new Date(Date.now() + grace * 1000).toISOString() : 'now' } });
+  });
+
   api.get('/v1/admin/tokens', limit('read'), async (req, res) => {
     if (!tokens || !auth?.c.admin.users.length && !auth?.c.admin.groups.length) throw disabled();
-    adminUser(res);
+    await adminActor(req, res);
     await ev(req, res, 'admin.tokens_listed');
     res.json({ tokens: (await tokens.list('')).map((t) => Tokens.view(t)) });
   });
 
   api.post('/v1/admin/tokens/:id/revoke', limit('create'), async (req, res) => {
     if (!tokens || !auth?.c.admin.users.length && !auth?.c.admin.groups.length) throw disabled();
-    const u = adminUser(res);
+    const u = await adminActor(req, res);
     const t = await tokens.revoke(String(req.params.id), '', u.user);
     if (!t) throw new ApiError(404, 'not_found', 'No such token');
     await ev(req, res, 'admin.token_revoked', { details: { token: tokenRef(t), owner: t.owner }, comment: commentOf(req, req.body) });
@@ -1110,7 +1372,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   api.get('/v1/admin/audit', limit('read'), async (req, res) => {
     if (!auth?.c.admin.auditView || !audit) throw disabled();
-    adminUser(res);
+    await adminActor(req, res);
     auditReady();
     const f = auditFilter(req);
     const format = req.query.format === 'csv' ? 'csv' : req.query.format === 'jsonl' ? 'jsonl' : 'json';
@@ -1136,7 +1398,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   api.get('/v1/admin/audit/verify', limit('read'), async (req, res) => {
     if (!auth?.c.admin.auditView || !audit?.c.file) throw disabled();
-    adminUser(res);
+    await adminActor(req, res);
     const result = await audit.verifyFile();
     await ev(req, res, 'admin.audit_verified', { outcome: result?.ok ? 'success' : 'error', reason: result?.ok ? '' : 'chain_broken', details: { entries: result?.entries, errors: result?.errors.length } });
     res.json(result);
@@ -1209,7 +1471,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   /** @param {import('express').Response} res */
   const lang = (res) => /** @type {string} */ (res.locals.lang);
 
-  const COMMON = ['theme', 'created', 'error', 'reveal', 'receipt', 'gone', 'views', 'rule', 'home', 'a11y', 'auth', 'tokens', 'admin'];
+  const COMMON = ['theme', 'created', 'error', 'reveal', 'receipt', 'gone', 'views', 'rule', 'home', 'a11y', 'auth', 'tokens', 'admin', 'policy', 'secrets', 'svc'];
 
   /**
    * "Sign in" or the signed-in user with "Sign out" in the header.
@@ -1238,7 +1500,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       `<div class="nav-menu-panel">` +
       // API_TOKENS: the user's own tokens; admins: the audit log and all tokens.
       (tokens?.mayCreate(u) ? `<a class="nav-menu-item" href="/settings/tokens">${escapeHtml(t['nav.tokens'])}</a>` : '') +
-      (auth.isAdmin(u) && (auth.c.admin.auditView || tokens) ? `<a class="nav-menu-item" href="/admin">${escapeHtml(t[auth.c.admin.auditView ? 'nav.audit' : 'nav.admin'])}</a>` : '') +
+      (auth.c.admin.ui && auth.isAdmin(u) ? `<a class="nav-menu-item" href="/admin">${escapeHtml(t['nav.admin'])}</a>` : '') +
       `<form class="nav-logout" method="post" action="/auth/logout"><button type="submit" class="nav-menu-item">${escapeHtml(t['nav.signOut'])}</button></form>` +
       `<form class="nav-switch" method="post" action="/auth/logout" data-login><input type="hidden" name="return" value="${escapeHtml(back)}">` +
       `<button type="submit" class="nav-menu-item">${escapeHtml(t['reveal.switchAccount'])}</button></form>` +
@@ -1537,7 +1799,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   });
 
   // API_TOKENS: the user's own tokens ("API tokens" in the user menu).
-  app.get('/settings/tokens', (req, res, next) => {
+  app.get('/settings/tokens', async (req, res, next) => {
     if (!tokens) return next();
     const t = theme.strings[lang(res)];
     const u = userOf(res);
@@ -1546,14 +1808,26 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     const expirySelect = c.expiryOptions
       .map((o) => `<option value="${escapeHtml(o)}"${o === c.defaultExpiry ? ' selected' : ''}>${escapeHtml(o === 'never' ? t['tokens.never'] : (t[`tokens.unit.${o.slice(-1)}.${o.slice(0, -1) === '1' ? 1 : 'n'}`] || o).replace('{n}', o.slice(0, -1)))}</option>`)
       .join('');
-    const scopeBoxes = SCOPES.map(
-      (sc) => `<div class="check"><input type="checkbox" id="scope-${sc}" name="scopes" value="${sc}"${sc !== 'read' ? ' checked' : ''}><label for="scope-${sc}">${escapeHtml(t[`tokens.scope.${sc}`])}</label></div>`,
-    ).join('');
+    // What this user may give a token: "only create", "only read (pull)",
+    // "both" as far as the policy allows, and "status" as a box of its own.
+    const policy = await tokens.policy(u.user, u.ids);
+    const def = tokens.defaultScopes(policy);
+    const may = (/** @type {string} */ sc) => policy.scopes.includes(sc);
+    const access = /** @type {[string, boolean][]} */ ([
+      ['create', may('create')],
+      ['read', may('read')],
+      ['both', may('create') && may('read')],
+    ]).filter(([, on]) => on).map(([v]) => v);
+    const preset = def.includes('create') && def.includes('read') ? 'both' : def.includes('read') ? 'read' : access[0];
+    const scopeBoxes =
+      access.map((v) => `<div class="check"><input type="radio" id="access-${v}" name="access" value="${v}"${v === preset ? ' checked' : ''}><label for="access-${v}">${escapeHtml(t[`tokens.access.${v}`])}</label></div>`).join('') +
+      (may('status') ? `<div class="check"><input type="checkbox" id="scope-status" name="scopes" value="status"${def.includes('status') ? ' checked' : ''}><label for="scope-status">${escapeHtml(t['tokens.scope.status'])}</label></div>` : '');
     res.type('html').send(
       page('tokens', req, res, {
         page: 'tokens',
         title: t['tokens.title'],
-        allowed: tokens.mayCreate(u) ? '1' : '0',
+        allowed: tokens.mayCreate(u) && policy.scopes.length ? '1' : '0',
+        maxPerUser: String(policy.max),
         expirySelect,
         scopeBoxes,
         ipsLabel: t[c.ipBinding === 'required' ? 'tokens.ipsRequired' : 'tokens.ips'],
@@ -1567,7 +1841,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   // Admins: the audit log (filter, export, chain check) and all API tokens.
   app.get('/admin', async (req, res, next) => {
-    if (!auth || (!auth.c.admin.auditView && !tokens)) return next();
+    if (!auth?.c.admin.ui || (!auth.c.admin.users.length && !auth.c.admin.groups.length)) return next();
     const t = theme.strings[lang(res)];
     const u = userOf(res);
     if (!u) return void res.type('html').send(page('login', req, res, { page: 'login', title: t['admin.title'], heading: t['admin.title'], text: t['admin.loginText'], returnTo: '/admin' }));
@@ -1575,13 +1849,32 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       await ev(req, res, 'admin.denied', { outcome: 'denied', reason: 'not_admin' });
       return errorPage(req, res, 403, t['admin.notAllowed']);
     }
+    // The tabs that are switched on; ?tab= picks one.
+    const st = await adminStatus();
+    const tabs = /** @type {[string, boolean][]} */ ([
+      ['audit', auth.c.admin.auditView],
+      ['secrets', st.auditRedis],
+      ['tokens', st.tokens],
+      ['services', st.services],
+      ['policies', st.policies],
+    ]).filter(([, on]) => on).map(([k]) => k);
+    const tab = tabs.includes(String(req.query.tab)) ? String(req.query.tab) : tabs[0] || '';
+    const adminTabs = tabs.map((k) => `<a href="/admin?tab=${k}"${k === tab ? ' aria-current="page"' : ''}>${escapeHtml(t[`admin.tab.${k}`])}</a>`).join('');
+    // Redis must keep the audit stream and the tokens: say when it does not.
+    const adminWarnings = st.warnings.map((w) => `<p class="notice notice-error">${escapeHtml(t[`admin.warn.${w}`])}</p>`).join('');
     res.type('html').send(
       page('admin', req, res, {
         page: 'admin',
-        title: t['admin.title'],
+        title: t['admin.heading'],
+        tab,
+        adminTabs,
+        adminWarnings,
+        services: st.services ? '1' : '0',
+        adminScope: st.adminTokens ? '1' : '0',
         audit: auth.c.admin.auditView ? '1' : '0',
         verify: auth.c.admin.auditView && audit?.c.file ? '1' : '0',
         tokens: tokens ? '1' : '0',
+        policies: tokens?.c.adminPolicy ? '1' : '0',
       }),
     );
   });

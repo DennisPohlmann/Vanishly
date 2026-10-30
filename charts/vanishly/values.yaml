@@ -320,18 +320,40 @@ config:
   API_TOKEN_DEFAULT_EXPIRY: ""
   # Longest lifetime allowed, e.g. 1y (never = no cap).
   API_TOKEN_MAX_EXPIRY: ""
-  # Active tokens per user, 1-100 (10).
+  # Active (not revoked, not expired) tokens per user, 0-1000, 0 = no limit (10).
   API_TOKEN_MAX_PER_USER: ""
   # Calls per token per RATE_LIMIT_WINDOW, 0 = off (0).
   API_TOKEN_RATE_LIMIT: ""
   # Comment required on every POST with a token: optional or required (optional).
   API_TOKEN_COMMENT: ""
-  # Admins (addresses): audit log page and all API tokens (none).
+  # What tokens may do: create, read, status, or none (create,read,status).
+  API_TOKEN_ALLOWED_SCOPES: ""
+  # Preselected scopes, within the allowed ones (create,status).
+  API_TOKEN_DEFAULT_SCOPES: ""
+  # Other scopes per group: <group>=<scopes>;... e.g. /support=read (none).
+  API_TOKEN_SCOPES_BY_GROUP: ""
+  # Admins set scopes and token limits per user and group on /admin (false).
+  API_TOKEN_ADMIN_POLICY: ""
+  # Admins (addresses): the whole admin interface /admin and the admin API (none).
   ADMIN_USERS: ""
-  # Admin groups, as in the groups claim (none).
+  # Admin groups, as in the groups claim (Keycloak: /vanishly-admins; Entra: object id) (none).
   ADMIN_GROUPS: ""
-  # The audit log page for admins (true).
+  # The admin interface /admin and the admin API at all (true).
+  ADMIN_UI: ""
+  # The audit log tab for admins (true).
   AUDIT_ADMIN_VIEW: ""
+  # Technical users (API only, made by admins) (true).
+  API_SERVICE_ACCOUNTS: ""
+  # The "admin" scope for technical users' tokens: the admin API by token (false).
+  API_ADMIN_TOKENS: ""
+  # Admin tokens must be bound to IP networks (true).
+  API_ADMIN_TOKEN_REQUIRE_IP: ""
+  # Longest lifetime of an admin token (90d).
+  API_ADMIN_TOKEN_MAX_EXPIRY: ""
+  # An admin token may issue further admin tokens (false).
+  API_ADMIN_TOKEN_CAN_ISSUE_ADMIN: ""
+  # Comment (X-Audit-Comment) on every admin API call with a token: required or optional (required).
+  API_ADMIN_COMMENT: ""
 
 # -- Set BASE_URL to https://<first host> of ingress or httpRoute when config.BASE_URL is empty.
 baseUrlFromIngress: true
@@ -696,8 +718,23 @@ redis:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
-  # -- Size limit of the in-memory /data emptyDir.
+  # -- Size limit of the in-memory /data emptyDir (without persistence).
   dataSizeLimit: 64Mi
+  persistence:
+    # -- Keep the data over restarts: append-only file on a PersistentVolumeClaim. Off: memory only.
+    # Needed for the admin interface (audit log in Redis, API tokens, technical users, token permissions).
+    # Note: the (encrypted) secrets are then written to disk too.
+    enabled: false
+    # -- Size of the volume.
+    size: 1Gi
+    # -- Storage class ("" = the cluster default).
+    storageClass: ""
+    # -- Access modes of the claim.
+    accessModes: [ReadWriteOnce]
+    # -- Use an existing claim instead of creating one.
+    existingClaim: ""
+    # -- appendfsync: always, everysec or no.
+    appendfsync: everysec
   # -- Node selector.
   nodeSelector: {}
   # -- Tolerations.
@@ -750,7 +787,7 @@ redis:
 # replaced as a whole), for anything the values above do not cover. Keys:
 # deployment, service, serviceAccount, configMap, secret, redisUrlSecret,
 # templatesConfigMap, ingress, httpRoute, hpa, pdb, networkPolicy,
-# redisDeployment, redisService, redisSecret, redisNetworkPolicy. Example:
+# redisDeployment, redisService, redisSecret, redisNetworkPolicy, redisPvc. Example:
 #   overrides:
 #     deployment:
 #       spec:

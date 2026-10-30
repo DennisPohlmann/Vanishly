@@ -1,7 +1,13 @@
-<section class="card card-wide" id="admin-card" data-audit="{{ audit }}" data-verify="{{ verify }}" data-tokens="{{ tokens }}">
-  <h1>{{ t:admin.title }}</h1>
+<section class="card card-wide admin-head" id="admin-card" data-tab="{{ tab }}" data-audit="{{ audit }}" data-verify="{{ verify }}" data-tokens="{{ tokens }}" data-policies="{{ policies }}" data-services="{{ services }}" data-admin-scope="{{ adminScope }}">
+  <h1>{{ t:admin.heading }}</h1>
+  <nav class="tabs" aria-label="{{ t:admin.tabs }}">{{{ adminTabs }}}</nav>
+  {{{ adminWarnings }}}
+</section>
+
+<section class="card card-wide" id="tab-audit" hidden>
+  <h2>{{ t:admin.title }}</h2>
   <p class="lead">{{ t:admin.intro }}</p>
-  <div id="audit-box" hidden>
+  <div id="audit-box">
     <form id="audit-filter" class="filter-grid" autocomplete="off">
       <div class="field"><label for="f-type">{{ t:admin.f.type }}</label>
         <select id="f-type" name="type">
@@ -48,14 +54,139 @@
   </div>
 </section>
 
-<section class="card card-wide" id="admin-tokens-card" hidden>
+<section class="card card-wide" id="tab-tokens" hidden>
   <h2>{{ t:admin.tokens }}</h2>
+  <p class="lead">{{ t:admin.tokensIntro }}</p>
   <p class="notice notice-error" id="admin-tokens-error" role="alert" hidden></p>
   <div class="table-wrap">
     <table class="data">
-      <thead><tr><th scope="col">{{ t:admin.col.owner }}</th><th scope="col">{{ t:tokens.col.name }}</th><th scope="col">{{ t:tokens.col.token }}</th><th scope="col">{{ t:tokens.col.expires }}</th><th scope="col">{{ t:tokens.col.lastUsed }}</th><th scope="col">{{ t:tokens.col.networks }}</th><th scope="col">{{ t:tokens.col.state }}</th><th scope="col"><span class="sr-only">{{ t:tokens.revoke }}</span></th></tr></thead>
+      <thead><tr><th scope="col">{{ t:admin.col.owner }}</th><th scope="col">{{ t:tokens.col.name }}</th><th scope="col">{{ t:tokens.col.token }}</th><th scope="col">{{ t:tokens.col.expires }}</th><th scope="col">{{ t:tokens.col.lastUsed }}</th><th scope="col">{{ t:tokens.col.networks }}</th><th scope="col">{{ t:tokens.col.scopes }}</th><th scope="col">{{ t:tokens.col.state }}</th><th scope="col"><span class="sr-only">{{ t:tokens.revoke }}</span></th></tr></thead>
       <tbody id="admin-token-rows"></tbody>
     </table>
   </div>
   <p class="hint" id="admin-tokens-none" hidden>{{ t:tokens.none }}</p>
+</section>
+
+<section class="card card-wide" id="tab-policies" hidden>
+  <h2>{{ t:policy.title }}</h2>
+  <p class="lead">{{ t:policy.intro }}</p>
+  <p class="hint" id="policy-defaults"></p>
+  <form id="policy-form" autocomplete="off" novalidate>
+    <div class="row">
+      <div class="field">
+        <label for="policy-type">{{ t:policy.type }}</label>
+        <select id="policy-type"><option value="user">{{ t:policy.type.user }}</option><option value="group">{{ t:policy.type.group }}</option></select>
+      </div>
+      <div class="field">
+        <label for="policy-subject" id="policy-subject-label">{{ t:policy.subject }}</label>
+        <input type="text" id="policy-subject" maxlength="254" list="policy-suggest" spellcheck="false" aria-describedby="policy-subject-hint">
+        <datalist id="policy-suggest"></datalist>
+        <div class="hint" id="policy-subject-hint">{{ t:policy.subjectHint }}</div>
+      </div>
+    </div>
+    <div class="row">
+      <fieldset class="field scopes">
+        <legend>{{ t:policy.scopes }}</legend>
+        <div class="check"><input type="checkbox" id="pol-create" name="pol-scope" value="create"><label for="pol-create">{{ t:tokens.scope.create }}</label></div>
+        <div class="check"><input type="checkbox" id="pol-read" name="pol-scope" value="read"><label for="pol-read">{{ t:tokens.scope.read }}</label></div>
+        <div class="check"><input type="checkbox" id="pol-status" name="pol-scope" value="status"><label for="pol-status">{{ t:tokens.scope.status }}</label></div>
+      </fieldset>
+      <div class="field">
+        <label for="policy-max">{{ t:policy.max }}</label>
+        <input type="text" inputmode="numeric" id="policy-max" maxlength="4" aria-describedby="policy-max-hint">
+        <div class="hint" id="policy-max-hint">{{ t:policy.maxHint }}</div>
+        <div class="check"><input type="checkbox" id="policy-revoke"><label for="policy-revoke">{{ t:policy.revoke }}</label></div>
+      </div>
+    </div>
+    <p class="notice notice-error" id="policy-error" role="alert" hidden></p>
+    <p class="notice notice-ok" id="policy-ok" role="status" hidden></p>
+    <button type="submit" class="btn btn-primary" id="policy-save">{{ t:policy.save }}</button>
+  </form>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th scope="col">{{ t:policy.col.for }}</th><th scope="col">{{ t:policy.col.scopes }}</th><th scope="col">{{ t:policy.col.max }}</th><th scope="col">{{ t:policy.col.changed }}</th><th scope="col"><span class="sr-only">{{ t:policy.col.actions }}</span></th></tr></thead>
+      <tbody id="policy-rows"></tbody>
+    </table>
+  </div>
+  <p class="hint" id="policy-none" hidden>{{ t:policy.none }}</p>
+</section>
+
+<section class="card card-wide" id="tab-secrets" hidden>
+  <h2>{{ t:secrets.title }}</h2>
+  <p class="lead">{{ t:secrets.intro }}</p>
+  <form id="secrets-filter" class="filter-grid" autocomplete="off">
+    <div class="field"><label for="s-creator">{{ t:secrets.f.creator }}</label><input type="text" id="s-creator" name="creator" maxlength="200"></div>
+    <div class="field"><label for="s-recipient">{{ t:secrets.f.recipient }}</label><input type="text" id="s-recipient" name="recipient" maxlength="200"></div>
+    <div class="field"><label for="s-status">{{ t:secrets.f.status }}</label>
+      <select id="s-status" name="status"><option value="">{{ t:admin.any }}</option><option value="open">{{ t:secrets.status.open }}</option><option value="partly_opened">{{ t:secrets.status.partly_opened }}</option><option value="opened">{{ t:secrets.status.opened }}</option><option value="expired">{{ t:secrets.status.expired }}</option><option value="burned">{{ t:secrets.status.burned }}</option></select></div>
+    <div class="field"><label for="s-from">{{ t:admin.f.from }}</label><input type="datetime-local" id="s-from" name="from"></div>
+    <div class="filter-actions"><button type="submit" class="btn btn-primary">{{ t:admin.apply }}</button></div>
+  </form>
+  <p class="notice notice-error" id="secrets-error" role="alert" hidden></p>
+  <p class="hint" id="secrets-count" role="status"></p>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th scope="col">{{ t:secrets.col.created }}</th><th scope="col">{{ t:secrets.col.creator }}</th><th scope="col">{{ t:secrets.col.for }}</th><th scope="col">{{ t:secrets.col.comment }}</th><th scope="col">{{ t:secrets.col.expires }}</th><th scope="col">{{ t:secrets.col.status }}</th><th scope="col">{{ t:secrets.col.opened }}</th><th scope="col">{{ t:secrets.col.ref }}</th></tr></thead>
+      <tbody id="secrets-rows"></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card card-wide" id="tab-services" hidden>
+  <h2>{{ t:svc.title }}</h2>
+  <p class="lead">{{ t:svc.intro }}</p>
+  <p class="notice notice-error" id="svc-error" role="alert" hidden></p>
+  <p class="notice notice-ok" id="svc-ok" role="status" hidden></p>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th scope="col">{{ t:svc.col.name }}</th><th scope="col">{{ t:svc.col.description }}</th><th scope="col">{{ t:svc.col.responsible }}</th><th scope="col">{{ t:tokens.col.networks }}</th><th scope="col">{{ t:svc.col.tokens }}</th><th scope="col">{{ t:tokens.col.state }}</th><th scope="col"><span class="sr-only">{{ t:policy.col.actions }}</span></th></tr></thead>
+      <tbody id="svc-rows"></tbody>
+    </table>
+  </div>
+  <p class="hint" id="svc-none" hidden>{{ t:svc.none }}</p>
+  <form id="svc-form" autocomplete="off" novalidate>
+    <h3 id="svc-form-title">{{ t:svc.new }}</h3>
+    <div class="row">
+      <div class="field"><label for="svc-name">{{ t:svc.name }}</label><input type="text" id="svc-name" maxlength="64" spellcheck="false" aria-describedby="svc-name-hint"><div class="hint" id="svc-name-hint">{{ t:svc.nameHint }}</div></div>
+      <div class="field"><label for="svc-responsible">{{ t:svc.responsible }}</label><input type="email" id="svc-responsible" maxlength="254" spellcheck="false"></div>
+    </div>
+    <div class="field"><label for="svc-description">{{ t:svc.description }}</label><input type="text" id="svc-description" maxlength="200"></div>
+    <div class="row">
+      <div class="field"><label for="svc-ips">{{ t:svc.ips }}</label><textarea id="svc-ips" rows="2" spellcheck="false" aria-describedby="svc-ips-hint"></textarea><div class="hint" id="svc-ips-hint">{{ t:svc.ipsHint }}</div></div>
+      <div class="field"><label for="svc-max">{{ t:policy.max }}</label><input type="text" inputmode="numeric" id="svc-max" maxlength="4" aria-describedby="policy-max-hint2"><div class="hint" id="policy-max-hint2">{{ t:policy.maxHint }}</div>
+        <div class="check"><input type="checkbox" id="svc-enabled" checked><label for="svc-enabled">{{ t:svc.enabled }}</label></div></div>
+    </div>
+    <div class="filter-actions"><button type="submit" class="btn btn-primary" id="svc-save">{{ t:svc.save }}</button><button type="button" class="btn btn-ghost" id="svc-cancel" hidden>{{ t:svc.cancel }}</button></div>
+  </form>
+  <div id="svc-detail" hidden>
+    <h3 id="svc-detail-title"></h3>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th scope="col">{{ t:tokens.col.name }}</th><th scope="col">{{ t:tokens.col.token }}</th><th scope="col">{{ t:tokens.col.expires }}</th><th scope="col">{{ t:tokens.col.lastUsed }}</th><th scope="col">{{ t:tokens.col.networks }}</th><th scope="col">{{ t:tokens.col.scopes }}</th><th scope="col">{{ t:tokens.col.state }}</th><th scope="col"><span class="sr-only">{{ t:policy.col.actions }}</span></th></tr></thead>
+        <tbody id="svc-token-rows"></tbody>
+      </table>
+    </div>
+    <form id="svc-token-form" autocomplete="off" novalidate>
+      <h3>{{ t:svc.issue }}</h3>
+      <div class="row">
+        <div class="field"><label for="svc-token-name">{{ t:tokens.name }}</label><input type="text" id="svc-token-name" maxlength="64"></div>
+        <div class="field"><label for="svc-token-expires">{{ t:tokens.expires }}</label><select id="svc-token-expires"></select></div>
+      </div>
+      <fieldset class="field scopes">
+        <legend>{{ t:tokens.scopes }}</legend>
+        <div class="check"><input type="radio" id="svc-access-create" name="svc-access" value="create" checked><label for="svc-access-create">{{ t:tokens.access.create }}</label></div>
+        <div class="check"><input type="radio" id="svc-access-read" name="svc-access" value="read"><label for="svc-access-read">{{ t:tokens.access.read }}</label></div>
+        <div class="check"><input type="radio" id="svc-access-both" name="svc-access" value="both"><label for="svc-access-both">{{ t:tokens.access.both }}</label></div>
+        <div class="check"><input type="checkbox" id="svc-scope-status" value="status"><label for="svc-scope-status">{{ t:tokens.scope.status }}</label></div>
+        <div class="check" id="svc-scope-admin-wrap" hidden><input type="checkbox" id="svc-scope-admin" value="admin"><label for="svc-scope-admin">{{ t:svc.scopeAdmin }}</label></div>
+      </fieldset>
+      <div class="field"><label for="svc-token-ips">{{ t:tokens.ips }}</label><textarea id="svc-token-ips" rows="2" spellcheck="false" aria-describedby="svc-token-ips-hint"></textarea><div class="hint" id="svc-token-ips-hint">{{ t:svc.tokenIpsHint }}</div></div>
+      <button type="submit" class="btn btn-primary" id="svc-token-submit">{{ t:svc.issueButton }}</button>
+    </form>
+    <div id="svc-token-new" hidden>
+      <p class="notice notice-ok" role="status">{{ t:tokens.created }}</p>
+      <label for="svc-token-value">{{ t:tokens.yourToken }}</label>
+      <div class="copy-row"><input type="text" id="svc-token-value" readonly spellcheck="false"><button type="button" class="btn btn-primary" data-copy="svc-token-value">{{ t:created.copy }}</button></div>
+    </div>
+  </div>
 </section>

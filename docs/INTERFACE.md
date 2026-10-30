@@ -124,7 +124,11 @@ All keys start with `REDIS_PREFIX` (default `vanishly:`).
 | `oidc:<state>` | hash | a sign-in in progress: PKCE verifier, nonce, return path | 10 minutes, used once |
 | `rl:<bucket>:<hash>` | string | request counter; the IP is stored only as a truncated SHA-256 | `RATE_LIMIT_WINDOW` |
 | `rl:tok:<hash>` | string | calls of one API token (`API_TOKEN_RATE_LIMIT`) | `RATE_LIMIT_WINDOW` |
-| `tok:<id>` | hash | an API token: `h` (HMAC-SHA256 of the token with a key derived from `AUTH_SECRET`, never the token), `own`/`nm` (owner address and name), `ids` (the owner's recipient hashes, renewed at each sign-in), `name`, `created`, `expires`, `ips`, `scopes`, `used`, `revoked`, `by` | until 30 days after expiry or revocation; without expiry kept |
+| `tok:<id>` | hash | an API token: `h` (HMAC-SHA256 of the token with a key derived from `AUTH_SECRET`, never the token), `own`/`nm` (owner address and name; `svc:<name>` for a technical user), `svc` (the technical user), `ids` (the owner's recipient hashes, renewed at each sign-in), `name`, `created`, `expires`, `ips`, `scopes`, `used`, `revoked`, `by` | until 30 days after expiry or revocation; without expiry kept |
+| `tokpol:<hash>` | hash | token permissions of a user or group (`API_TOKEN_ADMIN_POLICY`): `type`, `subject` (address or group), `scopes`, `max`, `by`, `at`; the hash is the recipient hash of the address or group | kept |
+| `tokpol:all` | set | the hashes of all token permissions | kept |
+| `svc:<name>` | hash | a technical user: `name`, `desc`, `resp` (responsible address), `ips` (default networks), `on`, `max`, `created`, `by`, `updated` | kept |
+| `svc:all` | set | the names of all technical users | kept |
 | `tok:u:<hash>`, `tok:all` | set | token ids of a user (HMAC of the address) and of all users | as long as the tokens |
 | `audit` | stream | `AUDIT_LOG_REDIS`: field `e`, the audit event as written | kept (`AUDIT_LOG_REDIS_MAXLEN` trims) |
 | `audit:head:<instance>` | string | `{"seq":n,"hash":"..."}`: the chain head of an instance, to continue after a restart | kept |
@@ -152,11 +156,14 @@ UTC with milliseconds.
 | `secret.burned` | `reason`: `manual` (status page) or `passphrase_attempts` | success |
 | `secret.burn_denied`, `receipt.viewed`, `receipt.denied` | the status page | success / denied |
 | `auth.login`, `auth.logout`, `auth.failed` | sign-in | success / denied |
-| `api.token_created`, `api.token_revoked`, `api.token_create_denied` | the API token page (`details.token` id and name, `expires`, `networks`, `scopes`) | success / denied |
+| `api.token_created`, `api.token_revoked`, `api.token_create_denied` | the API token page (`details.token` id and name, `expires`, `networks`, `scopes`); denied with `reason` `not_enabled` (API_TOKEN_USERS/GROUPS) or `limit_reached` (`details.active`, `details.max`) | success / denied |
 | `api.token_used` | every call with a token, with `http.response.status_code` and the error `reason` | success / denied / error |
 | `api.token_denied`, `api.token_expired`, `api.ip_denied` | refused token (`reason`: unknown, revoked, malformed; expired; other address, with the allowed networks) | denied |
+| `api.scope_denied` | a token call outside its scopes; `reason` `not_granted` (the token lacks it) or `policy` (the owner's policy took it away), `details.scope` | denied |
+| `admin.token_policy_changed`, `admin.token_policy_deleted` | token permissions of a user or group (`details.subject_type`, `subject`, `old`, `new`) | success |
 | `api.denied`, `api.request_denied` | `API_TOKEN_REQUIRED` without a token; any other 401/403/429 of the API | denied |
-| `admin.audit_viewed`, `admin.audit_exported`, `admin.audit_verified`, `admin.tokens_listed`, `admin.token_revoked`, `admin.denied` | the admin page | success / denied |
+| `admin.audit_viewed`, `admin.audit_exported`, `admin.audit_verified`, `admin.secrets_viewed`, `admin.tokens_listed`, `admin.token_revoked`, `admin.denied` | the admin interface and API | success / denied |
+| `admin.service_created`, `admin.service_changed` (old, new), `admin.service_deleted`, `admin.service_token_issued`, `admin.service_token_rotated` | technical users | success |
 
 Not logged: a secret that expires unopened (Redis drops it; its receipt
 shows `expired`).
@@ -212,10 +219,11 @@ copy elsewhere (stdout shipping, syslog, OTLP, Redis, a checkpoint) and
 
 | Endpoint | Who | What |
 |---|---|---|
-| `GET /api/v1/tokens` | session | own tokens, the choices (lifetimes, scopes, IP binding), `yourIp` |
+| `GET /api/v1/tokens` | session | own tokens, `active` (how many count against the limit), the choices (lifetimes, scopes, IP binding, `maxPerUser`), `yourIp` |
 | `POST /api/v1/tokens` | session | `{name, expires, ips, scopes}` → `201 {token, ...}` (token shown once) |
 | `POST /api/v1/tokens/{id}/revoke` | session | revoke an own token |
 | `GET /api/v1/admin/tokens`, `POST /api/v1/admin/tokens/{id}/revoke` | admin session | all tokens |
+| `GET/POST /api/v1/admin/token-policies` | admin session | token permissions per user and group (`API_TOKEN_ADMIN_POLICY`) |
 | `GET /api/v1/admin/audit?type=&outcome=&actor=&recipient=&runId=&q=&from=&to=&limit=&format=json\|csv\|jsonl` | admin session | the audit log, newest first; CSV cells that start with `= + - @` are prefixed with `'` |
 | `GET /api/v1/admin/audit/verify` | admin session | the chain check of `AUDIT_LOG_FILE` |
 
@@ -223,3 +231,32 @@ A token never manages tokens. Calls with a token:
 `Authorization: Bearer vnly_<id>_<secret>`; optional headers `X-Run-Id`
 (or `X-Request-Id`), `X-Audit-Comment` (UTF-8 percent-encoded or ASCII),
 `X-On-Behalf-Of`, `traceparent`.
+
+## Admin API
+
+Every admin function is also an API (`/api/v1/admin/...`, in
+[openapi.json](../openapi/openapi.json), tag `admin`). Callers: a signed-in
+admin (session), or a technical user's token with the scope `admin`
+(`API_ADMIN_TOKENS=true`; from its networks, with `X-Audit-Comment` unless
+`API_ADMIN_COMMENT=optional`). Personal tokens, technical users without
+`admin` and other sessions get `403` on every admin route (logged as
+`api.scope_denied`). Every call is in the audit log with the admin or the
+technical user and token, the comment and the run id.
+
+| Endpoint | What |
+|---|---|
+| `GET /admin/status` | what is on, Redis persistence, warnings |
+| `GET /admin/audit`, `GET /admin/audit/verify` | audit log (filter, `format=csv\|jsonl`), chain check |
+| `GET /admin/secrets?creator=&recipient=&status=&from=&to=&limit=` | secrets overview from the audit stream (metadata only; `AUDIT_LOG_REDIS`) |
+| `GET /admin/tokens`, `POST /admin/tokens/{id}/revoke` | all tokens |
+| `GET /admin/service-accounts`, `POST /admin/service-accounts` | technical users; create `{name, description, responsible, ips, enabled, max}` |
+| `POST /admin/service-accounts/{name}`, `POST /admin/service-accounts/{name}/delete` | change (also `enabled: false`: revokes its tokens), delete |
+| `GET/POST /admin/service-accounts/{name}/tokens` | its tokens; issue `{name, scopes, expires, ips}` (scopes `create`, `read`, `status`, `admin`) |
+| `POST /admin/service-accounts/{name}/tokens/{id}/rotate` | new token with the same settings; `graceSeconds` (0 to 604800) keeps the old one that long |
+| `GET/POST /admin/token-policies` | token permissions per user and group |
+
+```sh
+curl -s https://ots.example.com/api/v1/admin/secrets?status=opened \
+  -H "Authorization: Bearer vnly_..." -H "X-Audit-Comment: weekly review" -H "X-Run-Id: review-42"
+```
+
