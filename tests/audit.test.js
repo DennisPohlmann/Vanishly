@@ -672,10 +672,16 @@ test('admin interface: tabs, Redis warnings, secrets overview from the audit str
   for (const tab of ['audit', 'secrets', 'tokens', 'services', 'policies']) assert.match(html, new RegExp(`href="/admin\\?tab=${tab}"`));
   assert.match(html, /aria-current="page">Secrets</);
   assert.match(html, /data-tab="secrets"/);
-  // The test Redis runs without persistence: the page says so.
-  assert.match(html, /Redis keeps nothing over a restart/);
+  // Without persistence (a local test Redis) the page says so; a Redis with
+  // snapshots or an append-only file (as in CI) gives no warning.
   const st = await a.call('/api/v1/admin/status', { cookie: alice });
-  assert.deepEqual([st.data.auditRedis, st.data.persistence.aof, st.data.warnings], [true, false, ['no_persistence']]);
+  const p = st.data.persistence;
+  const kept = p.aof || p.rdb === true;
+  assert.equal(st.data.auditRedis, true);
+  assert.deepEqual(st.data.warnings, kept ? [] : [p.rdb === null ? 'persistence_unknown' : 'no_persistence']);
+  // (The texts are also in the page's translations, so look for the notice itself.)
+  if (kept) assert.doesNotMatch(html, /notice-error">(Redis keeps nothing|Could not check)/);
+  else assert.match(html, /notice-error">(Redis keeps nothing over a restart|Could not check whether Redis keeps)/);
   // Secrets: one for bob (opened), one anyone (open).
   const one = await a.call('/api/v1/share', { cookie: alice, body: { secret: PLAIN, ttl: 600, recipients: ['bob@example.com'], comment: 'reset a user pw' } });
   await a.call('/api/v1/share', { cookie: alice, body: { secret: 'other', ttl: 600 } });
@@ -693,7 +699,7 @@ test('admin interface: tabs, Redis warnings, secrets overview from the audit str
   const c2 = await b.login(ALICE);
   const h2 = await (await fetch(`${b.base}/admin`, { headers: { Cookie: c2 } })).text();
   assert.doesNotMatch(h2, /tab=secrets/);
-  assert.match(h2, /AUDIT_LOG_REDIS=false/);
+  assert.match(h2, /notice-error">The audit log is not written to Redis/);
   assert.equal((await b.call('/api/v1/admin/secrets', { cookie: c2 })).data.error, 'endpoint_disabled');
   // ADMIN_UI=false: no admin pages, no admin API.
   const off = await startApp({ ADMIN_UI: 'false' });
