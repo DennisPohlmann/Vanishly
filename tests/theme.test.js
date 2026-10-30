@@ -60,6 +60,10 @@ test('a symlinked theme.css or view is refused', () => {
   writeFileSync(join(t, 'theme.css'), '');
   symlinkSync('/etc/hostname', join(t, 'views', 'home.html'));
   assert.throws(() => loadTheme({ template: 'linky', templatesDir: dir, defaultLang: 'en' }, '1'));
+  const c = join(dir, 'linkcss');
+  mkdirSync(c);
+  symlinkSync(join(t, 'theme.css'), join(c, 'theme.css'));
+  assert.throws(() => loadTheme({ template: 'linkcss', templatesDir: dir, defaultLang: 'en' }, '1'), /plain file/);
 });
 
 test('DEFAULT_MODE overrides the defaultMode of the template', () => {

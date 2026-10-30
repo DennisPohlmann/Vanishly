@@ -13,7 +13,7 @@
 // It is looked up in TEMPLATES_DIR first (mounted, survives updates), then in
 // the built-in templates/ folder. Views it does not bring come from views/.
 
-import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -43,11 +43,29 @@ export function render(tpl, ctx, t) {
   });
 }
 
-/** @param {string} file */
+/**
+ * Reads a plain file (no symlink) up to 512 KB. Opened once and checked on
+ * the open file, so it cannot be swapped between the check and the read.
+ * @param {string} file
+ */
 function readSmall(file) {
-  const st = lstatSync(file);
-  if (!st.isFile() || st.size > 512 * 1024) throw new Error(`${file}: not a plain file up to 512 KB`);
-  return readFileSync(file, 'utf8');
+  const max = 512 * 1024;
+  const refuse = () => new Error(`${file}: not a plain file up to ${max / 1024} KB`);
+  /** @type {number} */
+  let fd;
+  try {
+    fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  } catch (err) {
+    // ELOOP: a symlink (O_NOFOLLOW).
+    throw /** @type {NodeJS.ErrnoException} */ (err).code === 'ELOOP' ? refuse() : err;
+  }
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size > max) throw refuse();
+    return readFileSync(fd, 'utf8');
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /**
@@ -191,6 +209,8 @@ export function loadTheme(config, version) {
     dir,
     name: config.template,
     views,
+    /** theme.css, read once like the views (served at /theme/theme.css). */
+    css: readSmall(join(dir, 'theme.css')),
     strings,
     /** The languages served, the default first-choice fallback, and whether visitors may switch. */
     languages,

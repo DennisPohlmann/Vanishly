@@ -1,6 +1,6 @@
 // Vanishly - HTTP app: pages, JSON API (openapi/openapi.json), static files.
 
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
@@ -108,6 +108,12 @@ export function csvCell(v) {
   return `"${safe.replace(/"/g, '""')}"`;
 }
 
+/** Text for a log line: line breaks out, so it cannot forge further lines. @param {string} s */
+const oneLine = (s) => String(s).replace(/[\r\n\u2028\u2029]+/g, ' ');
+
+/** A file served from memory, with its ETag. @param {string | Buffer} body */
+const cached = (body) => ({ body, etag: `"${createHash('sha256').update(body).digest('base64url').slice(0, 27)}"` });
+
 /**
  * @param {{ config: import('./config.js').Config, store: import('./store.js').Store,
  *   theme: import('./theme.js').Theme, version: string, auth?: Auth | null, audit?: Audit | null }} deps
@@ -171,7 +177,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       res.on('finish', () => {
         const ms = Number(process.hrtime.bigint() - start) / 1e6;
         const path = req.originalUrl.split('?')[0].replace(/[A-Za-z0-9_-]{22}/g, ':id');
-        console.log(`${req.method} ${path} ${res.statusCode} ${ms.toFixed(1)}ms`);
+        console.log(`${req.method} ${oneLine(path)} ${res.statusCode} ${ms.toFixed(1)}ms`);
       });
       next();
     });
@@ -240,9 +246,10 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   // Static files: the app's own (public/) and the active template.
   const staticOpts = { dotfiles: /** @type {const} */ ('deny'), index: false, maxAge: '1h', fallthrough: true };
   app.use('/static', express.static(join(ROOT, 'public'), staticOpts));
+  // theme.css from memory (read with the views at start), no file access per request.
+  const themeCss = cached(theme.css);
   app.get('/theme/theme.css', (_req, res) => {
-    res.set('Cache-Control', 'public, max-age=3600');
-    res.sendFile(join(theme.dir, 'theme.css'));
+    res.set({ 'Cache-Control': 'public, max-age=3600', ETag: themeCss.etag }).type('css').send(themeCss.body);
   });
   app.use('/theme/assets', express.static(join(theme.dir, 'assets'), staticOpts));
 
@@ -1414,8 +1421,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     });
     api.get('/docs/assets/scalar.js', (_req, res, next) => {
       if (!scalarJs) return next();
-      res.set('Cache-Control', 'public, max-age=3600');
-      res.sendFile(scalarJs);
+      res.set({ 'Cache-Control': 'public, max-age=3600', ETag: scalarJs.etag }).type('js').send(scalarJs.body);
     });
   }
 
@@ -1464,7 +1470,9 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   const docsHtml = readFileSync(join(ROOT, 'views', 'api-docs.html'), 'utf8');
   // vendor/scalar.js: built by `npm run vendor` (also in the image and the
   // tar.gz), without the external web fonts of the npm package.
-  const scalarJs = existsSync(join(ROOT, 'vendor', 'scalar.js')) ? join(ROOT, 'vendor', 'scalar.js') : null;
+  // Read once at start, served from memory.
+  const scalarFile = join(ROOT, 'vendor', 'scalar.js');
+  const scalarJs = config.apiDocs && existsSync(scalarFile) ? cached(readFileSync(scalarFile)) : null;
   if (config.apiDocs && !scalarJs) console.error('Vanishly: API docs page without vendor/scalar.js (run npm run vendor)');
 
   // ---------------------------------------------------------------- pages
@@ -1575,7 +1583,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         auth.setCookie(res, sid);
         res.redirect(303, returnTo);
       } catch (err) {
-        console.error(`auth: sign-in failed: ${/** @type {Error} */ (err).message}`);
+        console.error(`auth: sign-in failed: ${oneLine(/** @type {Error} */ (err).message)}`);
         await ev(req, res, 'auth.failed', { outcome: 'denied', reason: providerError || 'sign_in_failed' });
         errorPage(req, res, 400, theme.strings[lang(res)]['auth.failed']);
       }

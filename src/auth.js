@@ -379,7 +379,7 @@ export class Auth {
 
   /** @param {import('express').Request} req */
   sid(req) {
-    const m = new RegExp(`(?:^|;\\s*)${this.cookie.replace(/[-_]/g, '\\$&')}=([A-Za-z0-9_-]{43})(?:;|$)`).exec(req.headers.cookie || '');
+    const m = new RegExp(`(?:^|;\\s*)${this.cookie.replace(/[\\^$.*+?()[\]{}|-]/g, '\\$&')}=([A-Za-z0-9_-]{43})(?:;|$)`).exec(req.headers.cookie || '');
     return m ? m[1] : '';
   }
 
