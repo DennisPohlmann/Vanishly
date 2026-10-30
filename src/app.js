@@ -109,7 +109,7 @@ export function csvCell(v) {
 }
 
 /** Text for a log line: line breaks out, so it cannot forge further lines. @param {string} s */
-const oneLine = (s) => String(s).replace(/[\r\n\u2028\u2029]+/g, ' ');
+const oneLine = (s) => String(s).replace(/[\r\u2028\u2029]/g, ' ').replace(/\n/g, '');
 
 /** A file served from memory, with its ETag. @param {string | Buffer} body */
 const cached = (body) => ({ body, etag: `"${createHash('sha256').update(body).digest('base64url').slice(0, 27)}"` });
