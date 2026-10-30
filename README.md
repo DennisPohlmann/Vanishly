@@ -99,9 +99,23 @@ How a secret is protected, step by step and with its limits:
 
 <img src="docs/screenshots/mobile-light-3-reveal.png" alt="Reveal on a phone" width="280"> <img src="docs/screenshots/mobile-dark-4-revealed.png" alt="Revealed on a phone, dark mode" width="280">
 
-**Optional rules: passphrase complexity, confirmation, own expiry choices (German, phone)**
+**Optional rules: passphrase complexity, confirmation, own expiry choices (phone)**
 
-<img src="docs/screenshots/mobile-de-rules.png" alt="Form with rules" width="280">
+<img src="docs/screenshots/mobile-rules.png" alt="Form with rules" width="280">
+
+**With sign-in: only for chosen people, found by the people search**
+
+![Recipients and people search](docs/screenshots/desktop-light-6-recipients.png)
+
+**Personal API tokens (`API_TOKENS=true`)**
+
+![API tokens](docs/screenshots/desktop-light-7-api-tokens.png)
+
+**Administration (`ADMIN_USERS`, `ADMIN_GROUPS`): audit log and all API tokens**
+
+![Admin: audit log](docs/screenshots/desktop-light-8-admin-audit.png)
+
+![Admin: API tokens](docs/screenshots/desktop-light-9-admin-tokens.png)
 
 **Built-in design `aurora` (`TEMPLATE=aurora`): light, dark, phone**
 
