@@ -646,8 +646,8 @@ redis:
   auth:
     # -- Require a password (requirepass).
     enabled: true
-    # -- Password; empty: a random one is made once and kept across upgrades. Only URL-safe characters.
-    password: ""
+    # -- (string) Password; unset (null): a random one is made once and kept across upgrades. Only URL-safe characters.
+    password: null
     # -- Existing Secret with the password (replaces password).
     existingSecret: ""
     # -- Key of the password in existingSecret.

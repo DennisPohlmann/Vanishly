@@ -2109,7 +2109,10 @@
               "type": "boolean"
             },
             "password": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "existingSecret": {
               "type": "string"

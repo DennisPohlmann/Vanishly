@@ -283,7 +283,7 @@ provider: [docs/providers](https://github.com/DennisPohlmann/Vanishly/blob/main/
 | redis.auth.enabled | bool | `true` | Require a password (requirepass). |
 | redis.auth.existingSecret | string | `""` | Existing Secret with the password (replaces password). |
 | redis.auth.existingSecretPasswordKey | string | `"redis-password"` | Key of the password in existingSecret. |
-| redis.auth.password | string | `""` | Password; empty: a random one is made once and kept across upgrades. Only URL-safe characters. |
+| redis.auth.password | string | `nil` | Password; unset (null): a random one is made once and kept across upgrades. Only URL-safe characters. |
 | redis.dataSizeLimit | string | `"64Mi"` | Size limit of the in-memory /data emptyDir (without persistence). |
 | redis.deploymentAnnotations | object | `{}` | Annotations of the Deployment. |
 | redis.deploymentLabels | object | `{}` | Labels of the Deployment. |
