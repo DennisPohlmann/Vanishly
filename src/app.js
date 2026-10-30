@@ -8,6 +8,7 @@ import { Audit, normalize, parseTraceparent, sanitizeText, sizeBucket, verifyTex
 import { ADMIN_SCOPE, Tokens, SCOPES } from './tokens.js';
 import { decryptSecret, encryptSecret, PBKDF2_ITERATIONS, unlockKey, verifierFor } from '../public/js/vanishly-crypto.js';
 import { validId } from './store.js';
+import { limiter } from './ratelimit.js';
 import { Auth, RETURN } from './auth.js';
 import { missingClasses } from '../public/js/rules.js';
 import { escapeHtml, ROOT } from './theme.js';
@@ -211,9 +212,29 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   // Who is signed in (session cookie, or a bearer token on the API).
   /** @param {import('express').Response} res @returns {import('./auth.js').User | null} */
   const userOf = (res) => res.locals.user || null;
+  /** @param {import('express').Request} req */
+  const assetPath = (req) => req.path.startsWith('/static/') || req.path.startsWith('/theme/') || req.path === '/healthz';
   if (auth) {
+    // Every request the sign-in check below looks up (session or token in
+    // Redis): a ceiling per client IP well above the per-endpoint limits,
+    // which still count as before. Static files and /healthz are not counted.
+    const rateAll = 10 * Math.max(config.rateRead, config.rateCreate);
+    app.use(
+      limiter({
+        store,
+        bucket: 'all',
+        limit: rateAll,
+        window: config.rateWindow,
+        skip: assetPath,
+        onLimit: (req, res, _next, retryAfter) => {
+          res.set('Retry-After', String(retryAfter));
+          if (req.path.startsWith('/api/')) return void res.status(429).json({ error: 'rate_limited', message: 'Too many requests' });
+          errorPage(req, res, 429, theme.strings[lang(res)]['error.ratelimit']);
+        },
+      }),
+    );
     app.use(async (req, res, next) => {
-      if (req.path.startsWith('/static/') || req.path.startsWith('/theme/') || req.path === '/healthz') return next();
+      if (assetPath(req)) return next();
       try {
         const bearer = /^Bearer\s+(\S+)$/i.exec(req.get('authorization') || '')?.[1] || '';
         if (tokens && bearer.startsWith('vnly_')) {
@@ -447,20 +468,17 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     throw new ApiError(403, 'insufficient_scope', reason === 'policy' ? `The scope "${scope}" of this token is no longer allowed for its owner` : `This token lacks the scope "${scope}"`, { scope });
   };
 
+  /** @type {import('./ratelimit.js').OnLimit} */
+  const apiLimited = (_req, res, next, retryAfter) => {
+    res.set('Retry-After', String(retryAfter));
+    next(new ApiError(429, 'rate_limited', 'Too many requests'));
+  };
+  const limiters = {
+    create: limiter({ store, bucket: 'create', limit: config.rateCreate, window: config.rateWindow, onLimit: apiLimited }),
+    read: limiter({ store, bucket: 'read', limit: config.rateRead, window: config.rateWindow, onLimit: apiLimited }),
+  };
   /** @param {'create' | 'read'} bucket */
-  const limit = (bucket) => /** @type {import('express').RequestHandler} */ (async (req, res, next) => {
-    try {
-      const max = bucket === 'create' ? config.rateCreate : config.rateRead;
-      const r = await store.rateLimit(bucket, req.ip || '', max, config.rateWindow);
-      if (!r.ok) {
-        res.set('Retry-After', String(r.retryAfter));
-        throw new ApiError(429, 'rate_limited', 'Too many requests');
-      }
-      next();
-    } catch (err) {
-      next(err);
-    }
-  });
+  const limit = (bucket) => limiters[bucket];
 
   /** @param {any} body */
   const options = (body) => {
@@ -1546,11 +1564,15 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   // ---------------------------------------------------------------- sign-in
   if (auth) {
-    /** @param {import('express').Request} req */
-    const authLimit = async (req) => (await store.rateLimit('auth', req.ip || '', config.rateRead, config.rateWindow)).ok;
+    const authLimit = limiter({
+      store,
+      bucket: 'auth',
+      limit: config.rateRead,
+      window: config.rateWindow,
+      onLimit: (req, res) => errorPage(req, res, 429, theme.strings[lang(res)]['error.ratelimit']),
+    });
 
-    app.get('/auth/login', async (req, res) => {
-      if (!(await authLimit(req))) return errorPage(req, res, 429, theme.strings[lang(res)]['error.ratelimit']);
+    app.get('/auth/login', authLimit, async (req, res) => {
       const back = typeof req.query.return === 'string' ? req.query.return : '/';
       try {
         res.redirect(303, await auth.loginUrl(back, req.query.fresh === '1', auth.c.autoLogin && req.query.silent === '1'));
@@ -1560,8 +1582,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       }
     });
 
-    app.get('/auth/callback', async (req, res) => {
-      if (!(await authLimit(req))) return errorPage(req, res, 429, theme.strings[lang(res)]['error.ratelimit']);
+    app.get('/auth/callback', authLimit, async (req, res) => {
       const i = req.originalUrl.indexOf('?');
       const search = i < 0 ? '' : req.originalUrl.slice(i);
       const providerError = typeof req.query.error === 'string' ? req.query.error.replace(/[^\w.-]/g, '').slice(0, 40) : '';

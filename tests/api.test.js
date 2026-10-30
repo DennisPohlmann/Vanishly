@@ -703,3 +703,41 @@ test('Redis refuses writes: nothing is handed out, burn fails, health is 503', o
   assert.equal(r.status, 200);
   assert.equal(await decryptSecret(r.data, key, pk), 'still here');
 });
+
+test('rate limits: 429 with Retry-After, per client IP, shared Redis counter, 0 = off', opts, async () => {
+  /** @param {Record<string, string>} env */
+  const serve = async (env) => {
+    const config = loadConfig({ REDIS_URL: redisUrl, RATE_LIMIT_WINDOW: '60', ACCESS_LOG: 'false', ...env });
+    const app = createApp({ config, store, theme: loadTheme(config, 'test'), version: 'test' });
+    const srv = app.listen(0, '127.0.0.1');
+    await new Promise((r) => srv.once('listening', r));
+    return { srv, b: `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}` };
+  };
+  const id = 'AAAAAAAAAAAAAAAAAAAAAA';
+  const one = await serve({ RATE_LIMIT_READ: '3', RATE_LIMIT_CREATE: '1000' });
+  // A second replica on the same Redis shares the counter.
+  const two = await serve({ RATE_LIMIT_READ: '3', RATE_LIMIT_CREATE: '1000' });
+  const off = await serve({ RATE_LIMIT_READ: '0', RATE_LIMIT_CREATE: '1000' });
+  try {
+    await store.resetHits('read', Store.ipKey('127.0.0.1'));
+    // TRUST_PROXY=false: a forged X-Forwarded-For changes nothing.
+    /** @param {string} b @param {number} i */
+    const get = (b, i) => fetch(`${b}/api/v1/secrets/${id}`, { headers: { 'X-Forwarded-For': `198.51.100.${i}` } });
+    const codes = [];
+    for (let i = 0; i < 3; i++) codes.push((await get(i % 2 ? two.b : one.b, i)).status);
+    assert.ok(!codes.includes(429), codes.join(','));
+    const r = await get(two.b, 9);
+    assert.equal(r.status, 429);
+    assert.deepEqual(await r.json(), { error: 'rate_limited', message: 'Too many requests' });
+    const retry = Number(r.headers.get('retry-after'));
+    assert.ok(retry >= 1 && retry <= 60, String(retry));
+    assert.equal(r.headers.get('ratelimit'), null);
+    assert.equal(r.headers.get('x-ratelimit-limit'), null);
+    // The counter is the one store.rateLimit() uses (same Redis key).
+    assert.equal((await store.rateLimit('read', '127.0.0.1', 3, 60)).ok, false);
+    for (let i = 0; i < 5; i++) assert.notEqual((await get(off.b, i)).status, 429);
+  } finally {
+    await store.resetHits('read', Store.ipKey('127.0.0.1'));
+    for (const s of [one, two, off]) s.srv.close();
+  }
+});

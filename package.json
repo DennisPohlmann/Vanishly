@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "express": "^5.1.0",
+    "express-rate-limit": "8.7.1",
     "jose": "^6.2.13",
     "openid-client": "^6.8.8",
     "redis": "^6.3.0"

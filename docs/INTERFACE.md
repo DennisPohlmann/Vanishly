@@ -122,7 +122,7 @@ All keys start with `REDIS_PREFIX` (default `vanishly:`).
 | `r:<rid>:v` | list | view times (ms); with `RECEIPT_SHOW_VIEWER` `time<TAB>name<TAB>address` of the signed-in viewer | like the receipt |
 | `sess:<hash>` | hash | a sign-in: `name`, `user`, `ids` (the recipient hashes of the user's addresses and groups), `created`, with `AUTH_LOGOUT=provider` `it` (the ID token, only sent back to the provider as `id_token_hint` at sign-out); the key is the SHA-256 of the cookie | `AUTH_SESSION_TTL` |
 | `oidc:<state>` | hash | a sign-in in progress: PKCE verifier, nonce, return path | 10 minutes, used once |
-| `rl:<bucket>:<hash>` | string | request counter; the IP is stored only as a truncated SHA-256 | `RATE_LIMIT_WINDOW` |
+| `rl:<bucket>:<hash>` | string | request counter per client IP (buckets `create`, `read`, with sign-in `auth` and `all`); the IP is stored only as a truncated SHA-256 | `RATE_LIMIT_WINDOW` |
 | `rl:tok:<hash>` | string | calls of one API token (`API_TOKEN_RATE_LIMIT`) | `RATE_LIMIT_WINDOW` |
 | `tok:<id>` | hash | an API token: `h` (HMAC-SHA256 of the token with a key derived from `AUTH_SECRET`, never the token), `own`/`nm` (owner address and name; `svc:<name>` for a technical user), `svc` (the technical user), `ids` (the owner's recipient hashes, renewed at each sign-in), `name`, `created`, `expires`, `ips`, `scopes`, `used`, `revoked`, `by` | until 30 days after expiry or revocation; without expiry kept |
 | `tokpol:<hash>` | hash | token permissions of a user or group (`API_TOKEN_ADMIN_POLICY`): `type`, `subject` (address or group), `scopes`, `max`, `by`, `at`; the hash is the recipient hash of the address or group | kept |
