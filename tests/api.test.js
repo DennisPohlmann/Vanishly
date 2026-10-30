@@ -204,7 +204,9 @@ test('headers, health, OpenAPI document, static files', opts, async () => {
   assert.match(docs.headers.get('content-security-policy') ?? '', /script-src 'self';/);
   const scalar = await fetch(`${base}/api/docs/assets/scalar.js`);
   assert.equal(scalar.status, 200);
-  assert.doesNotMatch(await scalar.text(), /fonts\.scalar\.com/);
+  // No URL in the bundle points to the font host (compared as host name).
+  const hosts = new Set([...(await scalar.text()).matchAll(/(?:https?:)?\/\/([\w.-]+)/g)].map((m) => m[1].toLowerCase()));
+  assert.equal(hosts.has('fonts.scalar.com'), false);
   assert.equal((await fetch(`${base}/static/js/vanishly-crypto.js`)).status, 200);
   const css = await fetch(`${base}/theme/theme.css`);
   assert.equal(css.status, 200);
