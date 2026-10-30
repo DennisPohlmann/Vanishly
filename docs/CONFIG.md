@@ -46,7 +46,7 @@ The container then does not come up (`docker compose logs vanishly`).
 | `GENERATOR_COMPLEXITY` | `all` | Character classes of the generated password: `upper`, `lower`, `digit`, `symbol` or `all`; each chosen class appears at least once. Look-alikes (0/O, 1/l/I) are left out |
 | `RECEIPT_KEEP` | `604800` | How long a receipt stays after its secret expired (seconds) |
 | `RATE_LIMIT_CREATE` | `30` | New secrets per client IP and window; `0` = off |
-| `RATE_LIMIT_READ` | `120` | Reads, reveals, receipts and burns per client IP and window; `0` = off |
+| `RATE_LIMIT_READ` | `120` | Reads, reveals, receipts and burns per client IP and window; with sign-in also `/auth/login` and `/auth/callback` (own counter). With sign-in, all requests of one client IP together (not static files, `/healthz`) may reach 10 × the larger of `RATE_LIMIT_READ` and `RATE_LIMIT_CREATE` per window. `0` = off |
 | `RATE_LIMIT_WINDOW` | `600` | Window of the rate limits (seconds) |
 | `ACCESS_LOG` | `true` | One line per request to stdout (method, path with ids replaced by `:id`, status, time) |
 

@@ -188,7 +188,11 @@ in the browser. The web pages never use them.
 
 - Rate limits per client IP for creating and for reading
   (`RATE_LIMIT_*`). Behind a reverse proxy set `TRUST_PROXY`, or every
-  visitor counts as the proxy.
+  visitor counts as the proxy. The counters are in Redis, so all replicas
+  share them (express-rate-limit with a store on `src/store.js`). With
+  sign-in the sign-in pages have their own counter, and every request the
+  sign-in check looks at (not static files, `/healthz`) counts against a
+  ceiling of 10 × the larger limit.
 - Ids have 128 random bits, so guessing a link is not practical, and every
   guess counts against the read limit.
 - Optional rules: `REQUIRE_PASSPHRASE`, `MIN_PASSPHRASE_LENGTH`,

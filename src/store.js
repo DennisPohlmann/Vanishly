@@ -335,6 +335,41 @@ export class Store {
   }
 
   /**
+   * The rate-limit key of a client IP: a truncated SHA-256, so Redis (and
+   * the rate-limit middleware) never hold addresses.
+   * @param {string} ip
+   */
+  static ipKey(ip) {
+    return sha256(ip).toString('base64url').slice(0, 22);
+  }
+
+  /**
+   * Counts a hit in a fixed window (src/ratelimit.js, rateLimit()).
+   * @param {string} bucket
+   * @param {string} key ipKey() or another non-personal key
+   * @param {number} window seconds
+   * @returns {Promise<{ count: number, ttl: number }>} ttl: seconds left in the window
+   */
+  async hit(bucket, key, window) {
+    const k = `${this.p}rl:${bucket}:${key}`;
+    const [count, ttl] = /** @type {[number, number]} */ (
+      /** @type {unknown} */ (await this.redis.multi().incr(k).ttl(k).exec())
+    );
+    if (Number(ttl) < 0) await this.redis.expire(k, window);
+    return { count: Number(count), ttl: Number(ttl) > 0 ? Number(ttl) : window };
+  }
+
+  /** Takes one hit back. @param {string} bucket @param {string} key */
+  async unhit(bucket, key) {
+    await this.redis.decr(`${this.p}rl:${bucket}:${key}`);
+  }
+
+  /** Clears a counter. @param {string} bucket @param {string} key */
+  async resetHits(bucket, key) {
+    await this.redis.del(`${this.p}rl:${bucket}:${key}`);
+  }
+
+  /**
    * Fixed-window rate limit. The IP is hashed, so Redis holds no addresses.
    * @param {string} bucket
    * @param {string} ip
@@ -343,11 +378,7 @@ export class Store {
    */
   async rateLimit(bucket, ip, limit, window) {
     if (!limit) return { ok: true, retryAfter: 0 };
-    const key = `${this.p}rl:${bucket}:${sha256(ip).toString('base64url').slice(0, 22)}`;
-    const [count, ttl] = /** @type {[number, number]} */ (
-      /** @type {unknown} */ (await this.redis.multi().incr(key).ttl(key).exec())
-    );
-    if (Number(ttl) < 0) await this.redis.expire(key, window);
-    return { ok: Number(count) <= limit, retryAfter: Number(ttl) > 0 ? Number(ttl) : window };
+    const { count, ttl } = await this.hit(bucket, Store.ipKey(ip), window);
+    return { ok: count <= limit, retryAfter: ttl };
   }
 }

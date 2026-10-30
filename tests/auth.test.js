@@ -691,3 +691,28 @@ test('header: the full name and below it the address of the signed-in user, esca
   const noName = (await login({ ...BOB, name: '' })).cookie;
   assert.match(String((await call('/', { cookie: noName })).data), /<span class="nav-user-who"><span class="nav-user-name">bob@example.com<\/span><\/span>/);
 });
+
+test('rate limits with sign-in: /auth/* per IP, and a ceiling for everything the sign-in check sees', opts, async () => {
+  // RATE_LIMIT_READ=2, RATE_LIMIT_CREATE=1: /auth/* 2 per window, everything else 10 x 2 = 20.
+  const { call } = await startApp({ RATE_LIMIT_READ: '2', RATE_LIMIT_CREATE: '1', RATE_LIMIT_WINDOW: '60' });
+  const codes = [];
+  for (let i = 0; i < 3; i++) codes.push((await call('/auth/login')).status);
+  assert.deepEqual(codes, [303, 303, 429]);
+  const page = await call('/auth/callback?code=x&state=y');
+  assert.equal(page.status, 429);
+  assert.match(String(page.data), /<html/i);
+  // Static files and /healthz are not counted.
+  for (let i = 0; i < 30; i++) assert.equal((await call('/theme/theme.css')).status, 200);
+  assert.equal((await call('/healthz')).status, 200);
+  // 4 requests so far; 16 more pass, the 21st is refused.
+  let first = 0;
+  for (let i = 1; i <= 20 && !first; i++) if ((await call('/api/v1/config')).status === 429) first = i;
+  assert.equal(first, 17);
+  const api = await call('/api/v1/config');
+  assert.equal(api.status, 429);
+  assert.equal(api.data.error, 'rate_limited');
+  const retry = Number(api.headers.get('retry-after'));
+  assert.ok(retry >= 1 && retry <= 60, String(retry));
+  assert.equal((await call('/')).status, 429);
+  assert.equal((await call('/static/js/vanishly-crypto.js')).status, 200);
+});
