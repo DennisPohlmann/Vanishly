@@ -206,7 +206,10 @@ test('headers, health, OpenAPI document, static files', opts, async () => {
   assert.equal(scalar.status, 200);
   assert.doesNotMatch(await scalar.text(), /fonts\.scalar\.com/);
   assert.equal((await fetch(`${base}/static/js/vanishly-crypto.js`)).status, 200);
-  assert.equal((await fetch(`${base}/theme/theme.css`)).status, 200);
+  const css = await fetch(`${base}/theme/theme.css`);
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type') ?? '', /^text\/css/);
+  assert.equal((await fetch(`${base}/theme/theme.css`, { headers: { 'If-None-Match': css.headers.get('etag') ?? '', 'Cache-Control': 'max-age=0' } })).status, 304);
   assert.equal((await fetch(`${base}/static/../package.json`)).status, 404);
   const de = await (await fetch(`${base}/`, { headers: { 'Accept-Language': 'de-DE,de;q=0.9' } })).text();
   assert.match(de, /Geheimnis teilen/);

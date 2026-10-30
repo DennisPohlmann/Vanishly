@@ -55,8 +55,8 @@ templates/
    Templates are read at start: restart after a change
    (`docker compose restart vanishly`).
 
-Only plain files are used (no symbolic links); views and `template.json` at
-most 512 KB each.
+Only plain files are used (no symbolic links); views, `template.json` and
+`theme.css` at most 512 KB each.
 
 ## CSS variables (`theme.css`)
 
