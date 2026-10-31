@@ -7,6 +7,7 @@
 | Usage | [USAGE.md](USAGE.md) | the pages (also API tokens and the audit log page), how sharing works, the status page, health and monitoring |
 | Interface and API | [INTERFACE.md](INTERFACE.md) | REST API with examples, crypto format v1, Redis keys, audit events and formats, hash chain and `audit:verify`, token API; the contract is [openapi.json](../openapi/openapi.json), the reference is served at `/api/docs` |
 | Security | [SECURITY.md](SECURITY.md) | how a secret is protected: encryption in the browser, what Redis stores, passphrase, sign-in, status access, audit log and API tokens, limits |
+| Accessibility | [ACCESSIBILITY.md](ACCESSIBILITY.md) | accessibility statement: WCAG 2.2 AA target, what the pages do, how it is checked, known limits, feedback |
 | Development | [DEVELOPMENT.md](DEVELOPMENT.md) | local development, tests, CI, security checks, releases |
 | Templates | [templates/README.md](../templates/README.md) | own designs: logo, CSS, pictures, views |
 | Translations | [CONFIG.md](CONFIG.md#languages) | languages, browser detection, own translations (`TRANSLATIONS_DIR`, [translations/](../translations/en.json)) |
@@ -16,4 +17,8 @@
 | Screenshots | [screenshots/](screenshots/) | the pages in the built-in templates |
 
 Also in the repository root: [README.md](../README.md) (overview, quick
-start), [CHANGELOG.md](../CHANGELOG.md), [THIRD-PARTY-LICENSES.md](../THIRD-PARTY-LICENSES.md).
+start), [CHANGELOG.md](../CHANGELOG.md), [THIRD-PARTY-LICENSES.md](../THIRD-PARTY-LICENSES.md). In `.github/`:
+[CONTRIBUTING.md](../.github/CONTRIBUTING.md),
+[CODE_OF_CONDUCT.md](../.github/CODE_OF_CONDUCT.md),
+[SECURITY.md](../.github/SECURITY.md) (how to report a vulnerability),
+issue forms and the pull request template.
