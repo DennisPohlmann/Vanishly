@@ -189,12 +189,14 @@ curl -s -X POST http://127.0.0.1:3000/api/v1/share \
 | [docs/SECURITY.md](docs/SECURITY.md) | how a secret is protected: encryption in the browser, what Redis stores, passphrase, behaviour on Redis errors, limits |
 | [docs/providers/](docs/providers/README.md) | sign-in providers: what each supports, one page per provider (none, Entra ID, Keycloak, Okta, Auth0, Google, PingOne, JumpCloud, Cognito, other OIDC) |
 | [docker-compose/](docker-compose/keycloak/README.md) | Compose examples: `standalone` (Vanishly with Redis), `keycloak` (local sign-in demo) |
+| [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) | accessibility statement: WCAG 2.2 AA target, how it is checked, known limits, feedback |
 | [docs/INTERFACE.md](docs/INTERFACE.md) | REST API (OpenAPI), crypto format, Redis keys |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | local development, tests, CI and releases |
 | [templates/README.md](templates/README.md) | own templates: logo, CSS, pictures, views |
 | [charts/vanishly/README.md](charts/vanishly/README.md) | Helm chart: install from ghcr.io, all values, Redis, own templates, overrides |
 | [openapi/openapi.json](openapi/openapi.json) | the API contract |
 | [CHANGELOG.md](CHANGELOG.md) | changes per version |
+| [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) | how to report bugs and contribute; also the [code of conduct](.github/CODE_OF_CONDUCT.md) and the [security policy](.github/SECURITY.md) |
 | [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) | third-party components and their licenses |
 
 ## Building
