@@ -1,7 +1,17 @@
 name: build
 
-# Every push to main checks, builds the package (workflow artifact) and
-# publishes the image as ghcr.io/dennispohlmann/vanishly:edge.
+# Every push (any branch) and every pull request runs everything a release
+# would run, without publishing anything: check (type check, npm audit,
+# tests, OpenAPI lint, accessibility), image-scan (Dockerfile, repository,
+# Redis image, builds the image and scans it with Trivy) and package (the
+# tar.gz as a workflow artifact, kept 7 days). chart.yml checks and packages
+# the Helm chart on the same events. A broken build shows up as a red run
+# right away, not at release time. Once a week (schedule) the same checks
+# run on main, to catch new vulnerabilities without a commit.
+#
+# A release is only made when Dennis starts it: Actions -> build ->
+# "Run workflow" on main with "release" ticked, or
+#   gh workflow run build.yml --ref main -f release=true
 # semantic-release then reads the Conventional Commits since the last tag:
 # for a feat, fix or breaking change it bumps the version files, writes
 # CHANGELOG.md, commits that as "chore(release): vX.Y.Z [skip ci]", tags
@@ -10,23 +20,23 @@ name: build
 # image tags <version>, <major>.<minor> and latest, chart pushes the Helm
 # chart to oci://ghcr.io/<owner>/charts/vanishly, and publish-release
 # publishes it. The draft is needed because releases are immutable: once
-# published, no asset can be added. A manual run builds without publishing.
-# A pull request (e.g. from Dependabot) runs the same checks and builds
-# without publishing. The image is built and scanned with Trivy first
-# (image-scan); a fixable HIGH or CRITICAL vulnerability stops the release.
+# published, no asset can be added. Every release run also pushes edge
+# (main at that moment), even when there are no release commits.
+# A manual run without "release" only checks and builds.
 # Security checks on every run: npm audit, Trivy over the repository
 # (secrets, lock file, misconfigurations), the Dockerfile, the built image
 # and the Redis image; CodeQL runs in codeql.yml.
-# Once a week (schedule) edge is rebuilt from main, to take in the Alpine
-# updates of apk upgrade without waiting for a commit.
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
   schedule:
     - cron: '23 4 * * 1'
   workflow_dispatch:
+    inputs:
+      release:
+        description: Make a release (semantic-release) and publish image, chart and archive; only on main
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -48,6 +58,8 @@ jobs:
           --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v7
+      - name: whitespace (git diff --check)
+        run: git diff --check "$(git hash-object -t tree /dev/null)"
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -112,15 +124,23 @@ jobs:
           trivy image --scanners vuln --ignore-unfixed
           --severity HIGH,CRITICAL --exit-code 1 vanishly:scan
 
+  # Only on a manual run with release=true. semantic-release releases only
+  # from main (.releaserc.json), so a run on another branch fails here
+  # instead of silently doing nothing.
   release:
     needs: [check, image-scan]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && inputs.release
     runs-on: ubuntu-26.04
     permissions:
       contents: write
     outputs:
       version: ${{ steps.release.outputs.version }}
     steps:
+      - name: releases only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::A release can only be started on main (this run: $GITHUB_REF_NAME)."
+          exit 1
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # all tags and commits since the last release
@@ -144,8 +164,10 @@ jobs:
           -p conventional-changelog-conventionalcommits@9.3.1
           semantic-release
 
-  # Runs after the release job (or without it on a manual run) and builds the
-  # new tag if there was a release, otherwise the pushed commit.
+  # Runs on every run, after the release job if there is one, and builds the
+  # new tag if there was a release, otherwise the pushed commit. The archive
+  # is a workflow artifact (7 days); only a release attaches it to the
+  # GitHub release.
   package:
     needs: [check, image-scan, release]
     if: ${{ !cancelled() && needs.check.result == 'success' && needs.image-scan.result == 'success' && needs.release.result != 'failure' }}
@@ -173,25 +195,26 @@ jobs:
             dist/*.tar.gz
             dist/*.tar.gz.sha256
           if-no-files-found: error
+          retention-days: 7
       - name: add the archive to the release
         if: env.RELEASE != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "v$RELEASE" dist/*.tar.gz dist/*.tar.gz.sha256 --repo "$GITHUB_REPOSITORY"
 
-  # Publishes on a push to main and on the weekly schedule (edge only), with
-  # an SBOM and full provenance as attestations; a release also gets the
-  # SBOM as an SPDX file. A pull request stops at image-scan.
+  # Publishes the image, only in a manual release run (image-scan has
+  # already built and scanned it on every push): edge always, and for a new
+  # version <version>, <major>.<minor> and latest, with an SBOM and full
+  # provenance as attestations; a release also gets the SBOM as an SPDX file.
   image:
     needs: [check, image-scan, release]
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.check.result == 'success' && needs.image-scan.result == 'success' && needs.release.result != 'failure' }}
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
     runs-on: ubuntu-26.04
     permissions:
       contents: write # the SBOM file in the release
       packages: write
     env:
       RELEASE: ${{ needs.release.outputs.version }}
-      PUBLISH: ${{ github.event_name == 'push' || github.event_name == 'schedule' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -208,7 +231,6 @@ jobs:
             type=raw,value=latest,enable=${{ env.RELEASE != '' }}
           flavor: latest=false
       - uses: docker/login-action@v4
-        if: env.PUBLISH == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -219,9 +241,9 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          push: ${{ env.PUBLISH == 'true' }}
-          sbom: ${{ env.PUBLISH == 'true' }}
-          provenance: ${{ env.PUBLISH == 'true' && 'mode=max' || 'false' }}
+          push: true
+          sbom: true
+          provenance: mode=max
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ env.RELEASE || format('edge+{0}', github.sha) }}

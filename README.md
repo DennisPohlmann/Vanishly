@@ -202,7 +202,8 @@ curl -s -X POST http://127.0.0.1:3000/api/v1/share \
 ## Building
 
 ```bash
-make check      # npm ci, type check, tests (needs Redis)
+make check      # tools/check-all.sh: what the CI checks on a push (needs Redis)
+make hooks      # run make check before every git push
 make package    # dist/vanishly-<version>.tar.gz + .sha256
 make image      # local Docker image vanishly:<version>
 make up         # build from this folder and start with Compose
