@@ -363,6 +363,14 @@ test('API token: made on the session, used from its network with comment and run
   assert.ok(Date.parse(list.data.tokens[0].expires) - Date.now() > 29 * 86400000);
   assert.ok(!list.text.includes(token));
   assert.equal(list.data.options.yourIp, '127.0.0.1');
+  // Shown once: the answer is not cached, the page never holds it and the browser does not restore its fields.
+  assert.equal(made.headers.get('cache-control'), 'no-store');
+  const tokPage = await fetch(`${a.base}/settings/tokens`, { headers: { Cookie: cookie } });
+  assert.equal(tokPage.headers.get('cache-control'), 'no-store');
+  const tokHtml = await tokPage.text();
+  assert.ok(!tokHtml.includes(token.split('_')[2]));
+  assert.match(tokHtml, /id="token-value" readonly spellcheck="false" autocomplete="off"/);
+  assert.match(tokHtml, /id="token-example" rows="6" readonly spellcheck="false" autocomplete="off"/);
 
   const shared = await a.call('/api/v1/share', { bearer: token, headers: { 'X-Run-Id': 'run-4711', 'X-Audit-Comment': 'reset a user pw', 'X-On-Behalf-Of': 'ticket INC-42' }, body: { secret: PLAIN, ttl: 600, recipients: ['bob@example.com'] } });
   assert.equal(shared.status, 201, shared.text);

@@ -36,6 +36,19 @@ function showError(el, text, field = null) {
   }
 }
 
+/**
+ * A new API token is shown once: on leaving the page its fields are emptied
+ * and its panel hidden, so Back (back/forward cache) or a reload does not
+ * show it again.
+ * @param {string} panel @param {string[]} fields
+ */
+function forgetOnLeave(panel, fields) {
+  addEventListener('pagehide', () => {
+    for (const id of fields) /** @type {HTMLInputElement} */ ($(id)).value = '';
+    $(panel).hidden = true;
+  });
+}
+
 /** Tells screen readers about a change that has no visible message (e.g. "Copied"). @param {string} text */
 function announce(text) {
   const s = $('sr-status');
@@ -861,6 +874,7 @@ function initTokens() {
   const card = $('tokens-card');
   const form = $('token-form');
   const err = $('token-error');
+  forgetOnLeave('token-new', ['token-value', 'token-example']);
   if (card.dataset.allowed !== '1') {
     $('tokens-not-allowed').hidden = false;
     form.hidden = true;
@@ -1050,6 +1064,7 @@ function initServices() {
   const card = $('admin-card');
   const err = $('svc-error');
   const ok = $('svc-ok');
+  forgetOnLeave('svc-token-new', ['svc-token-value']);
   /** @type {string} */ let editing = '';
   /** @type {string} */ let current = '';
   /** @param {string} text */

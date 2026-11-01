@@ -32,11 +32,11 @@
     <p class="notice notice-ok" role="status">{{ t:tokens.created }}</p>
     <label for="token-value">{{ t:tokens.yourToken }}</label>
     <div class="copy-row">
-      <input type="text" id="token-value" readonly spellcheck="false">
+      <input type="text" id="token-value" readonly spellcheck="false" autocomplete="off">
       <button type="button" class="btn btn-primary" data-copy="token-value">{{ t:created.copy }}</button>
     </div>
     <label for="token-example">{{ t:tokens.example }}</label>
-    <textarea id="token-example" rows="6" readonly spellcheck="false"></textarea>
+    <textarea id="token-example" rows="6" readonly spellcheck="false" autocomplete="off"></textarea>
     <p class="hint">{{ commentNote }}</p>
   </div>
 </section>
