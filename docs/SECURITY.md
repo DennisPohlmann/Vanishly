@@ -230,7 +230,9 @@ Optional (`AUDIT_LOG`, `API_TOKENS`, see [CONFIG.md](CONFIG.md#audit-log)).
 - **API tokens:** 256 random bits behind the prefix `vnly_<id>_` (secret
   scanners can find leaked ones). Redis keeps only an HMAC-SHA256 with a
   key derived from `AUTH_SECRET`, compared in constant time; the token is
-  shown once. A token acts as its owner with the scopes picked, cannot make
+  shown once (only in the create answer, `Cache-Control: no-store`; the
+  page empties its fields when it is left, so Back or a reload does not
+  show it again). A token acts as its owner with the scopes picked, cannot make
   or manage tokens, and with networks set (`API_TOKEN_IP_BINDING=required`
   makes it mandatory) works only from there: a token passed on to someone
   elsewhere is refused and logged. The client address comes from
