@@ -1,6 +1,6 @@
 {
   "name": "vanishly",
-  "version": "1.5.5",
+  "version": "1.5.6",
   "private": true,
   "description": "Vanishly - share secrets with one-time links that burn after reading",
   "license": "GPL-3.0-or-later",
