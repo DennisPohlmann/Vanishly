@@ -35,7 +35,7 @@ the points below, only as deep as the diff reaches, and report the result.
    `src/store.js`; parallel reveals must not return a secret twice (test
    "parallel reveals"). A GET of `/s/:id` never uses a view.
 4. **Passphrase:** checked on the server via the verifier hash with
-   `timingSafeEqual` before a view is used; wrong attempts are counted and
+   the Lua script in `src/store.js` before a view is used; wrong attempts are counted and
    end in a burn at `PASSPHRASE_ATTEMPTS`.
 5. **Ids:** 128-bit random, validated with `validId()` before any Redis
    call; no Redis key built from unvalidated input.

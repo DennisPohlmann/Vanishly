@@ -135,6 +135,18 @@ test('passphrase: wrong ones use no view, too many destroy the secret', opts, as
   assert.equal((await call(`/api/v1/receipts/${c2.data.receiptId}`)).data.state, 'burned');
 });
 
+test('parallel wrong passphrases: no more guesses than PASSPHRASE_ATTEMPTS, no key left behind', opts, async () => {
+  const c = await call('/api/v1/secrets', (await encryptSecret('x', 'pw')).payload);
+  const bad = 'A'.repeat(43);
+  const rs = await Promise.all(Array.from({ length: 30 }, () => call(`/api/v1/secrets/${c.data.id}/reveal`, { verifier: bad })));
+  const counts = rs.reduce((m, r) => ({ ...m, [r.status]: (m[r.status] || 0) + 1 }), /** @type {Record<number, number>} */ ({}));
+  assert.deepEqual(counts, { 403: 2, 410: 1, 404: 27 }); // PASSPHRASE_ATTEMPTS=3: two "wrong", the third burns
+  assert.equal(await store.redis.exists(`test${process.pid}:s:${c.data.id}`), 0);
+  const receipt = await call(`/api/v1/receipts/${c.data.receiptId}`);
+  assert.equal(receipt.data.state, 'burned');
+  assert.ok(!Number.isNaN(Date.parse(receipt.data.burned)), 'burn time is a time');
+});
+
 test('burn through the receipt', opts, async () => {
   const c = await call('/api/v1/secrets', (await encryptSecret('burn me')).payload);
   assert.equal((await call(`/api/v1/receipts/${c.data.receiptId}/burn`, {})).status, 200);

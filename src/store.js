@@ -12,17 +12,27 @@
 //   rl:<bucket>:<ip-hash>  counter for the rate limits
 // The server never sees the key of a secret, only the ciphertext.
 
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createClient } from 'redis';
 
-// Takes one view of the secret. Atomic, so two parallel reveals of a
-// one-view secret cannot both succeed. Fail-closed on purpose: the first
-// command after the existence check is a write (HINCRBY); if Redis refuses
-// writes (read-only, OOM), the script fails before the ciphertext is read,
-// and the ciphertext is only returned after the view was counted and, on
-// the last view, the key deleted.
+// Checks the passphrase and takes one view of the secret, in one atomic step:
+// parallel reveals cannot both use the last view, and parallel wrong guesses
+// cannot get past PASSPHRASE_ATTEMPTS. ARGV: view-log entry, log views (1/0),
+// time, SHA-256 of the verifier, attempts. A plain compare is fine: the caller
+// cannot steer the hash it is compared with. Fail-closed on purpose: the first
+// write comes before the ciphertext is read; if Redis refuses writes (read-only,
+// OOM), the script fails there, and the ciphertext is only returned after the
+// view was counted and, on the last view, the key deleted.
 const REVEAL = `
 if redis.call('EXISTS', KEYS[1]) == 0 then return false end
+local vh = redis.call('HGET', KEYS[1], 'vh')
+if vh and vh ~= '' and vh ~= ARGV[4] then
+  local tried = redis.call('HINCRBY', KEYS[1], 'attempts', 1)
+  if tried < tonumber(ARGV[5]) then return {'badpass', tonumber(ARGV[5]) - tried} end
+  redis.call('DEL', KEYS[1])
+  if redis.call('EXISTS', KEYS[2]) == 1 then redis.call('HSET', KEYS[2], 'state', 'burned', 'burned', ARGV[3]) end
+  return {'burned'}
+end
 local left = redis.call('HINCRBY', KEYS[1], 'views', -1)
 local d = redis.call('HMGET', KEYS[1], 'ct', 'iv', 'salt', 'it')
 if left <= 0 then redis.call('DEL', KEYS[1]) end
@@ -34,7 +44,7 @@ if redis.call('EXISTS', KEYS[2]) == 1 then
     if ttl > 0 then redis.call('PEXPIRE', KEYS[3], ttl) end
   end
 end
-return {left, d[1], d[2], d[3], d[4]}
+return {'ok', left, d[1], d[2], d[3], d[4]}
 `;
 
 const BURNED = `
@@ -250,28 +260,23 @@ export class Store {
    */
   async reveal(id, verifier, viewer = '', opener = '') {
     const s = `${this.p}s:${id}`;
-    const [vh, rid] = await this.redis.hmGet(s, ['vh', 'rid']);
+    const rid = await this.redis.hGet(s, 'rid');
     if (rid == null) return { status: 'notfound' };
-    if (vh) {
-      const ok =
-        typeof verifier === 'string' &&
-        verifier.length > 0 &&
-        timingSafeEqual(sha256(verifier), Buffer.from(vh, 'base64url'));
-      if (!ok) {
-        const tried = await this.redis.hIncrBy(s, 'attempts', 1);
-        if (tried >= this.attempts) {
-          await this.burnSecret(id, rid);
-          return { status: 'burned' };
-        }
-        return { status: 'badpass', attemptsLeft: this.attempts - tried };
-      }
-    }
     const r = `${this.p}r:${rid}`;
-    const entry = viewer ? `${Date.now()}\t${viewer.replace(/[\r\n]/g, ' ')}` : String(Date.now());
+    const now = String(Date.now());
+    const entry = viewer ? `${now}\t${viewer.replace(/[\r\n]/g, ' ')}` : now;
+    // '-' is no base64url SHA-256, so a missing verifier never matches.
+    const vh = typeof verifier === 'string' && verifier.length > 0 ? sha256(verifier).toString('base64url') : '-';
     const res = /** @type {any[] | null} */ (
-      await this.redis.eval(REVEAL, { keys: [s, r, `${r}:v`], arguments: [entry, this.viewLog ? '1' : '0'] })
+      await this.redis.eval(REVEAL, {
+        keys: [s, r, `${r}:v`],
+        arguments: [entry, this.viewLog ? '1' : '0', now, vh, String(this.attempts)],
+      })
     );
-    if (!res || Number(res[0]) < 0) return { status: 'notfound' };
+    if (!res) return { status: 'notfound' };
+    if (res[0] === 'badpass') return { status: 'badpass', attemptsLeft: Number(res[1]) };
+    if (res[0] === 'burned') return { status: 'burned' };
+    if (Number(res[1]) < 0) return { status: 'notfound' };
     if (opener && this.receipts) {
       // Who opened it may see the status too; kept as long as the receipt.
       const ttl = Number(await this.redis.pTTL(r));
@@ -279,8 +284,8 @@ export class Store {
     }
     return {
       status: 'ok',
-      payload: { ciphertext: res[1], iv: res[2], salt: res[3], iterations: Number(res[4]) },
-      viewsLeft: Number(res[0]),
+      payload: { ciphertext: res[2], iv: res[3], salt: res[4], iterations: Number(res[5]) },
+      viewsLeft: Number(res[1]),
     };
   }
 

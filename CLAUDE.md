@@ -98,8 +98,9 @@ current, audit summary at the end.
   encrypts on the server, and it keeps neither plaintext nor key.
 - A view is taken only by the Lua script in `src/store.js` (atomic); a GET
   of `/s/:id` uses no view (link previews must not burn secrets).
-- Passphrase verifiers are compared as SHA-256 with `timingSafeEqual`;
-  wrong attempts are counted and burn the secret at the limit.
+- Passphrase verifiers are compared as SHA-256 inside the same Lua script
+  that takes the view; wrong attempts are counted and burn the secret at
+  the limit, atomically.
 - Ids are checked with `validId()` before they reach Redis.
 - Sign-in (`src/auth.js`) is optional and off by default. A secret with
   recipients is handed out (and its metadata shown) only after the

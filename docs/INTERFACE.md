@@ -133,9 +133,10 @@ All keys start with `REDIS_PREFIX` (default `vanishly:`).
 | `audit` | stream | `AUDIT_LOG_REDIS`: field `e`, the audit event as written | kept (`AUDIT_LOG_REDIS_MAXLEN` trims) |
 | `audit:head:<instance>` | string | `{"seq":n,"hash":"..."}`: the chain head of an instance, to continue after a restart | kept |
 
-A view is taken by one Lua script (`EXISTS`, `HINCRBY views -1`, `DEL` at
-zero, receipt update), so parallel requests cannot read a one-view secret
-twice.
+A view is taken by one Lua script (`EXISTS`, verifier compare with
+`HINCRBY attempts` and `DEL` at the limit, `HINCRBY views -1`, `DEL` at zero,
+receipt update), so parallel requests cannot read a one-view secret twice or
+guess more often than `PASSPHRASE_ATTEMPTS`.
 
 ## Audit log
 

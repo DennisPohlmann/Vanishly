@@ -104,8 +104,9 @@ is not enough.
   passphrase itself never leaves the browser.
 - So that the server can refuse a wrong passphrase **without** knowing it,
   the browser also derives a separate check value (HKDF, own label). Redis
-  stores only the SHA-256 of that value; the server compares in constant
-  time (`timingSafeEqual`).
+  stores only the SHA-256 of that value; the server hashes what the browser
+  sends and compares the two hashes inside the same Lua script that takes
+  the view, so parallel guesses cannot get past the attempt limit.
 - A wrong passphrase uses no view. After `PASSPHRASE_ATTEMPTS` wrong tries
   (default 5) the secret is destroyed.
 
@@ -134,11 +135,12 @@ Vanishly is built so that a Redis problem can **lose** a secret, but never
 **leak** one or hand it out more often than allowed.
 
 - **Taking a view is atomic.** One Lua script checks that the secret
-  exists, counts the view down, reads the ciphertext and deletes the hash
+  exists, checks the passphrase (counting wrong ones and burning at the
+  limit), counts the view down, reads the ciphertext and deletes the hash
   on the last view. Redis runs a script as one step, so two people opening
   a one-view link at the same moment cannot both get it.
-- **Fail-closed.** The first thing the script does is a write (counting the
-  view down). If Redis refuses writes (read-only replica, `OOM` with
+- **Fail-closed.** Before it reads the ciphertext the script writes (counting
+  the view down). If Redis refuses writes (read-only replica, `OOM` with
   `maxmemory`, lost connection), the script stops there, nothing is read
   and the request fails with an error. The browser shows "something went
   wrong", not the secret.
