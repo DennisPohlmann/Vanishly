@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Runs tools/check-all.sh before every push; a failing check stops the push.
+# Installed by `make hooks` (git config core.hooksPath .githooks).
+# In an emergency: git push --no-verify (the CI still checks everything).
+exec "$(git rev-parse --show-toplevel)/tools/check-all.sh"

@@ -6,7 +6,8 @@ name: image scan
 # category per tag). Fixable HIGH or CRITICAL ones open one issue labelled
 # "security" (or update it), and the first clean run closes it again. The
 # fix is a new image: merge the Dependabot PR for the base image or the
-# package, or rebuild (build workflow, weekly for edge).
+# package, then start a release run (build workflow, see docs/DEVELOPMENT.md).
+# Without a release run neither latest nor edge changes.
 on:
   schedule:
     - cron: '17 3 * * *'
@@ -75,7 +76,7 @@ jobs:
             echo "| --- | --- | --- | --- | --- | --- |"
             echo "$rows"
             echo
-            echo "Fix: merge the pending Dependabot PR for the base image or the package, or rebuild the image. A finding accepted on purpose goes into \`.trivyignore\` with a reason and an expiry date."
+            echo "Fix: merge the pending Dependabot PR for the base image or the package, then start a release run (build workflow, release=true). A finding accepted on purpose goes into \`.trivyignore\` with a reason and an expiry date."
           } > body.md
           if [ -n "$open" ]; then
             gh issue edit "$open" --repo "$GITHUB_REPOSITORY" --body-file body.md

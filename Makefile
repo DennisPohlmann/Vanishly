@@ -8,13 +8,15 @@ endif
 PKG     := vanishly-$(VERSION)
 IMAGE   ?= vanishly
 
-.PHONY: check vendor package image up clean
+.PHONY: check hooks vendor package image up clean
 
+# Everything the CI checks on a push, as far as this machine can.
 check:
-	npm ci
-	npm run vendor
-	npm run lint
-	npm test
+	tools/check-all.sh
+
+# Runs tools/check-all.sh as git pre-push hook.
+hooks:
+	git config core.hooksPath .githooks
 
 # vendor/scalar.js for the API reference page, from the development packages.
 vendor:

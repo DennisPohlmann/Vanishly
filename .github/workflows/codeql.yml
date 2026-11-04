@@ -2,13 +2,11 @@ name: codeql
 
 # Static analysis of the JavaScript (server, browser code, tests) with
 # GitHub CodeQL, "security-extended" queries. Findings appear in the
-# Security tab (code scanning). Runs on every push and pull request to main
-# and once a week, because new queries arrive without a change here.
+# Security tab (code scanning). Runs on every push (any branch) and pull
+# request and once a week, because new queries arrive without a change here.
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
   schedule:
     - cron: '41 4 * * 2'
   workflow_dispatch:

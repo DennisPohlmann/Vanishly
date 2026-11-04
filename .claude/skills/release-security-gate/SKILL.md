@@ -1,6 +1,6 @@
 ---
 name: release-security-gate
-description: Full security pass over Vanishly before release-relevant commits are pushed to main (semantic-release then bumps, tags and releases). Use whenever a release is being prepared; ends with a go/no-go report and never tags or pushes on its own.
+description: Full security pass over Vanishly before Dennis starts a release run (semantic-release then bumps, tags and releases). Use whenever a release is being prepared; ends with a go/no-go report and never starts a release, tags or pushes on its own.
 ---
 
 # Release security gate (Vanishly)
@@ -9,14 +9,15 @@ Run all steps over the whole repository, not only the last diff. Report a
 table with the 14 points of `security-check` (ok / finding / n.a.) and a
 go/no-go.
 
-Releases are made by semantic-release in CI: every push to `main` with a
-`feat`, `fix` or breaking-change commit bumps the version, writes
-`CHANGELOG.md`, tags `vX.Y.Z`, publishes the GitHub release with the tar.gz
-and the container image. So this gate runs **before pushing release-relevant
-commits to `main`**, without asking first. Never tag by hand, never edit the
-version files or `CHANGELOG.md`, do not push to `main` yourself: report the
-result and the version semantic-release will make (`feat` → minor, `fix` →
-patch, `!`/`BREAKING CHANGE` → major), then ask Dennis for the go.
+Releases are made by semantic-release in CI, only in a run Dennis starts
+by hand (build workflow on `main` with `release=true`): with a `feat`, `fix`
+or breaking-change commit since the last tag it bumps the version, writes
+`CHANGELOG.md`, tags `vX.Y.Z`, publishes the GitHub release with the tar.gz,
+the container image and the Helm chart. So this gate runs **before that
+release run**, without asking first. Never start a release run, never tag
+by hand, never edit the version files or `CHANGELOG.md`: report the result
+and the version semantic-release will make (`feat` → minor, `fix` → patch,
+`!`/`BREAKING CHANGE` → major), then ask Dennis for the go.
 
 ## Steps
 

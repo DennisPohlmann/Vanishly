@@ -259,4 +259,3 @@ technical user and token, the comment and the run id.
 curl -s https://ots.example.com/api/v1/admin/secrets?status=opened \
   -H "Authorization: Bearer vnly_..." -H "X-Audit-Comment: weekly review" -H "X-Run-Id: review-42"
 ```
-
