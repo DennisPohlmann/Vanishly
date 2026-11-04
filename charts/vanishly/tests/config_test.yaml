@@ -59,8 +59,11 @@ tests:
           path: data.BASE_URL
           value: https://secrets.example.com/ots
 
-  - it: makes no Secret by default
+  - it: makes no Secret when no key is generated and no secretConfig is set
     template: templates/secret.yaml
+    set:
+      rateLimitKey:
+        generate: false
     asserts:
       - hasDocuments:
           count: 0
@@ -68,6 +71,8 @@ tests:
   - it: stores secretConfig and an external Redis URL in Secrets
     template: templates/secret.yaml
     set:
+      rateLimitKey:
+        generate: false
       secretConfig:
         CONFIRM_TEXT: hello
       redis:
