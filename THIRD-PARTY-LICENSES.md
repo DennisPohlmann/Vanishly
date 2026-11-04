@@ -15,7 +15,7 @@ texts ship with each package in `node_modules/<package>/LICENSE`.
 | [jose](https://github.com/panva/jose) | 6.2.14 | MIT | checks API bearer tokens (optional, `AUTH_API_AUDIENCE`) |
 | [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | 8.7.1 | MIT | rate-limit middleware; counts in Redis through `src/ratelimit.js` |
 | [mock-oauth2-server](https://github.com/navikt/mock-oauth2-server) (docker-compose/standalone/docker-compose.auth-test.yml, separate container) | 6.1.4 | MIT | test login server, only for trying the sign-in locally; not part of the image |
-| [Keycloak](https://www.keycloak.org) (docker-compose/keycloak/, separate container) | 26.0 | Apache-2.0 | example login server with demo users, only for trying sign-in, recipients and groups locally; not part of the image |
+| [Keycloak](https://www.keycloak.org) (docker-compose/keycloak/, separate container) | 26.8 | Apache-2.0 | example login server with demo users, only for trying sign-in, recipients and groups locally; not part of the image |
 | [Node.js](https://nodejs.org) (container base image) | 24 LTS | MIT and others | runtime |
 | [Alpine Linux](https://alpinelinux.org) (container base image) | | various (GPL-2.0, MIT, ...) | container OS |
 | [Redis](https://redis.io) (docker compose and Helm chart, separate container) | 8 | RSALv2 / SSPLv1 / AGPLv3 (tri-license) | storage; runs as its own service, not linked into Vanishly |
