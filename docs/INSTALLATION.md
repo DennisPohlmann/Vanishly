@@ -88,7 +88,7 @@ docker run -d --name vanishly --network vanishly --restart unless-stopped \
 ```
 
 Image tags: `latest` (newest release), `<major>.<minor>`, `<version>`,
-`edge` (newest commit on `main`).
+`edge` (`main` at the last release run).
 
 ## 3. tar.gz with systemd
 
@@ -472,4 +472,3 @@ stream or bound it with `AUDIT_LOG_REDIS_MAXLEN`.
 `redis.persistence.size`, `storageClass`, or `existingClaim`), or an
 external Redis with persistence (`redis.enabled=false`,
 `redis.external.url`).
-

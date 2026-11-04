@@ -13,11 +13,13 @@ tokens in `src/tokens.js`, settings in `src/config.js` (`.env.example`), passphr
 rendering in `src/theme.js` (`templates/`, `views/`, `translations/`). API
 contract: `openapi/openapi.json`, API reference (Scalar) at `/api/docs`.
 
-Check: `npm ci`, `npm run lint`, `npm test` (Redis via `REDIS_URL` or a
-local `redis-server`). Run: `docker compose up -d` (published image), `make up` (build) or `npm start`.
+Check: `tools/check-all.sh` (= `make check`; what the CI runs on a push,
+as far as this machine can; `--fast` without accessibility and image), or
+single steps `npm ci`, `npm run lint`, `npm test` (Redis via `REDIS_URL` or
+a local `redis-server`). `make hooks` makes it the git pre-push hook. Run: `docker compose up -d` (published image), `make up` (build) or `npm start`.
 
 Helm chart in `charts/vanishly` (published with every release to
-`oci://ghcr.io/dennispohlmann/charts/vanishly`, checked by
+`oci://ghcr.io/dennispohlmann/charts/vanishly`, checked on every push by
 `.github/workflows/chart.yml`). A new setting in `src/config.js` also gets
 a key in its `values.yaml` `config` block and `values.schema.json` (and see
 the env file rule under "Before every commit").
@@ -26,9 +28,12 @@ Version in `VERSION` and `package.json`; history in `CHANGELOG.md`.
 Third-party licenses: `THIRD-PARTY-LICENSES.md`.
 
 Releases: Conventional Commits + semantic-release (`.releaserc.json`). CI
-(`.github/workflows/build.yml`) checks every push and PR, publishes
-`ghcr.io/dennispohlmann/vanishly:edge` from `main`; `feat`/`fix`/breaking
-commits make semantic-release bump the version files, write
+(`.github/workflows/build.yml`) checks and builds every push (any branch)
+and PR and publishes nothing. A release happens only when Dennis starts
+the build workflow by hand on `main` with `release=true` (Actions, "Run
+workflow", or `gh workflow run build.yml --ref main -f release=true`); it
+publishes `ghcr.io/dennispohlmann/vanishly:edge`, and `feat`/`fix`/breaking
+commits since the last tag make semantic-release bump the version files, write
 `CHANGELOG.md`, commit `chore(release): vX.Y.Z [skip ci]`, tag `vX.Y.Z` and
 publish the GitHub release with the tar.gz (+ `.sha256`) and the image tags
 `<version>`, `<major>.<minor>`, `latest`. The nightly `image-scan.yml`
@@ -68,11 +73,11 @@ Project layout, documentation structure, CI and skills follow
    run the `security-check` skill on the diff and fix what it finds. Say
    which checklist points the change touched and the result.
 2. **Every release (standing rule from Dennis):** releases are made by
-   semantic-release in CI when `feat`, `fix` or breaking-change commits reach
-   `main`. Before pushing such commits to `main`, run the
-   `release-security-gate` skill over the whole repo, without asking first.
-   Never tag by hand or edit version files / `CHANGELOG.md`; report the gate
-   result and ask Dennis for the go before the push.
+   semantic-release in CI, only in a release run Dennis starts by hand.
+   When a release is being prepared, run the `release-security-gate` skill
+   over the whole repo, without asking first, and report the result before
+   Dennis starts the run. Never start a release run, tag by hand or edit
+   version files / `CHANGELOG.md` yourself.
 3. **Sensitive data, every task (standing rule from Dennis):** before you
    call a task done, commit or publish anything, run the
    `security-privacy-audit` skill over the working tree, the diff, docs and

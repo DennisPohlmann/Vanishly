@@ -43,9 +43,9 @@ written by semantic-release in CI. Never edit them by hand, never tag.
   footer (major release). A change of the crypto format v1, the API or a
   setting's meaning is breaking.
 - One logical change per commit.
-- Say in the answer which type you chose and whether it triggers a release;
-  a `feat` or `fix` on `main` needs the `release-security-gate` skill and
-  Dennis' go before the push.
+- Say in the answer which type you chose and which version bump it makes
+  in the next release run (Dennis starts those by hand; the
+  `release-security-gate` skill runs before).
 
 ## 3. Dependencies and toolchain: check, suggest, do not update on your own
 

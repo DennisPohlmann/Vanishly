@@ -9,7 +9,7 @@ that protection, is described in [docs/SECURITY.md](../docs/SECURITY.md).
 | Version | Supported |
 |---|---|
 | latest release (`latest`, newest `<major>.<minor>`) | yes |
-| `edge` (current `main`) | yes, fixes land here first |
+| `edge` (`main` at the last release run) | yes, fixes land here first |
 | older releases | no, please update |
 
 Fixes are released as a new patch or minor version; there are no

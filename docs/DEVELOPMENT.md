@@ -34,6 +34,22 @@ Project layout:
 
 ## Checks
 
+`tools/check-all.sh` (or `make check`) runs locally what the CI runs on
+every push: whitespace (`git diff --check`), `npm ci`, vendor, type check,
+`npm audit`, tests, OpenAPI lint, accessibility, `make package`, and, when
+installed, actionlint, Trivy, the image build (Docker) and the chart
+checks (Helm, helm-unittest, helm-docs, kubeconform). Redis comes from
+`REDIS_URL`, a throwaway `redis-server` or a Docker container. What the
+machine cannot check is listed at the end and left to the CI (always: `ct
+install` in kind). `--fast` leaves out accessibility and the image build.
+
+```bash
+make hooks             # git config core.hooksPath .githooks: check-all.sh before every push
+git push --no-verify   # skips the hook; the CI still checks everything
+```
+
+Single steps:
+
 ```bash
 npm run lint    # tsc --checkJs over src, public/js, tests (jsconfig.json)
 npm test        # node --test; API tests need Redis: REDIS_URL or a redis-server in PATH
@@ -61,28 +77,56 @@ server of `docker-compose/standalone/docker-compose.auth-test.yml`
 
 ## CI (`.github/workflows/build.yml`)
 
-- **check:** `npm ci`, `npm run vendor`, type check, tests against a Redis service, OpenAPI
-  lint; on every push, pull request, weekly schedule and manual run.
-- **image-scan:** `trivy config` on the Dockerfile, builds the image and
-  scans it; fixable HIGH/CRITICAL findings fail the build (`.trivyignore`
-  for accepted ones, with reason and expiry).
-- **release** (push to `main`): semantic-release reads the Conventional
-  Commits since the last tag; `feat` → minor, `fix`/`perf` → patch, `!` or
-  `BREAKING CHANGE` → major. It updates `VERSION`, `package.json`,
-  `package-lock.json`, `CHANGELOG.md`, commits `chore(release): vX.Y.Z [skip
-  ci]`, tags and creates the GitHub release as a draft (releases are
-  immutable once published, so assets are added first).
-- **package:** `make package`, uploads the tar.gz and `.sha256` as artifact
-  and to the release.
-- **image:** pushes `ghcr.io/dennispohlmann/vanishly` with `edge` (main),
-  `<version>`, `<major>.<minor>`, `latest` (release), SBOM and provenance;
-  the SPDX SBOM goes into the release.
-- **publish-release:** after package and image, publishes the draft
+Every push (any branch), pull request and the weekly schedule run
+everything a release would run, and publish nothing:
+
+- **check:** whitespace, `npm ci`, `npm run vendor`, type check, `npm
+  audit`, tests against a Redis service, OpenAPI lint, accessibility.
+- **image-scan:** `trivy config` on the Dockerfile, `trivy fs` over the
+  repository, the Redis image, builds the image and scans it; fixable
+  HIGH/CRITICAL findings fail the build (`.trivyignore` for accepted ones,
+  with reason and expiry).
+- **package:** `make package`; the tar.gz and `.sha256` are a workflow
+  artifact for 7 days.
+
+`codeql.yml` runs CodeQL on every push and pull request.
+
+### Releases (manual only)
+
+A release is made only when Dennis starts it: Actions → **build** → **Run
+workflow** on `main` with **release** ticked, or
+
+```bash
+gh workflow run build.yml --ref main -f release=true
+```
+
+A manual run without `release` only checks and builds. A release run on
+another branch fails at once. In a release run, after check and
+image-scan:
+
+- **release:** semantic-release reads the Conventional Commits since the
+  last tag; `feat` → minor, `fix`/`perf` → patch, `!` or `BREAKING CHANGE`
+  → major, `docs`/`chore`/`ci`/`test`/`refactor`/`style` → no release. It
+  updates `VERSION`, `package.json`, `package-lock.json`,
+  `charts/vanishly/Chart.yaml`, `CHANGELOG.md`, commits `chore(release):
+  vX.Y.Z [skip ci]`, tags and creates the GitHub release as a draft
+  (releases are immutable once published, so assets are added first).
+- **package:** builds the tag and adds the tar.gz and `.sha256` to the
+  release.
+- **image:** pushes `ghcr.io/dennispohlmann/vanishly` with `edge` (every
+  release run, also without a new version) and `<version>`,
+  `<major>.<minor>`, `latest` (new version), SBOM and provenance; the SPDX
+  SBOM goes into the release.
+- **chart:** pushes the chart (see below).
+- **publish-release:** after package, image and chart, publishes the draft
   release.
 
-`.github/workflows/chart.yml` checks the Helm chart when `charts/` changes
-(push, pull request): `helm lint --strict` with every `ci/*-values.yaml`,
-the unit tests (`helm unittest charts/vanishly`), that
+### Helm chart (`.github/workflows/chart.yml`)
+
+`chart.yml` checks the Helm chart on every push and pull request and keeps
+the packaged chart as a workflow artifact for 7 days: `helm lint --strict`
+with every `ci/*-values.yaml`, the unit tests (`helm unittest
+charts/vanishly`), that
 `charts/vanishly/README.md` is what `helm-docs` generates from
 `values.yaml`, kubeconform, `ct lint` and `ct install` in a kind cluster
 with an image built from the commit (with `helm test`). For a release,
@@ -166,9 +210,9 @@ public (a new package starts private: Package settings, Change visibility).
 ## Releases
 
 Never edit `VERSION`, `CHANGELOG.md` or the version in `package.json` by
-hand, never tag by hand. Write Conventional Commits; the pipeline does the
-rest. Before pushing `feat`/`fix` commits to `main`, run the
-`release-security-gate` skill (`.claude/skills/`).
+hand, never tag by hand. Write Conventional Commits; the release run (see
+[Releases (manual only)](#releases-manual-only)) does the rest. Before
+starting it, run the `release-security-gate` skill (`.claude/skills/`).
 
 ## Claude skills
 

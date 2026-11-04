@@ -1,28 +1,19 @@
 name: chart
 
-# Checks the Helm chart in charts/vanishly on every pull request and push
-# to main that touches it: helm lint, values.schema.json, unit tests
+# Checks the Helm chart in charts/vanishly on every push (any branch) and
+# every pull request: helm lint, values.schema.json, unit tests
 # (helm-unittest), the generated README (helm-docs), kubeconform against the
 # Kubernetes API, and ct lint + ct install, which installs the chart with
 # every file in charts/vanishly/ci/ into a kind cluster (with an image built
-# from this commit) and runs `helm test`.
-# build.yml calls it for a release (input "release"): it then checks the
-# chart again, packages it with the release version as chart and app
-# version, pushes it to oci://ghcr.io/<owner>/charts/vanishly and adds the
-# .tgz to the draft release.
+# from this commit) and runs `helm test`. The packaged chart is kept as a
+# workflow artifact for 7 days; nothing is pushed.
+# build.yml calls it in a manual release run (input "release"): it then
+# checks the chart again, packages it with the release version as chart and
+# app version, pushes it to oci://ghcr.io/<owner>/charts/vanishly and adds
+# the .tgz to the draft release.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - charts/**
-      - ct.yaml
-      - .github/workflows/chart.yml
   push:
-    branches: [main]
-    paths:
-      - charts/**
-      - ct.yaml
-      - .github/workflows/chart.yml
+  pull_request:
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -64,7 +55,7 @@ jobs:
         run: |
           # Helm 4 verifies plugins; a plugin installed from git has no signature.
           verify=$(helm plugin install --help | grep -q -- '--verify' && echo --verify=false || true)
-          helm plugin install https://github.com/helm-unittest/helm-unittest.git --version "$HELM_UNITTEST_VERSION" $verify
+          helm plugin install https://github.com/helm-unittest/helm-unittest.git --version "$HELM_UNITTEST_VERSION" ${verify:+"$verify"}
           helm unittest --strict "$CHART"
       - name: README.md is generated from values.yaml
         run: |
@@ -81,6 +72,16 @@ jobs:
                 -schema-location default \
                 -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
           done
+      - name: package (check only, not pushed)
+        if: inputs.release == ''
+        run: helm package "$CHART" --destination dist
+      - uses: actions/upload-artifact@v7
+        if: inputs.release == ''
+        with:
+          name: chart
+          path: dist/*.tgz
+          if-no-files-found: error
+          retention-days: 7
 
   # A real install in kind with an image built from this commit; skipped
   # when build.yml calls this for a release (that commit was tested on push).

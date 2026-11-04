@@ -21,18 +21,12 @@ By taking part you agree to the [code of conduct](CODE_OF_CONDUCT.md).
 2. Set up and run it locally as in
    [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md#local-setup).
 3. Make the change, with tests (`tests/`, `node:test`).
-4. Run the checks:
-
-   ```bash
-   npm run lint
-   npm test                 # needs Redis: REDIS_URL or a redis-server in PATH
-   npm run test:a11y        # for changes of pages, CSS, templates or texts
-   ```
-
-   For a changed Helm chart also `helm lint --strict charts/vanishly` and
-   `helm unittest charts/vanishly`.
+4. Run the checks: `tools/check-all.sh` (or `make check`) runs what the CI
+   runs on every push, as far as your machine can (Redis via `REDIS_URL`, a
+   `redis-server` in PATH or Docker; Docker, Trivy and Helm when
+   installed). `make hooks` runs it before every `git push`.
 5. Open a pull request against `main` and fill in the template. CI runs the
-   same checks plus CodeQL and Trivy.
+   same checks plus CodeQL, Trivy and the chart install in kind.
 
 ## Rules the code keeps
 
