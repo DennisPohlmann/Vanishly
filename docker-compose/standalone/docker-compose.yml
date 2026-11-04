@@ -1,10 +1,11 @@
 # Vanishly with Redis.
 #
-#   cp .env.example .env     # optional: your values; or edit environment: below
+#   cp .env.example .env     # required: all settings, then your values
 #   docker compose up -d
 #
 # The app listens on 127.0.0.1:3000; put a reverse proxy with TLS in front
 # (docs/INSTALLATION.md). Redis is reachable only inside this network.
+# All settings are in .env; your own docker-compose.override.yml can add environment:, which wins (docs/INSTALLATION.md).
 name: vanishly
 
 # podman-compose: no pod and no extra infra container; Docker ignores this.
@@ -15,176 +16,14 @@ services:
   vanishly:
     image: ghcr.io/dennispohlmann/vanishly:latest
     # The image runs as the unprivileged user "node" (uid 1000).
-    # This file only pulls images, so it works on its own in any folder.
+    # This file only pulls images, so with its .env it works in any folder.
     # To build from a checkout instead:
     #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
     restart: unless-stopped
-    # Every setting with its default. Change it here, or set it in .env next
-    # to this file (VAR=value): ${VAR:-default} takes .env first. An empty
-    # value means the default. A wrong value or a misspelt name stops the
-    # start with a message (docker compose logs vanishly). docs/CONFIG.md
-    # explains each one. env_file also passes the names in .env that are not
-    # listed here, so a typo there (ENABLE_VEIWS) stops the start too.
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      # --- Server
-      BASE_URL: ${BASE_URL:-}                     # public address, e.g. https://ots.example.com (links of /v1/share)
-      HOST: ${HOST:-0.0.0.0}                      # listen address inside the container
-      PORT: ${PORT:-3000}                         # listen port inside the container (see ports: below)
-      TRUST_PROXY: ${TRUST_PROXY:-false}          # reverse proxies in front: 1, loopback, 10.0.0.0/8, or false
-      HSTS: ${HSTS:-false}                        # send Strict-Transport-Security (only behind HTTPS)
-      ACCESS_LOG: ${ACCESS_LOG:-true}             # one line per request, ids replaced by :id
-      # --- Redis
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379} # with password: redis://:change-me@redis:6379
-      # External Redis: set REDIS_URL (e.g. rediss://app:change-me@redis.example.com:6380)
-      # and remove the redis service and depends_on below (docs/CONFIG.md#redis).
-      REDIS_TLS_CA_FILE: ${REDIS_TLS_CA_FILE:-}  # own CA (PEM) for rediss://
-      REDIS_PREFIX: ${REDIS_PREFIX:-vanishly:}    # prefix of all keys
-      # --- Design and language
-      TEMPLATE: ${TEMPLATE:-default}              # default, aurora, example-brand or your own
-      DEFAULT_MODE: ${DEFAULT_MODE:-}             # auto (system setting), light or dark (empty: the template's choice, usually auto)
-      TEMPLATES_DIR: ${TEMPLATES_DIR:-/var/lib/vanishly/templates}
-      LANGUAGES: ${LANGUAGES:-}                   # languages served, e.g. en (empty: all translations, en,de)
-      DEFAULT_LANG: ${DEFAULT_LANG:-en}           # when the browser names none of LANGUAGES
-      TRANSLATIONS_DIR: ${TRANSLATIONS_DIR:-/var/lib/vanishly/translations}  # own translations (fr.json, ...)
-      # --- Expiry and views
-      TTL_OPTIONS: ${TTL_OPTIONS:-}               # dropdown entries, e.g. 15m,1h,1d,7d (empty: 5m,1h,1d,3d,7d up to MAX_TTL)
-      DEFAULT_TTL: ${DEFAULT_TTL:-}               # preselected entry, e.g. 1d (empty: 1 day or the closest option)
-      MAX_TTL: ${MAX_TTL:-}                       # longest expiry in seconds (empty: 604800, or the largest TTL_OPTIONS entry)
-      MAX_VIEWS: ${MAX_VIEWS:-10}                 # most views per secret (1-100)
-      RECEIPT_KEEP: ${RECEIPT_KEEP:-604800}       # seconds a receipt stays after its secret is gone
-      # --- Secret and passphrase rules
-      MAX_SECRET_CHARS: ${MAX_SECRET_CHARS:-10000}
-      MIN_SECRET_CHARS: ${MIN_SECRET_CHARS:-1}
-      MIN_PASSPHRASE_LENGTH: ${MIN_PASSPHRASE_LENGTH:-0}       # 0 = any
-      PASSPHRASE_COMPLEXITY: ${PASSPHRASE_COMPLEXITY:-}        # upper,lower,digit,symbol or all (empty: none)
-      REQUIRE_PASSPHRASE: ${REQUIRE_PASSPHRASE:-false}         # true, or unless-recipients: only secrets without recipients
-      PASSPHRASE_ATTEMPTS: ${PASSPHRASE_ATTEMPTS:-5}           # wrong passphrases before the secret burns
-      # --- Confirmation checkbox before "Create secret link"
-      CONFIRM_CHECKBOX: ${CONFIRM_CHECKBOX:-false}
-      CONFIRM_TEXT: ${CONFIRM_TEXT:-}             # both languages (empty: built-in text)
-      CONFIRM_TEXT_EN: ${CONFIRM_TEXT_EN:-}
-      CONFIRM_TEXT_DE: ${CONFIRM_TEXT_DE:-}
-      # --- "Generate" button
-      GENERATOR_LENGTH: ${GENERATOR_LENGTH:-20}   # 8-128
-      GENERATOR_COMPLEXITY: ${GENERATOR_COMPLEXITY:-all}       # upper,lower,digit,symbol or all
-      # --- Rate limits per client IP and window; 0 switches one off
-      RATE_LIMIT_CREATE: ${RATE_LIMIT_CREATE:-30}
-      RATE_LIMIT_READ: ${RATE_LIMIT_READ:-120}
-      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-600}
-      RATE_LIMIT_KEY: ${RATE_LIMIT_KEY:-}                      # 32+ characters (openssl rand -base64 48), or RATE_LIMIT_KEY_FILE; empty: random per process
-      # --- API
-      ENABLE_API: ${ENABLE_API:-true}             # false: the API only serves this server's own pages
-      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-true}   # API reference (Scalar) at /api/docs
-      ENABLE_API_LINK: ${ENABLE_API_LINK:-true}   # "API" link in the footer
-      ENABLE_SHARE_API: ${ENABLE_SHARE_API:-true} # POST /api/v1/share (server-side encryption for scripts)
-      ENABLE_SECRET_META_API: ${ENABLE_SECRET_META_API:-true}  # GET /api/v1/secrets/{id} (state without a view)
-      ENABLE_CONFIG_API: ${ENABLE_CONFIG_API:-true}            # GET /api/v1/config (limits and options)
-      ENABLE_ME_API: ${ENABLE_ME_API:-true}                    # GET /api/v1/me (who is signed in)
-      ENABLE_CREATE_API: ${ENABLE_CREATE_API:-true}            # POST /api/v1/secrets (false: only the form)
-      ENABLE_REVEAL_API: ${ENABLE_REVEAL_API:-true}            # POST /api/v1/secrets/{id}/reveal (false: only the reveal page)
-      ENABLE_RECEIPT_API: ${ENABLE_RECEIPT_API:-true}          # GET /api/v1/receipts/{id}, .../burn (false: only the status page)
-      ENABLE_API_INDEX: ${ENABLE_API_INDEX:-true}              # GET /api, /api/v1 (index)
-      ENABLE_OPEN_API: ${ENABLE_OPEN_API:-true}   # POST /api/v1/open (open a link with its passphrase from scripts)
-      # --- Features (true = on)
-      ENABLE_PASSPHRASE: ${ENABLE_PASSPHRASE:-true}            # passphrase field
-      ENABLE_VIEWS: ${ENABLE_VIEWS:-true}                      # views dropdown (false: always 1 view)
-      ENABLE_RECEIPTS: ${ENABLE_RECEIPTS:-true}                # status page for the sender
-      ENABLE_BURN: ${ENABLE_BURN:-true}                        # "Burn now" on the status page
-      ENABLE_VIEW_LOG: ${ENABLE_VIEW_LOG:-true}                # times of the views on the status page
-      ENABLE_RECEIPT_SHARE_LINK: ${ENABLE_RECEIPT_SHARE_LINK:-true}  # share link again on the status page
-      ENABLE_GENERATOR: ${ENABLE_GENERATOR:-true}              # "Generate" button
-      ENABLE_LANG_SWITCH: ${ENABLE_LANG_SWITCH:-true}          # language link in the header
-      ENABLE_THEME_TOGGLE: ${ENABLE_THEME_TOGGLE:-true}        # light/dark button in the header
-      ENABLE_GITHUB_LINK: ${ENABLE_GITHUB_LINK:-true}          # "Powered by Vanishly" link to GitHub in the footer
-      # --- Sign-in and recipients (docs/CONFIG.md); off with AUTH_PROVIDER=none,
-      # then the others must stay empty
-      AUTH_PROVIDER: ${AUTH_PROVIDER:-none}       # none, entra, keycloak, okta, auth0, google, ping, jumpcloud, cognito or oidc (needs BASE_URL; docs/providers)
-      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}       # entra: directory (tenant) id
-      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}       # entra: application (client) id
-      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}            # or ENTRA_CLIENT_SECRET_FILE (Docker secret)
-      ENTRA_AUTHORITY: ${ENTRA_AUTHORITY:-}       # empty: https://login.microsoftonline.com
-      ENTRA_GRAPH: ${ENTRA_GRAPH:-}               # true: Graph (GroupMember.Read.All): group search, >200 groups
-      ENTRA_GRAPH_URL: ${ENTRA_GRAPH_URL:-}       # empty: https://graph.microsoft.com
-      OIDC_ISSUER: ${OIDC_ISSUER:-}               # oidc and presets: issuer URL
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-} # or OIDC_CLIENT_SECRET_FILE
-      OIDC_SCOPES: ${OIDC_SCOPES:-}               # empty: openid profile email
-      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}   # empty: the preset's (groups; cognito:groups)
-      AUTH_ALLOWED_DOMAINS: ${AUTH_ALLOWED_DOMAINS:-}          # only these domains sign in (required for google)
-      DIRECTORY_API: ${DIRECTORY_API:-}           # presets, true: people/group search in the directory
-      DIRECTORY_URL: ${DIRECTORY_URL:-}           # empty: from the issuer
-      DIRECTORY_CLIENT_ID: ${DIRECTORY_CLIENT_ID:-}            # keycloak, auth0, ping: own client (empty: the sign-in client)
-      DIRECTORY_CLIENT_SECRET: ${DIRECTORY_CLIENT_SECRET:-}    # or DIRECTORY_CLIENT_SECRET_FILE
-      DIRECTORY_API_TOKEN: ${DIRECTORY_API_TOKEN:-}            # okta, jumpcloud; or DIRECTORY_API_TOKEN_FILE
-      DIRECTORY_GOOGLE_CREDENTIALS_FILE: ${DIRECTORY_GOOGLE_CREDENTIALS_FILE:-} # google: service account key file
-      DIRECTORY_GOOGLE_ADMIN: ${DIRECTORY_GOOGLE_ADMIN:-}      # google: admin the service account acts for
-      # cognito: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in .env (passed through env_file)
-      AUTH_SECRET: ${AUTH_SECRET:-}               # 32+ random characters (openssl rand -base64 48), or AUTH_SECRET_FILE
-      AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-}     # seconds a sign-in lasts (empty: 28800)
-      AUTH_LOGOUT: ${AUTH_LOGOUT:-}               # provider (default; entra: local): sign out at the provider too
-      AUTH_AUTO_LOGIN: ${AUTH_AUTO_LOGIN:-}       # true: sign in silently when the provider knows the visitor
-      AUTH_CREATE: ${AUTH_CREATE:-}               # signed-in (default) or anyone
-      AUTH_API_AUDIENCE: ${AUTH_API_AUDIENCE:-}   # accept bearer tokens with this audience, e.g. api://<client id>
-      RECIPIENTS: ${RECIPIENTS:-}                 # off, optional (default) or required
-      RECIPIENTS_MAX: ${RECIPIENTS_MAX:-}         # empty: 10
-      RECIPIENT_GROUPS: ${RECIPIENT_GROUPS:-}     # Name=<group id>,... or * (search, needs ENTRA_GRAPH or DIRECTORY_API)
-      RECIPIENT_USER_GROUP: ${RECIPIENT_USER_GROUP:-} # group whose members the form suggests (needs ENTRA_GRAPH or DIRECTORY_API)
-      RECIPIENT_DOMAINS: ${RECIPIENT_DOMAINS:-}   # allowed e-mail domains, e.g. example.com
-      RECEIPT_SHOW_VIEWER: ${RECEIPT_SHOW_VIEWER:-}           # true: show who opened it on the status page
-      RESPONSIBLE: ${RESPONSIBLE:-}                           # off (default), optional or required: who looks after a secret
-      STATUS_ACCESS: ${STATUS_ACCESS:-}                       # link or signed-in (empty: signed-in with sign-in, else link)
-      # Audit log (docs/CONFIG.md#audit-log); a file needs a writable volume.
-      AUDIT_LOG: ${AUDIT_LOG:-}                               # true: audit events (who, what, when, for whom), hash-chained
-      AUDIT_LOG_FORMAT: ${AUDIT_LOG_FORMAT:-}                 # ecs (default), otel or plain
-      AUDIT_LOG_PRETTY: ${AUDIT_LOG_PRETTY:-}                 # true: pretty-printed (development only)
-      AUDIT_LOG_FILE: ${AUDIT_LOG_FILE:-}                     # e.g. /var/log/vanishly/audit.jsonl
-      AUDIT_LOG_FSYNC: ${AUDIT_LOG_FSYNC:-}                   # empty: true
-      AUDIT_LOG_STDOUT: ${AUDIT_LOG_STDOUT:-}                 # empty: true without file and Redis
-      AUDIT_LOG_REDIS: ${AUDIT_LOG_REDIS:-}                   # true: Redis stream (admin view across replicas)
-      AUDIT_LOG_REDIS_MAXLEN: ${AUDIT_LOG_REDIS_MAXLEN:-}     # empty: 0 = keep all
-      AUDIT_LOG_HMAC_KEY: ${AUDIT_LOG_HMAC_KEY:-}             # at least 32 characters: signs every event
-      AUDIT_LOG_FAIL: ${AUDIT_LOG_FAIL:-}                     # closed (default) or open
-      AUDIT_LOG_IP: ${AUDIT_LOG_IP:-}                         # full (default), hash or off
-      AUDIT_LOG_USER_AGENT: ${AUDIT_LOG_USER_AGENT:-}         # empty: true
-      AUDIT_LOG_INSTANCE: ${AUDIT_LOG_INSTANCE:-}             # empty: the host name
-      AUDIT_LOG_CHECKPOINT: ${AUDIT_LOG_CHECKPOINT:-}         # empty: 100
-      AUDIT_LOG_SYSLOG: ${AUDIT_LOG_SYSLOG:-}                 # udp://, tcp:// or tls://host:port
-      AUDIT_LOG_OTLP_URL: ${AUDIT_LOG_OTLP_URL:-}             # e.g. http://otel-collector:4318/v1/logs
-      AUDIT_LOG_OTLP_HEADERS: ${AUDIT_LOG_OTLP_HEADERS:-}     # name=value,...
-      AUDIT_LOG_WEBHOOK_URL: ${AUDIT_LOG_WEBHOOK_URL:-}       # POST every event here
-      AUDIT_LOG_WEBHOOK_AUTH: ${AUDIT_LOG_WEBHOOK_AUTH:-}     # Authorization header, e.g. Splunk change-me
-      AUDIT_LOG_WEBHOOK_FORMAT: ${AUDIT_LOG_WEBHOOK_FORMAT:-} # json (default) or splunk
-      AUDIT_COMMENT: ${AUDIT_COMMENT:-}                       # off (default), optional or required
-      AUDIT_COMMENT_MAX: ${AUDIT_COMMENT_MAX:-}               # empty: 500
-      # API tokens and admins (need sign-in; docs/CONFIG.md#api-tokens)
-      API_TOKENS: ${API_TOKENS:-}                             # true: personal API tokens ("API tokens" in the user menu)
-      API_TOKEN_REQUIRED: ${API_TOKEN_REQUIRED:-}             # true: scripts need such a token
-      API_TOKEN_USERS: ${API_TOKEN_USERS:-}                   # only these addresses may make tokens
-      API_TOKEN_GROUPS: ${API_TOKEN_GROUPS:-}                 # only these groups may make tokens
-      API_TOKEN_IP_BINDING: ${API_TOKEN_IP_BINDING:-}         # optional (default) or required
-      API_TOKEN_EXPIRY_OPTIONS: ${API_TOKEN_EXPIRY_OPTIONS:-} # empty: 30d,60d,90d,never (d, m months, y)
-      API_TOKEN_DEFAULT_EXPIRY: ${API_TOKEN_DEFAULT_EXPIRY:-} # empty: 90d
-      API_TOKEN_MAX_EXPIRY: ${API_TOKEN_MAX_EXPIRY:-}         # empty: never (no cap), e.g. 1y
-      API_TOKEN_MAX_PER_USER: ${API_TOKEN_MAX_PER_USER:-}     # active tokens per user, empty: 10, 0 = no limit
-      API_TOKEN_RATE_LIMIT: ${API_TOKEN_RATE_LIMIT:-}         # calls per token per window, empty: 0 = off
-      API_TOKEN_COMMENT: ${API_TOKEN_COMMENT:-}               # optional (default) or required
-      API_TOKEN_ALLOWED_SCOPES: ${API_TOKEN_ALLOWED_SCOPES:-} # empty: create,read,status
-      API_TOKEN_DEFAULT_SCOPES: ${API_TOKEN_DEFAULT_SCOPES:-} # empty: create,status
-      API_TOKEN_SCOPES_BY_GROUP: ${API_TOKEN_SCOPES_BY_GROUP:-} # <group>=<scopes>;...
-      API_TOKEN_ADMIN_POLICY: ${API_TOKEN_ADMIN_POLICY:-}     # true: scopes and limits per user/group on /admin
-      ADMIN_USERS: ${ADMIN_USERS:-}                           # admins: audit log page and all tokens
-      ADMIN_GROUPS: ${ADMIN_GROUPS:-}
-      AUDIT_ADMIN_VIEW: ${AUDIT_ADMIN_VIEW:-}                 # empty: true
-      ADMIN_UI: ${ADMIN_UI:-}                                 # empty: true; the admin interface /admin and admin API
-      API_SERVICE_ACCOUNTS: ${API_SERVICE_ACCOUNTS:-}         # empty: true; technical users
-      API_ADMIN_TOKENS: ${API_ADMIN_TOKENS:-}                 # true: "admin" scope for technical users' tokens
-      API_ADMIN_TOKEN_REQUIRE_IP: ${API_ADMIN_TOKEN_REQUIRE_IP:-} # empty: true
-      API_ADMIN_TOKEN_MAX_EXPIRY: ${API_ADMIN_TOKEN_MAX_EXPIRY:-} # empty: 90d
-      API_ADMIN_TOKEN_CAN_ISSUE_ADMIN: ${API_ADMIN_TOKEN_CAN_ISSUE_ADMIN:-} # empty: false
-      API_ADMIN_COMMENT: ${API_ADMIN_COMMENT:-}               # required (default) or optional
+    # Every setting is in .env next to this file (cp .env.example .env), also
+    # REDIS_URL. A wrong value or a misspelt name stops the start with a message
+    # (docker compose logs vanishly). docs/CONFIG.md explains each one.
+    env_file: .env
     ports:
       - "127.0.0.1:3000:3000"
     volumes:

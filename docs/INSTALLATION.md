@@ -22,11 +22,15 @@ only inside the Compose network and keeps secrets in memory only.
 ```bash
 mkdir -p /opt/vanishly && cd /opt/vanishly
 curl -fsSLO https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/docker-compose/standalone/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/docker-compose/standalone/.env.example -o .env
 ```
 
 Edit `.env`: at least `BASE_URL` (your public address) and, behind a reverse
-proxy on the same host, `TRUST_PROXY=1` and `HSTS=true`. All settings:
+proxy on the same host, `TRUST_PROXY=1` and `HSTS=true`. In a checkout:
+`cd docker-compose/standalone && cp .env.example .env`. `.env` is required and
+git-ignored, keep real secrets only there. `docker-compose.yml` loads it with
+`env_file:` and sets no settings itself, so a variable set in your shell
+reaches Vanishly only through `.env`. All settings:
 [CONFIG.md](CONFIG.md). Then:
 
 ```bash
@@ -34,13 +38,36 @@ docker compose up -d             # pulls ghcr.io/dennispohlmann/vanishly
 docker compose ps                # vanishly "healthy", redis "running"
 ```
 
-`docker-compose.yml` only pulls images, so the file works on its own in any
+`docker-compose.yml` only pulls images, so with its `.env` it works in any
 folder, and with `podman-compose` too. To build the image from a checkout
 instead, add the build override in `docker-compose/standalone/`:
 
 ```bash
 cd docker-compose/standalone
+cp .env.example .env
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+### Where settings can come from
+
+The shipped examples keep everything in `.env` (`env_file:`). In your own setup
+you can mix it with `environment:` in a `docker-compose.override.yml`:
+
+- **Per variable, `environment:` wins** over `.env`.
+- **The override file** lies next to `docker-compose.yml`, and Compose reads it
+  by itself. That keeps your copy of `docker-compose.yml` easy to update.
+- **A variable set in your shell** arrives only through `.env` or as
+  `NAME: ${NAME}` under `environment:`.
+- **`NAME` and `NAME_FILE` must never both have a value**, whichever source they
+  come from: the start stops with a message.
+
+```yaml
+# docker-compose.override.yml
+services:
+  vanishly:
+    environment:
+      TEMPLATE: aurora
+      BASE_URL: ${BASE_URL}   # from your shell
 ```
 
 An example with sign-in through Keycloak and demo users is in
@@ -188,6 +215,11 @@ file format is in [CONFIG.md](CONFIG.md#languages). To serve English only,
 set `LANGUAGES=en`.
 
 ## 7. Update
+
+A current `docker-compose.yml` sets no settings itself: when you take a newer
+copy or `git pull` a checkout, `.env` is required and must hold
+`REDIS_URL=redis://redis:6379`, otherwise Vanishly looks for Redis on localhost
+and exits with code 69. All settings: `docker-compose/standalone/.env.example`.
 
 Compose: `docker compose pull && docker compose up -d` (built from a
 checkout: `git pull` and the build command from section 1). Redis uses the tag `redis:8-alpine`, the latest

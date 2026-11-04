@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { duration } from '../src/app.js';
-import { loadConfig, parseDurations } from '../src/config.js';
+import { SETTINGS, loadConfig, parseDurations } from '../src/config.js';
 
 test('TTL_OPTIONS: units, order, duplicates, limits', () => {
   assert.deepEqual(parseDurations('1d, 15m,1h 2w,1d,3600'), [900, 3600, 86400, 1209600]);
@@ -31,6 +31,35 @@ test('RATE_LIMIT_KEY: optional, checked, also from a file; a wrong one stops the
   assert.equal(r.status, 78);
   assert.match(r.stderr, /invalid setting: RATE_LIMIT_KEY/);
   assert.ok(!(r.stdout + r.stderr).includes(bad), 'the value is not logged');
+});
+
+test('the env files of the Compose examples: the defaults, and only settings of the app', () => {
+  /** @param {string} path */
+  const envFile = (path) => Object.fromEntries(
+    readFileSync(path, 'utf8')
+      .split('\n')
+      .filter((l) => l && !l.startsWith('#'))
+      .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
+  );
+  const standalone = envFile('docker-compose/standalone/.env.example');
+  // DEFAULT_LANG=en is what empty means while LANGUAGES is empty.
+  assert.deepEqual(loadConfig(standalone), loadConfig({ REDIS_URL: 'redis://redis:6379', DEFAULT_LANG: 'en' }));
+  // All settings in every .env.example (NAME= or #NAME=): a new, renamed or removed one fails here.
+  // KEYCLOAK_PORT is no setting: only Compose reads it, for Keycloak's port.
+  for (const path of ['.env.example', 'docker-compose/standalone/.env.example', 'docker-compose/keycloak/.env.example']) {
+    const text = readFileSync(path, 'utf8');
+    for (const name of Object.keys(envFile(path))) assert.ok(SETTINGS.includes(name) || name === 'KEYCLOAK_PORT', `${path}: ${name} is no setting`);
+    for (const name of SETTINGS) assert.match(text, new RegExp(`^#?${name}=`, 'm'), `${path}: ${name} is missing`);
+  }
+  // The Compose files set no settings: their env files must be enough to start.
+  for (const file of ['standalone', 'keycloak']) {
+    assert.ok(!/^ +environment:/m.test(readFileSync(`docker-compose/${file}/docker-compose.yml`, 'utf8').split(/^ {2}vanishly:/m)[1].split(/^ {2}\w+:/m)[0]), file);
+  }
+  const c = loadConfig(envFile('docker-compose/keycloak/.env.example'));
+  assert.equal(c.auth?.provider, 'keycloak');
+  assert.equal(c.baseUrl, 'http://localhost:3000');
+  assert.equal(c.rateLimitKey, '');
+  assert.deepEqual(c.auth?.groups.list.map((g) => g.name), ['Finance', 'IT']);
 });
 
 test('dropdown defaults follow TTL_OPTIONS', () => {
@@ -132,7 +161,7 @@ test('every wrong setting stops the start', () => {
     assert.throws(() => loadConfig({ [name]: value }), msg, `${name}=${value}`);
   }
   assert.throws(() => loadConfig({ ENABLE_PASSPHRASE: 'false', MIN_PASSPHRASE_LENGTH: '8' }), /ENABLE_PASSPHRASE/);
-  // empty values (as in docker-compose/standalone/docker-compose.yml) mean the default; other variables are left alone
+  // empty values (as in docker-compose/standalone/.env.example) mean the default; other variables are left alone
   const c = loadConfig({ PORT: '', HSTS: '', TTL_OPTIONS: '', PASSPHRASE_COMPLEXITY: '', PATH: '/bin', HOSTNAME: 'x', NODE_VERSION: '24' });
   assert.equal(c.port, 3000);
   assert.deepEqual(c.generatorClasses, ['upper', 'lower', 'digit', 'symbol']);

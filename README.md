@@ -62,7 +62,7 @@ Vanishly runs as a small Node.js container next to Redis.
   its docs and its footer link, the GitHub link (`ENABLE_*`); languages
   (`LANGUAGES=en`).
 - **Configured with environment variables only:** all of them with their
-  defaults in `docker-compose/standalone/docker-compose.yml` and `.env.example`; a wrong value or a
+  defaults in `docker-compose/standalone/.env.example` and `.env.example`; a wrong value or a
   misspelt name stops the start with a clear message.
 - **Rules for your organisation (optional):** minimum secret length,
   required passphrase with minimum length and character classes, a
@@ -140,7 +140,7 @@ How a secret is protected, step by step and with its limits:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/docker-compose/standalone/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/DennisPohlmann/Vanishly/main/docker-compose/standalone/.env.example -o .env
 # edit .env: BASE_URL, TRUST_PROXY=1 behind a proxy
 docker compose up -d          # or: podman-compose up -d
 ```
@@ -154,12 +154,12 @@ The Compose files live in [`docker-compose/`](docker-compose/) (until 1.2.1
 | [`docker-compose/keycloak/`](docker-compose/keycloak/README.md) | Example with Keycloak and demo users: sign-in, recipients, responsible groups, people search |
 
 `docker-compose.yml` pulls the published image, so it needs nothing else
-from the repository. To build from a checkout instead, in
-`docker-compose/standalone/`:
+from the repository but its `.env`. To build from a checkout instead, in
+`docker-compose/standalone/`: `cp .env.example .env`, then
 `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
 
 Then open `http://127.0.0.1:3000`. Every setting is listed with its default
-in `docker-compose.yml`; change it there or in `.env`, e.g.
+in `.env`, which `docker-compose.yml` loads; change it there, e.g.
 `TEMPLATE=aurora`, `REQUIRE_PASSPHRASE=true`, `ENABLE_RECEIPTS=false`.
 The full list: [docs/CONFIG.md](docs/CONFIG.md). Every step, the reverse proxy and the
 tar.gz with systemd: [docs/INSTALLATION.md](docs/INSTALLATION.md).

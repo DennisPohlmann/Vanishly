@@ -6,4 +6,5 @@ dist/
 /docker-compose/*/custom-templates/*
 !/docker-compose/standalone/custom-templates/README.md
 /docker-compose/*/.env
+/docker-compose/*/keycloak.env
 vendor/

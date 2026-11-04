@@ -39,7 +39,7 @@ image:
 
 # App and Redis, built from this folder.
 up:
-	cd docker-compose/standalone && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+	cd docker-compose/standalone && { test -f .env || cp .env.example .env; } && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 clean:
 	rm -rf dist

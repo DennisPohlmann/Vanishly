@@ -19,7 +19,8 @@ local `redis-server`). Run: `docker compose up -d` (published image), `make up` 
 Helm chart in `charts/vanishly` (published with every release to
 `oci://ghcr.io/dennispohlmann/charts/vanishly`, checked by
 `.github/workflows/chart.yml`). A new setting in `src/config.js` also gets
-a key in its `values.yaml` `config` block and `values.schema.json`.
+a key in its `values.yaml` `config` block and `values.schema.json` (and see
+the env file rule under "Before every commit").
 
 Version in `VERSION` and `package.json`; history in `CHANGELOG.md`.
 Third-party licenses: `THIRD-PARTY-LICENSES.md`.
@@ -88,6 +89,14 @@ with `security-check` and `security-privacy-audit`, also for small fixes:
 docs and OpenAPI in the same commit, Conventional Commit message,
 dependency/toolchain updates suggested (not applied), third-party licenses
 current, audit summary at the end.
+
+**Env files (standing rule from Dennis):** any new, renamed or removed setting
+(`SETTINGS` in `src/config.js`) is also updated in the root `.env.example` and
+in both Compose examples' files, `docker-compose/standalone/.env.example` and
+`docker-compose/keycloak/.env.example`, in the same commit: all settings in
+every `.env.example`, and the Compose files set none themselves.
+`tests/config.test.js` fails on a setting missing from any of them and on a
+name in them that is no setting.
 
 ## Invariants that must not break
 

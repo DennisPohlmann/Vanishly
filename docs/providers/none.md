@@ -40,7 +40,7 @@ pre-authenticating proxy such as Entra Application Proxy.
 ## Settings (`.env` or Compose)
 
 Nothing to set: leave `AUTH_PROVIDER` empty or `none`, as in
-[docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml).
+[docker-compose/standalone](../../docker-compose/standalone/.env.example).
 
 ## Troubleshooting
 

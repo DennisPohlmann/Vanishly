@@ -11,9 +11,11 @@ and [docs/providers](../../docs/providers/).
 ```bash
 cd docker-compose/keycloak
 cp .env.example .env
+cp keycloak.env.example keycloak.env
 # random secrets instead of the change-me values:
-for k in KC_ADMIN_PASSWORD KC_CLIENT_SECRET KC_DIRECTORY_CLIENT_SECRET VANISHLY_AUTH_SECRET; do
+for k in OIDC_CLIENT_SECRET DIRECTORY_CLIENT_SECRET AUTH_SECRET RATE_LIMIT_KEY; do
   sed -i "s|^$k=.*|$k=$(openssl rand -hex 24)|" .env; done
+sed -i "s|^KC_BOOTSTRAP_ADMIN_PASSWORD=.*|KC_BOOTSTRAP_ADMIN_PASSWORD=$(openssl rand -hex 24)|" keycloak.env
 docker compose up -d        # or: podman-compose up -d
 ```
 
@@ -23,13 +25,13 @@ changes made in the admin console are lost.
 
 | What | Address |
 |---|---|
-| Vanishly | http://localhost:3000 (`VANISHLY_PORT`) |
-| Keycloak admin console | http://localhost:8080/admin, user `admin`, password `KC_ADMIN_PASSWORD` |
-| Realm (issuer) | http://localhost:8080/realms/vanishly (`KEYCLOAK_PORT`) |
+| Vanishly | http://localhost:3000 (`PORT`, with `BASE_URL`) |
+| Keycloak admin console | http://localhost:8080/admin, user `admin`, password `KC_BOOTSTRAP_ADMIN_PASSWORD` in `keycloak.env` |
+| Realm (issuer) | http://localhost:8080/realms/vanishly (`KEYCLOAK_PORT`, with `OIDC_ISSUER`) |
 
 ## Demo users
 
-All with the password `DEMO_PASSWORD` from `.env` (demo only).
+All with the password `DEMO_PASSWORD` from `keycloak.env` (demo only).
 
 | User | E-mail | Groups |
 |---|---|---|
@@ -53,11 +55,18 @@ All with the password `DEMO_PASSWORD` from `.env` (demo only).
 ## How it is set up
 
 - `docker-compose.yml`: Keycloak (`start-dev`, realm import), Redis (memory
-  only) and Vanishly with `AUTH_PROVIDER=keycloak`, `RECIPIENT_GROUPS`,
-  `DIRECTORY_API` with `RECIPIENT_USER_GROUP=/staff`, `RESPONSIBLE=optional`,
-  `STATUS_ACCESS=signed-in` and `RECEIPT_SHOW_VIEWER=true`. Vanishly runs in
-  Keycloak's network, so the browser and Vanishly reach Keycloak under the
-  same address. Ports only on 127.0.0.1.
+  only) and Vanishly. Vanishly runs in Keycloak's network, so the browser and
+  Vanishly reach Keycloak under the same address. Ports only on 127.0.0.1.
+- `.env` (from `.env.example`, git-ignored): every setting of Vanishly, also
+  its addresses and client secrets, plus `KEYCLOAK_PORT`. The demo sets
+  `AUTH_PROVIDER=keycloak`, `RECIPIENT_GROUPS`, `DIRECTORY_API` with
+  `RECIPIENT_USER_GROUP=/staff`, `RESPONSIBLE=optional`,
+  `STATUS_ACCESS=signed-in` and `RECEIPT_SHOW_VIEWER=true`. Vanishly gets the
+  whole file. Keycloak gets only `BASE_URL` and the client secrets from it,
+  through the `${...}` values in `docker-compose.yml`, so both sides use the
+  same secret.
+- `keycloak.env` (from `keycloak.env.example`, git-ignored): Keycloak's admin
+  and demo passwords, for the Keycloak service only.
 - `realm-vanishly.json`: realm `vanishly` with the login client `vanishly`
   (redirect `<VANISHLY_URL>/auth/callback`, PKCE, sign-out redirect
   `/auth/logged-out`, a mapper for the `groups` claim), the service-account

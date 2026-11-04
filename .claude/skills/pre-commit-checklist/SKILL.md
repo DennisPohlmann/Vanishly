@@ -19,8 +19,13 @@ suggestion).
   defaults, endpoints, commands, paths, examples.
 - Update them in the same commit when behaviour, a setting, a default, an
   endpoint or a requirement changed. A new setting gets a row in
-  `docs/CONFIG.md` and a line in `.env.example`; a new or changed endpoint
-  is changed in `openapi/openapi.json` (the tests check the paths).
+  `docs/CONFIG.md`; a new or changed endpoint is changed in
+  `openapi/openapi.json` (the tests check the paths).
+- Standing rule from Dennis: any new, renamed or removed setting (`SETTINGS` in
+  `src/config.js`) is also updated in the root `.env.example` and in both
+  `docker-compose/standalone/.env.example` and
+  `docker-compose/keycloak/.env.example`: all settings in every `.env.example`
+  (`tests/config.test.js` checks it).
 - Fix wrong statements and dead links you notice on the way.
 
 ## 2. Commit message (Conventional Commits)

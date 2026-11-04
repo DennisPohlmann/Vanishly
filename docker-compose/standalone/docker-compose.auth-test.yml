@@ -2,6 +2,7 @@
 # sign in as anybody. ONLY FOR TESTS on your own machine, never on a server.
 #
 #   cd docker-compose/standalone
+#   cp .env.example .env
 #   docker compose -f docker-compose.yml -f docker-compose.auth-test.yml up -d
 #
 # For a real login server with users and groups see ../keycloak/.

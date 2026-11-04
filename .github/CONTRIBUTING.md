@@ -54,7 +54,8 @@ By taking part you agree to the [code of conduct](CODE_OF_CONDUCT.md).
 ## Documentation and API
 
 A change of behaviour updates the documentation in the same pull request:
-settings in [docs/CONFIG.md](../docs/CONFIG.md) and `.env.example`, the API
+settings in [docs/CONFIG.md](../docs/CONFIG.md), `.env.example` and both
+`docker-compose/*/.env.example`, the API
 in `openapi/openapi.json` and [docs/INTERFACE.md](../docs/INTERFACE.md). A
 new setting also gets a key in the Helm chart's `values.yaml` `config`
 block and `values.schema.json`; regenerate the chart README with

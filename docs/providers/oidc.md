@@ -65,6 +65,7 @@ own machine:
 
 ```sh
 cd docker-compose/standalone
+cp .env.example .env
 docker compose -f docker-compose.yml -f docker-compose.auth-test.yml up -d
 ```
 
