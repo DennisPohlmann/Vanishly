@@ -451,6 +451,13 @@
             }
           ]
         },
+        "RATE_LIMIT_KEY_FILE": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
         "ENABLE_API": {
           "anyOf": [
             {
@@ -1446,6 +1453,15 @@
     "baseUrlFromIngress": {
       "type": "boolean"
     },
+    "rateLimitKey": {
+      "type": "object",
+      "properties": {
+        "generate": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
     "secretConfig": {
       "type": "object",
       "propertyNames": {
@@ -2364,6 +2380,9 @@
     "overrides": {
       "type": "object",
       "properties": {
+        "rateLimitKeySecret": {
+          "type": "object"
+        },
         "deployment": {
           "type": "object"
         },

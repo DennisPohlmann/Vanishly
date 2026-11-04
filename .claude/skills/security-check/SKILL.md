@@ -57,7 +57,7 @@ the points below, only as deep as the diff reaches, and report the result.
 10. **Logs:** no ids (redacted to `:id`), keys, plaintext, passphrases,
     verifiers, IPs or user agents in `console.*`.
 11. **Storage:** Redis keys expire (`PEXPIREAT`) with the secret; receipts
-    hold no plaintext and no IPs; rate-limit keys hold hashed IPs only.
+    hold no plaintext and no IPs; rate-limit keys hold only HMACs of IPs (`RATE_LIMIT_KEY`).
 12. **Dependencies:** a change in `package.json`/`package-lock.json` →
     `npm audit --omit=dev`, say what changed; nothing loaded from a CDN at
     run time.

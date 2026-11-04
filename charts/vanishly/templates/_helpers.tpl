@@ -237,6 +237,27 @@ redis-url
 {{- end -}}
 {{- end -}}
 
+{{/* Rate-limit key: the chart generates one unless the values bring their own. */}}
+{{- define "vanishly.rateLimitKey.generated" -}}
+{{- if and .Values.rateLimitKey.generate (not .Values.secretConfig.RATE_LIMIT_KEY) (not .Values.config.RATE_LIMIT_KEY_FILE) -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- define "vanishly.rateLimitKey.secretName" -}}
+{{- printf "%s-rate-limit-key" (include "vanishly.fullname" .) -}}
+{{- end -}}
+
+{{/* From the Secret of an earlier install, or new. */}}
+{{- define "vanishly.rateLimitKey.value" -}}
+{{- $existing := lookup "v1" "Secret" (include "vanishly.namespace" .) (include "vanishly.rateLimitKey.secretName" .) -}}
+{{- if and $existing $existing.data (index $existing.data "RATE_LIMIT_KEY") -}}
+{{- index $existing.data "RATE_LIMIT_KEY" | b64dec -}}
+{{- else -}}
+{{- randAlphaNum 64 -}}
+{{- end -}}
+{{- end -}}
+
 {{/* The settings of the ConfigMap: non-empty config values plus a derived BASE_URL. */}}
 {{- define "vanishly.configData" -}}
 {{- $data := dict -}}

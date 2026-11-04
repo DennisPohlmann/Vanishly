@@ -155,6 +155,8 @@ Caddy: `ots.example.com { reverse_proxy 127.0.0.1:3000 }`.
 
 Set `TRUST_PROXY=1` (one proxy) so the rate limits see the client address;
 with `TRUST_PROXY=false` behind a proxy all clients share one limit.
+With several replicas also set the same `RATE_LIMIT_KEY` on all of them,
+otherwise each replica counts on its own (the Helm chart generates one).
 
 ## 6. Own templates
 

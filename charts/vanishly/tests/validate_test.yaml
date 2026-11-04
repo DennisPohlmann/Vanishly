@@ -32,6 +32,14 @@ tests:
       - failedTemplate:
           errorPattern: "not config.REDIS_URL"
 
+  - it: rejects RATE_LIMIT_KEY in config
+    set:
+      config:
+        RATE_LIMIT_KEY: change-me-change-me-change-me-change-me
+    asserts:
+      - failedTemplate:
+          errorPattern: "RATE_LIMIT_KEY is a credential"
+
   - it: rejects sign-in credentials in config
     set:
       config:

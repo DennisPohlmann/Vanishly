@@ -74,6 +74,7 @@ services:
       RATE_LIMIT_CREATE: ${RATE_LIMIT_CREATE:-30}
       RATE_LIMIT_READ: ${RATE_LIMIT_READ:-120}
       RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-600}
+      RATE_LIMIT_KEY: ${RATE_LIMIT_KEY:-}                      # 32+ characters (openssl rand -base64 48), or RATE_LIMIT_KEY_FILE; empty: random per process
       # --- API
       ENABLE_API: ${ENABLE_API:-true}             # false: the API only serves this server's own pages
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-true}   # API reference (Scalar) at /api/docs

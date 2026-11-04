@@ -167,7 +167,7 @@ templates:
   ```
 
   Keys: `deployment`, `service`, `serviceAccount`, `configMap`, `secret`,
-  `redisUrlSecret`, `templatesConfigMap`, `ingress`, `httpRoute`, `hpa`,
+  `redisUrlSecret`, `rateLimitKeySecret`, `templatesConfigMap`, `ingress`, `httpRoute`, `hpa`,
   `pdb`, `networkPolicy`, `redisDeployment`, `redisService`,
   `redisSecret`, `redisNetworkPolicy`.
 - A probe's handler is replaced by setting the old one to `null`
@@ -278,6 +278,7 @@ provider: [docs/providers](https://github.com/DennisPohlmann/Vanishly/blob/main/
 | podLabels | object | `{}` | Labels of the pods (in addition to commonLabels). |
 | podSecurityContext | object | `{"fsGroup":1000,"fsGroupChangePolicy":"OnRootMismatch","runAsGroup":1000,"runAsNonRoot":true,"runAsUser":1000,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod security context. |
 | priorityClassName | string | `""` | Priority class. |
+| rateLimitKey.generate | bool | `true` | Generate RATE_LIMIT_KEY into a Secret and keep it across upgrades, so all pods share the rate limits. A RATE_LIMIT_KEY from secretConfig or existingSecret wins. false: without an own key every pod counts on its own. Also set false if existingSecret holds RATE_LIMIT_KEY_FILE, or with tools that render without cluster access (a new key each time starts the counters over). |
 | readinessProbe | object | `{"enabled":true,"failureThreshold":3,"httpGet":{"path":"/healthz","port":"http"},"periodSeconds":5,"timeoutSeconds":3}` | Readiness probe; takes the pod out of the Service while Redis is unavailable. |
 | redis.affinity | object | `{}` | Affinity rules. |
 | redis.auth.enabled | bool | `true` | Require a password (requirepass). |

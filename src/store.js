@@ -9,10 +9,10 @@
 //               rc = number of recipients; cm = the comment (AUDIT_COMMENT)
 //   r:<rid>:v   list  times of the views (no IPs, no user agents); with
 //               RECEIPT_SHOW_VIEWER "time<TAB>name" of the signed-in viewer
-//   rl:<bucket>:<ip-hash>  counter for the rate limits
+//   rl:<bucket>:<ip-hmac>  counter for the rate limits
 // The server never sees the key of a secret, only the ciphertext.
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { createClient } from 'redis';
 
 // Checks the passphrase and takes one view of the secret, in one atomic step:
@@ -47,6 +47,10 @@ end
 return {'ok', left, d[1], d[2], d[3], d[4]}
 `;
 
+// Without RATE_LIMIT_KEY: one key for this process, so its limits are its own
+// and start over on a restart (src/server.js warns).
+const PROCESS_RATE_LIMIT_KEY = randomBytes(32);
+
 const BURNED = `
 if redis.call('EXISTS', KEYS[1]) == 1 then redis.call('HSET', KEYS[1], 'state', 'burned', 'burned', ARGV[1]) end
 `;
@@ -75,13 +79,14 @@ export class Store {
   /**
    * @param {any} redis a connected node-redis client
    * @param {{ redisPrefix: string, receiptKeep: number, passphraseAttempts: number,
-   *   features?: { receipts: boolean, viewLog: boolean } }} config
+   *   rateLimitKey?: string, features?: { receipts: boolean, viewLog: boolean } }} config
    */
   constructor(redis, config) {
     this.redis = redis;
     this.p = config.redisPrefix;
     this.receiptKeep = config.receiptKeep;
     this.attempts = config.passphraseAttempts;
+    this.rateLimitKey = config.rateLimitKey || PROCESS_RATE_LIMIT_KEY;
     // ENABLE_RECEIPTS=false: no receipt is stored. ENABLE_VIEW_LOG=false: no view times.
     this.receipts = config.features?.receipts !== false;
     this.viewLog = this.receipts && config.features?.viewLog !== false;
@@ -340,12 +345,13 @@ export class Store {
   }
 
   /**
-   * The rate-limit key of a client IP: a truncated SHA-256, so Redis (and
-   * the rate-limit middleware) never hold addresses.
+   * The rate-limit key of a client IP: a truncated HMAC, so Redis (and the
+   * rate-limit middleware) never hold addresses. A plain hash would not do:
+   * all IPv4 addresses can be tried in minutes.
    * @param {string} ip
    */
-  static ipKey(ip) {
-    return sha256(ip).toString('base64url').slice(0, 22);
+  ipKey(ip) {
+    return createHmac('sha256', this.rateLimitKey).update(ip).digest('base64url').slice(0, 22);
   }
 
   /**
@@ -375,7 +381,7 @@ export class Store {
   }
 
   /**
-   * Fixed-window rate limit. The IP is hashed, so Redis holds no addresses.
+   * Fixed-window rate limit. The IP is HMACed, so Redis holds no addresses.
    * @param {string} bucket
    * @param {string} ip
    * @param {number} limit 0 = off
@@ -383,7 +389,7 @@ export class Store {
    */
   async rateLimit(bucket, ip, limit, window) {
     if (!limit) return { ok: true, retryAfter: 0 };
-    const { count, ttl } = await this.hit(bucket, Store.ipKey(ip), window);
+    const { count, ttl } = await this.hit(bucket, this.ipKey(ip), window);
     return { ok: count <= limit, retryAfter: ttl };
   }
 }

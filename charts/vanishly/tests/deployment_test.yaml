@@ -122,6 +122,28 @@ tests:
       - notExists:
           path: spec.replicas
 
+  - it: leaves the generated rate-limit key out when the values bring their own
+    set:
+      secretConfig:
+        RATE_LIMIT_KEY: change-me-change-me-change-me-change-me
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            secretRef:
+              name: t-vanishly-rate-limit-key
+
+  - it: leaves the generated rate-limit key out with rateLimitKey.generate=false
+    set:
+      rateLimitKey:
+        generate: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            secretRef:
+              name: t-vanishly-rate-limit-key
+
   - it: passes envFrom sources and extra env
     set:
       secretConfig:
@@ -135,6 +157,8 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].envFrom
           value:
+            - secretRef:
+                name: t-vanishly-rate-limit-key
             - configMapRef:
                 name: t-vanishly
             - secretRef:

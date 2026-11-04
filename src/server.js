@@ -18,6 +18,9 @@ try {
   console.error(`Vanishly: invalid setting: ${/** @type {Error} */ (err).message}`);
   process.exit(78); // EX_CONFIG
 }
+if (!config.rateLimitKey) {
+  console.warn('Vanishly: RATE_LIMIT_KEY is not set: a random key per process is used, so rate limits are per process and reset on restart (fine for one replica)');
+}
 // Redis must be reachable and writable before the first request: without it
 // no secret can be stored, viewed or burned. Docker's restart policy retries.
 /** @type {Store} */ let store;

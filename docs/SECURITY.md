@@ -119,7 +119,7 @@ is not enough.
 | views left, wrong passphrase count, created, expires | the passphrase |
 | receipt: state, view times, burn time | IP addresses, user agents, names (except `RECEIPT_SHOW_VIEWER` and `STATUS_ACCESS=signed-in`, below) |
 | with `STATUS_ACCESS=signed-in`: creator, responsible people and openers as keyed hashes (who may see the status), and the names and addresses of creator and responsible to show on the status page | |
-| rate limit counters, keyed by a truncated SHA-256 of the IP | |
+| rate limit counters, keyed by a truncated HMAC-SHA256 of the IP with `RATE_LIMIT_KEY` (never stored in Redis); a plain hash of an IPv4 address could be reversed by trying all addresses | |
 | with sign-in: recipients and responsible people as keyed hashes (HMAC with `AUTH_SECRET`) | the addresses or groups a secret is for |
 | with sign-in: sessions (name, user name, recipient hashes) under a hash of the cookie | access or refresh tokens of the provider |
 

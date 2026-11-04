@@ -1,6 +1,7 @@
 // API tests against a real Redis: REDIS_URL, or a redis-server started here.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -716,6 +717,62 @@ test('Redis refuses writes: nothing is handed out, burn fails, health is 503', o
   assert.equal(await decryptSecret(r.data, key, pk), 'still here');
 });
 
+test('RATE_LIMIT_KEY: same key same bucket, other key other bucket, never in Redis', opts, async () => {
+  const key = 'change-me-rate-limit-key-0123456789abcdef';
+  const ip = '203.0.113.10';
+  const prefix = `testrlk${process.pid}:`;
+  /** @param {string} [rateLimitKey] */
+  const make = (rateLimitKey) => new Store(store.redis, { redisPrefix: prefix, receiptKeep: 60, passphraseAttempts: 3, rateLimitKey });
+  const a = make(key);
+  assert.equal(a.ipKey(ip), make(key).ipKey(ip));
+  assert.notEqual(a.ipKey(ip), make(`${key}x`).ipKey(ip));
+  assert.notEqual(a.ipKey(ip), a.ipKey('203.0.113.11'));
+  assert.match(a.ipKey(ip), /^[\w-]{22}$/);
+  assert.notEqual(a.ipKey(ip), createHash('sha256').update(ip).digest('base64url').slice(0, 22), 'not the plain hash');
+  // Without a key: the same within this process, not one of a given key.
+  assert.equal(make().ipKey(ip), make().ipKey(ip));
+  assert.notEqual(make().ipKey(ip), a.ipKey(ip));
+
+  await a.rateLimit('read', ip, 5, 60);
+  const keys = await store.redis.keys(`${prefix}*`);
+  assert.deepEqual(keys, [`${prefix}rl:read:${a.ipKey(ip)}`]);
+  const stored = `${keys[0]} ${await store.redis.get(keys[0])}`;
+  assert.ok(!stored.includes(key) && !stored.includes(ip), 'neither key nor IP in Redis');
+  await store.redis.del(keys);
+});
+
+test('RATE_LIMIT_KEY: one warning at the start without it, none with it, the key never logged', opts, async () => {
+  const key = 'change-me-rate-limit-key-0123456789abcdef';
+  /** @param {Record<string, string>} env */
+  const startOutput = async (env) => {
+    const port = 20000 + Math.floor(Math.random() * 20000);
+    const proc = spawn(process.execPath, ['src/server.js'], {
+      env: { PATH: process.env.PATH, REDIS_URL: redisUrl, REDIS_PREFIX: `testrlk${process.pid}:`, HOST: '127.0.0.1', PORT: String(port), ...env },
+    });
+    let out = '';
+    await new Promise((resolve, reject) => {
+      /** @param {Buffer} d */
+      const read = (d) => {
+        out += d;
+        if (out.includes('listening on')) resolve(undefined);
+      };
+      proc.stdout.on('data', read);
+      proc.stderr.on('data', read);
+      proc.once('exit', (code) => reject(new Error(`exit ${code}: ${out}`)));
+    });
+    proc.removeAllListeners('exit');
+    await new Promise((resolve) => {
+      proc.once('exit', resolve);
+      proc.kill();
+    });
+    return out;
+  };
+  assert.equal((await startOutput({})).match(/RATE_LIMIT_KEY is not set/g)?.length, 1);
+  const out = await startOutput({ RATE_LIMIT_KEY: key });
+  assert.ok(!out.includes('RATE_LIMIT_KEY'), out);
+  assert.ok(!out.includes(key));
+});
+
 test('rate limits: 429 with Retry-After, per client IP, shared Redis counter, 0 = off', opts, async () => {
   /** @param {Record<string, string>} env */
   const serve = async (env) => {
@@ -731,7 +788,7 @@ test('rate limits: 429 with Retry-After, per client IP, shared Redis counter, 0 
   const two = await serve({ RATE_LIMIT_READ: '3', RATE_LIMIT_CREATE: '1000' });
   const off = await serve({ RATE_LIMIT_READ: '0', RATE_LIMIT_CREATE: '1000' });
   try {
-    await store.resetHits('read', Store.ipKey('127.0.0.1'));
+    await store.resetHits('read', store.ipKey('127.0.0.1'));
     // TRUST_PROXY=false: a forged X-Forwarded-For changes nothing.
     /** @param {string} b @param {number} i */
     const get = (b, i) => fetch(`${b}/api/v1/secrets/${id}`, { headers: { 'X-Forwarded-For': `198.51.100.${i}` } });
@@ -749,7 +806,7 @@ test('rate limits: 429 with Retry-After, per client IP, shared Redis counter, 0 
     assert.equal((await store.rateLimit('read', '127.0.0.1', 3, 60)).ok, false);
     for (let i = 0; i < 5; i++) assert.notEqual((await get(off.b, i)).status, 429);
   } finally {
-    await store.resetHits('read', Store.ipKey('127.0.0.1'));
+    await store.resetHits('read', store.ipKey('127.0.0.1'));
     for (const s of [one, two, off]) s.srv.close();
   }
 });

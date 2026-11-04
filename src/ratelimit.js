@@ -1,10 +1,11 @@
 // Vanishly - rate limits as express-rate-limit middleware. Counted in Redis
-// (src/store.js, the rl:<bucket>:<hash> keys), so every replica shares the
-// same fixed windows; the client IP is hashed before it reaches the
+// (src/store.js, the rl:<bucket>:<hash> keys), so every replica with the same
+// RATE_LIMIT_KEY shares the same fixed windows; the client IP is HMACed before it reaches the
 // middleware's store or its debug output.
 
 import { rateLimit } from 'express-rate-limit';
-import { Store } from './store.js';
+
+/** @typedef {import('./store.js').Store} Store */
 
 /** express-rate-limit store on the Redis counters of src/store.js. */
 class RedisCounter {
@@ -54,7 +55,7 @@ export function limiter({ store, bucket, limit, window, onLimit, skip }) {
     windowMs: window * 1000,
     limit,
     store: /** @type {import('express-rate-limit').Store} */ (new RedisCounter(store, bucket, window)),
-    keyGenerator: (req) => Store.ipKey(req.ip || ''),
+    keyGenerator: (req) => store.ipKey(req.ip || ''),
     skip: (req) => !limit || Boolean(skip?.(req)),
     // Answers as before: only Retry-After (set by onLimit), no RateLimit-* headers.
     standardHeaders: false,

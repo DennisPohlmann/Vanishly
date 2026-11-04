@@ -146,6 +146,9 @@ config:
   RATE_LIMIT_READ: ""
   # Window in seconds (600).
   RATE_LIMIT_WINDOW: ""
+  # RATE_LIMIT_KEY is a credential: see rateLimitKey below; set your own through secretConfig or existingSecret, not here.
+  # File with RATE_LIMIT_KEY instead (none).
+  RATE_LIMIT_KEY_FILE: ""
   # == API (true = on)
   ENABLE_API: ""
   ENABLE_API_DOCS: ""
@@ -357,6 +360,10 @@ config:
 
 # -- Set BASE_URL to https://<first host> of ingress or httpRoute when config.BASE_URL is empty.
 baseUrlFromIngress: true
+
+rateLimitKey:
+  # -- Generate RATE_LIMIT_KEY into a Secret and keep it across upgrades, so all pods share the rate limits. A RATE_LIMIT_KEY from secretConfig or existingSecret wins. false: without an own key every pod counts on its own. Also set false if existingSecret holds RATE_LIMIT_KEY_FILE, or with tools that render without cluster access (a new key each time starts the counters over).
+  generate: true
 
 # -- Sensitive settings (NAME: value), stored in a Secret made by the chart and passed as environment variables.
 secretConfig: {}
@@ -785,7 +792,7 @@ redis:
 
 # Overrides merged last into the rendered objects (deep merge; lists are
 # replaced as a whole), for anything the values above do not cover. Keys:
-# deployment, service, serviceAccount, configMap, secret, redisUrlSecret,
+# deployment, service, serviceAccount, configMap, secret, redisUrlSecret, rateLimitKeySecret,
 # templatesConfigMap, ingress, httpRoute, hpa, pdb, networkPolicy,
 # redisDeployment, redisService, redisSecret, redisNetworkPolicy, redisPvc. Example:
 #   overrides:

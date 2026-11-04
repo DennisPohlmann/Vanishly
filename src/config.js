@@ -153,7 +153,7 @@ export const SETTINGS = [
   'MIN_PASSPHRASE_LENGTH', 'PASSPHRASE_COMPLEXITY', 'REQUIRE_PASSPHRASE', 'PASSPHRASE_ATTEMPTS',
   'CONFIRM_CHECKBOX', 'CONFIRM_TEXT', 'CONFIRM_TEXT_EN', 'CONFIRM_TEXT_DE',
   'GENERATOR_LENGTH', 'GENERATOR_COMPLEXITY', 'RECEIPT_KEEP',
-  'RATE_LIMIT_CREATE', 'RATE_LIMIT_READ', 'RATE_LIMIT_WINDOW',
+  'RATE_LIMIT_CREATE', 'RATE_LIMIT_READ', 'RATE_LIMIT_WINDOW', 'RATE_LIMIT_KEY', 'RATE_LIMIT_KEY_FILE',
   'API_DOCS', 'ACCESS_LOG',
   'ENABLE_API', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SHARE_API', 'ENABLE_OPEN_API',
   'ENABLE_SECRET_META_API', 'ENABLE_CONFIG_API', 'ENABLE_ME_API',
@@ -923,6 +923,12 @@ export function loadConfig(env = process.env) {
     rateCreate: num('RATE_LIMIT_CREATE', 30, 0, 100000),
     rateRead: num('RATE_LIMIT_READ', 120, 0, 100000),
     rateWindow: num('RATE_LIMIT_WINDOW', 600, 1, 86400),
+    // Keys the IP hashes of the rate limits; '' = a random key per process (src/store.js).
+    rateLimitKey: named('RATE_LIMIT_KEY', () => {
+      const v = secretValue(env, 'RATE_LIMIT_KEY');
+      if (v && !/^\S{32,}$/.test(v)) throw new Error('at least 32 characters, no whitespace (e.g. openssl rand -base64 48)');
+      return v;
+    }),
     languages,
     defaultLang,
     // ENABLE_API=false: no public API; only this server's own pages may call it.

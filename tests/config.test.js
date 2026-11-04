@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +12,25 @@ test('TTL_OPTIONS: units, order, duplicates, limits', () => {
   assert.throws(() => parseDurations('5x'));
   assert.throws(() => parseDurations('30s'));
   assert.throws(() => parseDurations('2y'));
+});
+
+test('RATE_LIMIT_KEY: optional, checked, also from a file; a wrong one stops the start without showing it', () => {
+  const key = 'change-me-rate-limit-key-0123456789abcdef';
+  assert.equal(loadConfig({}).rateLimitKey, '');
+  assert.equal(loadConfig({ RATE_LIMIT_KEY: '' }).rateLimitKey, '');
+  assert.equal(loadConfig({ RATE_LIMIT_KEY: key }).rateLimitKey, key);
+  assert.throws(() => loadConfig({ RATE_LIMIT_KEY: 'a'.repeat(31) }), /RATE_LIMIT_KEY: at least 32/);
+  assert.throws(() => loadConfig({ RATE_LIMIT_KEY: `${key} x` }), /RATE_LIMIT_KEY: at least 32/);
+  const file = join(mkdtempSync(join(tmpdir(), 'vanishly-')), 'key');
+  writeFileSync(file, `${key}\n`);
+  assert.equal(loadConfig({ RATE_LIMIT_KEY_FILE: file }).rateLimitKey, key);
+  assert.throws(() => loadConfig({ RATE_LIMIT_KEY: key, RATE_LIMIT_KEY_FILE: file }), /both set/);
+
+  const bad = 'short-rate-limit-key';
+  const r = spawnSync(process.execPath, ['src/server.js'], { env: { PATH: process.env.PATH, RATE_LIMIT_KEY: bad }, encoding: 'utf8' });
+  assert.equal(r.status, 78);
+  assert.match(r.stderr, /invalid setting: RATE_LIMIT_KEY/);
+  assert.ok(!(r.stdout + r.stderr).includes(bad), 'the value is not logged');
 });
 
 test('dropdown defaults follow TTL_OPTIONS', () => {

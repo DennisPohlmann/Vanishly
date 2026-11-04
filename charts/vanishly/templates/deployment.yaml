@@ -154,6 +154,11 @@ spec:
               containerPort: {{ include "vanishly.port" . }}
               protocol: TCP
           envFrom:
+            {{- /* First: a later source wins, so an own RATE_LIMIT_KEY replaces the generated one. */}}
+            {{- if include "vanishly.rateLimitKey.generated" . }}
+            - secretRef:
+                name: {{ include "vanishly.rateLimitKey.secretName" . }}
+            {{- end }}
             - configMapRef:
                 name: {{ include "vanishly.fullname" . }}
             {{- if .Values.secretConfig }}
