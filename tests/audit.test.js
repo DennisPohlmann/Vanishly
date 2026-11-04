@@ -351,11 +351,13 @@ test('API token: made on the session, used from its network with comment and run
   assert.match(made.data.token, /^vnly_[0-9a-f]{16}_[A-Za-z0-9_-]{43}$/);
   assert.equal(made.data.state, 'active');
   const token = made.data.token;
+  // The secret part of the token; base64url, so it can hold "_" itself.
+  const tokenSecret = token.split('_').slice(2).join('_');
   // Never stored as such.
   const keys = await a.store.redis.keys(`${a.store.p}tok:*`);
   for (const k of keys) {
     const v = (await a.store.redis.type(k)) === 'hash' ? JSON.stringify(await a.store.redis.hGetAll(k)) : '';
-    assert.ok(!v.includes(token.split('_')[2]), 'no token secret in Redis');
+    assert.ok(!v.includes(tokenSecret), 'no token secret in Redis');
   }
   // The list shows it without the token, with expiry.
   const list = await a.call('/api/v1/tokens', { cookie });
@@ -368,7 +370,7 @@ test('API token: made on the session, used from its network with comment and run
   const tokPage = await fetch(`${a.base}/settings/tokens`, { headers: { Cookie: cookie } });
   assert.equal(tokPage.headers.get('cache-control'), 'no-store');
   const tokHtml = await tokPage.text();
-  assert.ok(!tokHtml.includes(token.split('_')[2]));
+  assert.ok(!tokHtml.includes(tokenSecret));
   assert.match(tokHtml, /id="token-value" readonly spellcheck="false" autocomplete="off"/);
   assert.match(tokHtml, /id="token-example" rows="6" readonly spellcheck="false" autocomplete="off"/);
 
