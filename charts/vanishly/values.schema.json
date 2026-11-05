@@ -194,6 +194,14 @@
             }
           ]
         },
+        "SITE_NAME": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[^\\r\\n]{0,80}$"
+            }
+          ]
+        },
         "TEMPLATE": {
           "anyOf": [
             {

@@ -166,24 +166,23 @@ function remember(el) {
   } catch {}
 }
 
-// AUTH_AUTO_LOGIN: once per tab, a silent sign-in (prompt=none). The
-// provider signs in whoever is still signed in there, or sends the visitor
-// straight back; the flag in sessionStorage stops a loop and keeps a
-// sign-out in this tab from being undone.
-// The user menu in the header closes on Escape and on a click elsewhere.
-const userMenu = /** @type {HTMLDetailsElement | null} */ (document.querySelector('details.nav-menu'));
-if (userMenu) {
+// The menus in the header (user, language) close on Escape and on a click elsewhere.
+for (const menu of /** @type {NodeListOf<HTMLDetailsElement>} */ (document.querySelectorAll('details.nav-menu'))) {
   document.addEventListener('click', (e) => {
-    if (userMenu.open && !userMenu.contains(/** @type {Node} */ (e.target))) userMenu.open = false;
+    if (menu.open && !menu.contains(/** @type {Node} */ (e.target))) menu.open = false;
   });
-  userMenu.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && userMenu.open) {
-      userMenu.open = false;
-      /** @type {HTMLElement | null} */ (userMenu.querySelector('summary'))?.focus();
+  menu.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menu.open) {
+      menu.open = false;
+      /** @type {HTMLElement | null} */ (menu.querySelector('summary'))?.focus();
     }
   });
 }
 
+// AUTH_AUTO_LOGIN: once per tab, a silent sign-in (prompt=none). The
+// provider signs in whoever is still signed in there, or sends the visitor
+// straight back; the flag in sessionStorage stops a loop and keeps a
+// sign-out in this tab from being undone.
 let leaving = false;
 if (document.body.classList.contains('auto-login')) {
   let tried = true;

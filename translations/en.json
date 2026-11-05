@@ -1,6 +1,7 @@
 {
   "lang.name": "English",
   "lang": "en",
+  "lang.label": "Language",
   "tagline": "Share a password or a secret with a link that works only once.",
   "nav.new": "New secret",
   "nav.api": "API",

@@ -428,16 +428,17 @@ async function pageLang(url, headers = {}) {
 test('languages: browser language, ?lang= and cookie, fallback English', opts, async () => {
   await withApp({}, async (b) => {
     assert.equal((await pageLang(`${b}/`, { 'Accept-Language': 'de-CH,de;q=0.9,en;q=0.5' })).lang, 'de');
-    assert.equal((await pageLang(`${b}/`, { 'Accept-Language': 'fr-FR,fr;q=0.9' })).lang, 'en');
+    assert.equal((await pageLang(`${b}/`, { 'Accept-Language': 'fr-FR,fr;q=0.9' })).lang, 'fr');
+    assert.equal((await pageLang(`${b}/`, { 'Accept-Language': 'sv-SE,sv;q=0.9' })).lang, 'en');
     assert.equal((await pageLang(`${b}/`)).lang, 'en');
     const q = await pageLang(`${b}/?lang=de`, { 'Accept-Language': 'en' });
     assert.equal(q.lang, 'de');
     assert.match(q.cookie || '', /^lang=de;/);
-    assert.match(q.html, /<a class="lang-switch" href="\?lang=en" hreflang="en" lang="en">English<\/a>/);
+    assert.match(q.html, /<a class="nav-menu-item" href="\?lang=en" hreflang="en" lang="en">English<\/a>/);
     assert.equal((await pageLang(`${b}/`, { Cookie: 'lang=de', 'Accept-Language': 'en' })).lang, 'de');
     assert.equal((await pageLang(`${b}/?lang=xx`)).lang, 'en');
     const cfg = await (await fetch(`${b}/api/v1/config`)).json();
-    assert.deepEqual([cfg.languages, cfg.defaultLang, cfg.features.langSwitch], [['en', 'de'], 'en', true]);
+    assert.deepEqual([cfg.languages, cfg.defaultLang, cfg.features.langSwitch], [['en', 'de', 'es', 'fr', 'it', 'nl', 'pl', 'pt'], 'en', true]);
   });
 });
 
@@ -469,22 +470,31 @@ test('languages: ENABLE_LANG_SWITCH=false ignores ?lang= and the cookie, not the
 
 test('languages: a file in TRANSLATIONS_DIR adds a language, missing texts in English', opts, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vanishly-tr-'));
-  writeFileSync(join(dir, 'fr.json'), JSON.stringify({ 'lang.name': 'Français', 'home.title': 'Partager un secret' }));
+  writeFileSync(join(dir, 'sv.json'), JSON.stringify({ 'lang.name': 'Svenska', 'home.title': 'Dela en hemlighet' }));
   writeFileSync(join(dir, 'de.json'), JSON.stringify({ 'home.title': 'Geheimnis weitergeben' }));
-  await withApp({ TRANSLATIONS_DIR: dir, LANGUAGES: 'fr,en,de', CONFIRM_CHECKBOX: 'true' }, async (b) => {
-    const fr = await pageLang(`${b}/`, { 'Accept-Language': 'fr' });
-    assert.equal(fr.lang, 'fr');
-    assert.match(fr.html, /Partager un secret/);
-    assert.match(fr.html, /Expires after/); // not translated: English
-    assert.match(fr.html, /href="\?lang=en" hreflang="en" lang="en">English</); // next in LANGUAGES
+  await withApp({ TRANSLATIONS_DIR: dir, LANGUAGES: 'sv,en,de', CONFIRM_CHECKBOX: 'true' }, async (b) => {
+    const sv = await pageLang(`${b}/`, { 'Accept-Language': 'sv' });
+    assert.equal(sv.lang, 'sv');
+    assert.match(sv.html, /Dela en hemlighet/);
+    assert.match(sv.html, /Expires after/); // not translated: English
+    assert.match(sv.html, /href="\?lang=en" hreflang="en" lang="en">English</); // in the language menu
     const de = await pageLang(`${b}/?lang=de`);
     assert.match(de.html, /Geheimnis weitergeben/); // replaced
     assert.match(de.html, /Läuft ab nach/); // the rest stays German
-    assert.match(de.html, /lang="fr">Français</);
+    assert.match(de.html, /lang="sv">Svenska</);
     assert.equal((await pageLang(`${b}/`)).lang, 'en'); // DEFAULT_LANG en, served
     const cfg = await (await fetch(`${b}/api/v1/config`)).json();
-    assert.deepEqual(cfg.languages, ['fr', 'en', 'de']);
-    assert.deepEqual(Object.keys(cfg.confirmation), ['fr', 'en', 'de']);
+    assert.deepEqual(cfg.languages, ['sv', 'en', 'de']);
+    assert.deepEqual(Object.keys(cfg.confirmation), ['sv', 'en', 'de']);
+  });
+});
+
+test('confirmation: CONFIRM_TEXT_<CODE> for any language, CONFIRM_TEXT for the rest', opts, async () => {
+  await withApp({ CONFIRM_CHECKBOX: 'true', CONFIRM_TEXT: 'All others', CONFIRM_TEXT_PL: 'Tylko jedno hasło' }, async (b) => {
+    assert.match((await pageLang(`${b}/?lang=pl`)).html, /<label for="confirm">Tylko jedno hasło<\/label>/);
+    assert.match((await pageLang(`${b}/?lang=fr`)).html, /<label for="confirm">All others<\/label>/);
+    const cfg = await (await fetch(`${b}/api/v1/config`)).json();
+    assert.equal(cfg.confirmation.pl, 'Tylko jedno hasło');
   });
 });
 

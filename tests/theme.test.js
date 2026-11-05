@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -74,11 +74,13 @@ test('DEFAULT_MODE overrides the defaultMode of the template', () => {
   assert.match(page('auto'), /data-default-mode="auto"/);
 });
 
-test('translations: built-in en and de, checks of the files in TRANSLATIONS_DIR', () => {
-  assert.deepEqual(Object.keys(loadTranslations()), ['en', 'de']);
+test('translations: built-in languages, checks of the files in TRANSLATIONS_DIR', () => {
+  assert.deepEqual(Object.keys(loadTranslations()), ['en', 'de', 'es', 'fr', 'it', 'nl', 'pl', 'pt']);
   const base = { template: 'default', templatesDir: '/nonexistent' };
-  assert.throws(() => loadTheme({ ...base, languages: ['fr'] }, '1'), /LANGUAGES: no translation for "fr"/);
+  assert.throws(() => loadTheme({ ...base, languages: ['sv'] }, '1'), /LANGUAGES: no translation for "sv"/);
   assert.throws(() => loadTheme({ ...base, languages: ['de'], defaultLang: 'en' }, '1'), /DEFAULT_LANG=en is not one of LANGUAGES/);
+  assert.throws(() => loadTheme({ ...base, confirmText: { any: '', ge: 'x' } }, '1'), /CONFIRM_TEXT_GE: no translation for "ge"/);
+  assert.doesNotThrow(() => loadTheme({ ...base, confirmText: { any: 'x', pl: 'y' } }, '1'));
   const de = loadTheme({ ...base, languages: ['de'] }, '1');
   assert.deepEqual([de.languages, de.defaultLang, de.langSwitch], [['de'], 'de', false]);
   /** @param {string} name @param {string} content */
@@ -87,16 +89,45 @@ test('translations: built-in en and de, checks of the files in TRANSLATIONS_DIR'
     writeFileSync(join(dir, name), content);
     return dir;
   };
-  assert.throws(() => loadTranslations(dirWith('fr.json', '{ broken')), /fr\.json: /);
-  assert.throws(() => loadTranslations(dirWith('fr.json', '{"a": 1}')), /JSON object of texts/);
-  assert.throws(() => loadTranslations(dirWith('fr.json', '["a"]')), /JSON object of texts/);
+  assert.throws(() => loadTranslations(dirWith('sv.json', '{ broken')), /sv\.json: /);
+  assert.throws(() => loadTranslations(dirWith('sv.json', '{"a": 1}')), /JSON object of texts/);
+  assert.throws(() => loadTranslations(dirWith('sv.json', '["a"]')), /JSON object of texts/);
   assert.throws(() => loadTranslations(dirWith('French.json', '{}')), /language code/);
-  assert.throws(() => loadTranslations(dirWith('fr.json', `{"a": "${'x'.repeat(600 * 1024)}"}`)), /plain file up to 512 KB/);
+  assert.throws(() => loadTranslations(dirWith('sv.json', `{"a": "${'x'.repeat(600 * 1024)}"}`)), /plain file up to 512 KB/);
   const link = mkdtempSync(join(tmpdir(), 'vanishly-tr-'));
-  symlinkSync(join(dirWith('x.json', '{}'), 'x.json'), join(link, 'fr.json'));
+  symlinkSync(join(dirWith('x.json', '{}'), 'x.json'), join(link, 'sv.json'));
   assert.throws(() => loadTranslations(link), /plain file/);
-  const fr = loadTranslations(dirWith('fr.json', '{"home.title": "Partager"}')).fr;
-  assert.equal(fr['home.title'], 'Partager');
-  assert.equal(fr['home.expires'], 'Expires after');
-  assert.equal(fr.lang, 'fr');
+  const sv = loadTranslations(dirWith('sv.json', '{"home.title": "Dela"}')).sv;
+  assert.equal(sv['home.title'], 'Dela');
+  assert.equal(sv['home.expires'], 'Expires after');
+  assert.equal(sv.lang, 'sv');
+  // TRANSLATIONS_DIR replaces single texts of a built-in language.
+  assert.equal(loadTranslations(dirWith('fr.json', '{"home.title": "Partager"}')).fr['home.title'], 'Partager');
+});
+
+test('built-in translations: every key of en.json, with the same placeholders', () => {
+  const read = (/** @type {string} */ f) => JSON.parse(readFileSync(`translations/${f}`, 'utf8'));
+  const en = read('en.json');
+  const ph = (/** @type {string} */ s) => (s.match(/\{\w+\}/g) || []).sort().join();
+  for (const f of readdirSync('translations')) {
+    const file = read(f);
+    assert.equal(file.lang, f.slice(0, -5), f);
+    for (const k of Object.keys(en)) {
+      assert.ok(k in file, `${f}: ${k} is missing`);
+      assert.equal(ph(file[k]), ph(en[k]), `${f}: ${k} placeholders`);
+    }
+  }
+});
+
+test('SITE_NAME replaces the name in the header and the title; more than two languages: a menu', () => {
+  const base = { template: 'default', templatesDir: '/nonexistent' };
+  const html = loadTheme({ ...base, siteName: 'ACME <Secrets>' }, '1').page('error', 'fr', { page: 'error', title: 'Erreur' });
+  assert.match(html, /<title>Erreur - ACME &lt;Secrets&gt;<\/title>/);
+  assert.match(html, /<span class="brand-name">ACME &lt;Secrets&gt;<\/span>/);
+  assert.match(html, /<details class="nav-menu lang-switch lang-menu">/);
+  assert.match(html, /<a class="nav-menu-item" href="\?lang=de" hreflang="de" lang="de">Deutsch<\/a>/);
+  assert.ok(!html.includes('href="?lang=fr"'), 'the current language is not offered');
+  assert.match(loadTheme(base, '1').page('error', 'en', { page: 'error' }), /<title>Vanishly<\/title>/);
+  const two = loadTheme({ ...base, languages: ['en', 'de'] }, '1').page('error', 'de', { page: 'error' });
+  assert.match(two, /<a class="lang-switch" href="\?lang=en" hreflang="en" lang="en">English<\/a>/);
 });

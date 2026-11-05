@@ -144,11 +144,15 @@ function classes(v) {
   return all.filter((c) => list.includes(c));
 }
 
+// CONFIRM_TEXT_<language code>, e.g. CONFIRM_TEXT_FR, for every language,
+// also those added in TRANSLATIONS_DIR (checked in src/theme.js).
+const CONFIRM_TEXT_LANG = /^CONFIRM_TEXT_(?!ANY$)([A-Z]{2,3})$/;
+
 // Every setting this app reads. A name one or two letters off one of these
 // is a typo (ENABLE_VEIWS) and stops the start, like any invalid value.
 export const SETTINGS = [
   'PORT', 'HOST', 'BASE_URL', 'REDIS_URL', 'REDIS_URL_FILE', 'REDIS_TLS_CA_FILE', 'REDIS_PREFIX', 'TRUST_PROXY', 'HSTS',
-  'TEMPLATE', 'TEMPLATES_DIR', 'TRANSLATIONS_DIR', 'LANGUAGES', 'DEFAULT_LANG', 'DEFAULT_MODE',
+  'SITE_NAME', 'TEMPLATE', 'TEMPLATES_DIR', 'TRANSLATIONS_DIR', 'LANGUAGES', 'DEFAULT_LANG', 'DEFAULT_MODE',
   'TTL_OPTIONS', 'DEFAULT_TTL', 'MAX_TTL', 'MAX_VIEWS', 'MAX_SECRET_CHARS', 'MIN_SECRET_CHARS',
   'MIN_PASSPHRASE_LENGTH', 'PASSPHRASE_COMPLEXITY', 'REQUIRE_PASSPHRASE', 'PASSPHRASE_ATTEMPTS',
   'CONFIRM_CHECKBOX', 'CONFIRM_TEXT', 'CONFIRM_TEXT_EN', 'CONFIRM_TEXT_DE',
@@ -815,7 +819,7 @@ function auditConfig(env, authSecret) {
 /** @param {NodeJS.ProcessEnv} env */
 export function loadConfig(env = process.env) {
   for (const name of Object.keys(env)) {
-    if (SETTINGS.includes(name) || name.length < 6) continue;
+    if (SETTINGS.includes(name) || name.length < 6 || CONFIRM_TEXT_LANG.test(name)) continue;
     const near = SETTINGS.find((k) => distance(name.toUpperCase(), k) <= 2);
     if (near) throw new Error(`${name}: unknown setting, did you mean ${near}?`);
   }
@@ -898,6 +902,8 @@ export function loadConfig(env = process.env) {
     trustProxy: named('TRUST_PROXY', () => trustProxy(env.TRUST_PROXY)),
     hsts: sw('HSTS', false),
     template,
+    // Name in the header and the page title; '' = the template's siteName (default Vanishly).
+    siteName: str('SITE_NAME', /^[^\r\n]{1,80}$/, '', 'at most 80 characters on one line').trim(),
     // Light/dark at the first visit; '' = the template's defaultMode.
     defaultMode: str('DEFAULT_MODE', /^(auto|light|dark)$/, '', 'auto, light or dark'),
     templatesDir: str('TEMPLATES_DIR', /^\/\S*$/, '/var/lib/vanishly/templates', 'an absolute path'),
@@ -906,9 +912,16 @@ export function loadConfig(env = process.env) {
     maxTtl,
     ttlOptions,
     confirmCheckbox: sw('CONFIRM_CHECKBOX', false),
-    // Own label text per language; empty = the text from translations/ or the template.
-    // any: CONFIRM_TEXT, also for languages added in TRANSLATIONS_DIR.
-    confirmText: { en: text('CONFIRM_TEXT_EN') || text('CONFIRM_TEXT'), de: text('CONFIRM_TEXT_DE') || text('CONFIRM_TEXT'), any: text('CONFIRM_TEXT') },
+    // Own label text per language (CONFIRM_TEXT_<CODE>), any: CONFIRM_TEXT for
+    // the others; empty = the text from translations/ or the template.
+    confirmText: {
+      any: text('CONFIRM_TEXT'),
+      ...Object.fromEntries(
+        Object.keys(env)
+          .filter((k) => CONFIRM_TEXT_LANG.test(k) && text(k))
+          .map((k) => [k.slice(13).toLowerCase(), text(k)]),
+      ),
+    },
     maxViews: num('MAX_VIEWS', 10, 1, 100),
     maxSecretChars,
     minSecretChars: num('MIN_SECRET_CHARS', 1, 1, 1000000),

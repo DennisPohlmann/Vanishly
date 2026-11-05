@@ -1,7 +1,7 @@
 // Vanishly - design templates, page rendering and translations.
 //
 // Translations are one JSON file per language (key -> text): the built-in
-// translations/ folder (en, de), then TRANSLATIONS_DIR, whose files replace
+// translations/ folder (en, de, fr, es, it, nl, pl, pt), then TRANSLATIONS_DIR, whose files replace
 // texts or add languages (fr.json adds French). Missing keys fall back to
 // English.
 //
@@ -135,7 +135,7 @@ function safeUrl(url) {
  * all found) and DEFAULT_LANG (empty: en, or the first served) are checked
  * against the translations; with one language the language link is off.
  * @param {{ template: string, templatesDir: string, translationsDir?: string, languages?: string[] | null,
- *   defaultLang?: string, defaultMode?: string, apiDocs?: boolean, features?: Record<string, boolean> }} config
+ *   defaultLang?: string, defaultMode?: string, siteName?: string, confirmText?: Record<string, string>, apiDocs?: boolean, features?: Record<string, boolean> }} config
  * @param {string} version
  */
 export function loadTheme(config, version) {
@@ -155,6 +155,10 @@ export function loadTheme(config, version) {
   const languages = config.languages?.length ? config.languages : Object.keys(all);
   for (const l of languages) {
     if (!all[l]) throw new Error(`LANGUAGES: no translation for "${l}" (translations/ or TRANSLATIONS_DIR)`);
+  }
+  // CONFIRM_TEXT_<CODE> needs a translation of that language (catches typos like CONFIRM_TEXT_GE).
+  for (const l of Object.keys(config.confirmText || {})) {
+    if (l !== 'any' && !all[l]) throw new Error(`CONFIRM_TEXT_${l.toUpperCase()}: no translation for "${l}" (translations/ or TRANSLATIONS_DIR)`);
   }
   const defaultLang = config.defaultLang || (languages.includes('en') ? 'en' : languages[0]);
   if (!languages.includes(defaultLang)) throw new Error(`DEFAULT_LANG=${defaultLang} is not one of LANGUAGES (${languages.join(',')})`);
@@ -205,6 +209,25 @@ export function loadTheme(config, version) {
   // DEFAULT_MODE, otherwise the template's defaultMode, otherwise the system.
   const mode = [config.defaultMode, meta.defaultMode].find((m) => ['light', 'dark', 'auto'].includes(m)) || 'auto';
 
+  /** @param {string} l */
+  const langName = (l) => strings[l]['lang.name'] || l;
+  /**
+   * The language link in the header: with two languages one link to the
+   * other, with more a menu of all of them (details/summary, works without JS).
+   * @param {string} cur
+   * @param {string} next
+   */
+  const langSwitchHtml = (cur, next) => {
+    const link = (/** @type {string} */ l, /** @type {string} */ cls) =>
+      `<a class="${cls}" href="?lang=${l}" hreflang="${l}" lang="${l}">${escapeHtml(langName(l))}</a>`;
+    if (languages.length <= 2) return link(next, 'lang-switch');
+    return (
+      `<details class="nav-menu lang-switch lang-menu"><summary class="nav-user">` +
+      `<span class="nav-user-who"><span class="nav-user-name"><span class="sr-only">${escapeHtml(strings[cur]['lang.label'])}: </span>${escapeHtml(langName(cur))}</span></span><span class="nav-caret" aria-hidden="true"></span></summary>` +
+      `<div class="nav-menu-panel">${languages.map((l) => (l === cur ? '' : link(l, 'nav-menu-item'))).join('')}</div></details>`
+    );
+  };
+
   return {
     dir,
     name: config.template,
@@ -225,7 +248,8 @@ export function loadTheme(config, version) {
     page(view, lang, ctx, clientKeys = []) {
       const t = strings[lang] || strings[defaultLang];
       const next = languages[(languages.indexOf(t.lang) + 1) % languages.length];
-      const siteName = meta.siteName || 'Vanishly';
+      // SITE_NAME, otherwise the template's siteName.
+      const siteName = config.siteName || meta.siteName || 'Vanishly';
       /** @type {Record<string, string>} */
       const client = {};
       for (const k of Object.keys(t)) {
@@ -243,6 +267,7 @@ export function loadTheme(config, version) {
         footerLinks: footerLinks(lang),
         otherLang: next,
         otherLangName: strings[next]['lang.name'] || next,
+        langSwitch: langSwitchHtml(t.lang, next),
         featureClasses: [featureClasses, ...(Array.isArray(ctx.bodyClasses) ? ctx.bodyClasses : [])].filter(Boolean).join(' '),
         modeToggle: f.themeToggle === false ? '0' : '1',
         apiHref,

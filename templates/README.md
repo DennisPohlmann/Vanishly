@@ -103,7 +103,7 @@ Security Policy blocks external fonts, images and scripts.
 
 | Key | Meaning |
 |---|---|
-| `siteName` | name in the header and the page title (default `Vanishly`) |
+| `siteName` | name in the header and the page title (default `Vanishly`; `SITE_NAME` wins) |
 | `logo`, `favicon` | file names in `assets/` |
 | `defaultMode` | `auto` (system setting), `light` or `dark`; the visitor's switch wins |
 | `footerLinks` | links in the footer; `url` must start with `https://`, `http://`, `mailto:` or `/` |
@@ -118,7 +118,7 @@ app's `views/` folder. Start from the
 original. Placeholders:
 
 - `{{ name }}`: a value, HTML-escaped
-- `{{{ name }}}`: HTML built by Vanishly (`content`, `ttlSelect`, `footerLinks`, `logoHtml`, `i18n`,
+- `{{{ name }}}`: HTML built by Vanishly (`content`, `ttlSelect`, `footerLinks`, `logoHtml`, `langSwitch` (the language link or menu), `i18n`,
   and with sign-in `authNav` in the layout and `recipientsBlock` in the home view,
   which also carries the comment field of `AUDIT_COMMENT`; `expirySelect` and
   `scopeBoxes` in `tokens.html`)

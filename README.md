@@ -70,7 +70,8 @@ Vanishly runs as a small Node.js container next to Redis.
   name..."), and the expiry choices of the form.
 - **Mobile friendly and accessible:** WCAG 2.2 AA (BITV 2.0) as the target,
   every page checked automatically with axe-core in all templates, light and
-  dark, down to 320 px; keyboard and screen reader support. English and German.
+  dark, down to 320 px; keyboard and screen reader support. English, German, Spanish, French,
+  Italian, Dutch, Polish and Portuguese.
 - **Hardened:** both containers run without root, read-only, without
   capabilities; CI runs npm audit, CodeQL and Trivy (repository, Dockerfile,
   images).

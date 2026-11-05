@@ -225,6 +225,8 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible, .mode-toggle:focu
   .nav-user { max-width: 11rem; }
   .nav-user-name { font-size: .82rem; }
   .nav-user-mail { font-size: .7rem; }
+  /* The language menu is short: it may cover the page below. */
+  .lang-menu > .nav-menu-panel { position: absolute; margin-top: 0; box-shadow: var(--shadow, 0 8px 24px rgba(0, 0, 0, .18)); }
 }
 
 /* Notices and status */

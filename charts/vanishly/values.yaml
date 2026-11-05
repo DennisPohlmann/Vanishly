@@ -89,13 +89,15 @@ config:
   # PEM file of an own CA for a rediss:// redis.external.url (mount it with extraVolumes).
   REDIS_TLS_CA_FILE: ""
   # == Design and language
+  # Name in the header and the browser tab title (the template's siteName, usually Vanishly).
+  SITE_NAME: ""
   # default, aurora, example-brand or a folder of templates.files (default).
   TEMPLATE: ""
   # auto, light or dark (the template's choice).
   DEFAULT_MODE: ""
   # Where own templates are mounted (/var/lib/vanishly/templates).
   TEMPLATES_DIR: ""
-  # Languages served, e.g. en (all translations: en,de).
+  # Languages served, e.g. en,de (all translations: en,de,es,fr,it,nl,pl,pt).
   LANGUAGES: ""
   # When the browser names none of LANGUAGES (en).
   DEFAULT_LANG: ""
@@ -128,7 +130,7 @@ config:
   # == Confirmation checkbox before "Create secret link"
   # Show the checkbox (false).
   CONFIRM_CHECKBOX: ""
-  # Label in both languages (built-in text).
+  # Label in all languages (built-in text). CONFIRM_TEXT_<CODE> works for any language code, e.g. CONFIRM_TEXT_FR.
   CONFIRM_TEXT: ""
   # English label (CONFIRM_TEXT).
   CONFIRM_TEXT_EN: ""

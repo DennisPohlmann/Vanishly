@@ -1,6 +1,7 @@
 {
   "lang.name": "Deutsch",
   "lang": "de",
+  "lang.label": "Sprache",
   "tagline": "Teile ein Passwort oder Geheimnis mit einem Link, der nur einmal funktioniert.",
   "nav.new": "Neues Geheimnis",
   "nav.api": "API",

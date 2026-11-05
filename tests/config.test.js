@@ -87,7 +87,9 @@ test('dropdown defaults follow TTL_OPTIONS', () => {
 test('confirmation text per language', () => {
   const c = loadConfig({ CONFIRM_CHECKBOX: 'true', CONFIRM_TEXT: 'Same', CONFIRM_TEXT_DE: 'Deutsch' });
   assert.equal(c.confirmCheckbox, true);
-  assert.deepEqual(c.confirmText, { en: 'Same', de: 'Deutsch', any: 'Same' });
+  assert.deepEqual(c.confirmText, { any: 'Same', de: 'Deutsch' });
+  // Any language code, also one only in TRANSLATIONS_DIR; no "did you mean" for it.
+  assert.deepEqual(loadConfig({ CONFIRM_TEXT_PL: 'Polski', CONFIRM_TEXT_SV: 'Svenska', CONFIRM_TEXT_FR: '' }).confirmText, { any: '', pl: 'Polski', sv: 'Svenska' });
 });
 
 test('duration labels', () => {

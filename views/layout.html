@@ -22,7 +22,7 @@
     <nav class="site-nav" aria-label="{{ t:nav.label }}">
       <a class="nav-new" href="/">{{ t:nav.new }}</a>
       {{{ authNav }}}
-      <a class="lang-switch" href="?lang={{ otherLang }}" hreflang="{{ otherLang }}" lang="{{ otherLang }}">{{ otherLangName }}</a>
+      {{{ langSwitch }}}
       <button type="button" class="mode-toggle" id="mode-toggle" title="{{ t:theme.toggle }}" aria-label="{{ t:theme.toggle }}" aria-pressed="false">
         <span class="icon-sun" aria-hidden="true">&#9728;</span><span class="icon-moon" aria-hidden="true">&#9790;</span>
       </button>

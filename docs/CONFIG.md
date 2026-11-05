@@ -31,10 +31,11 @@ The container then does not come up (`docker compose logs vanishly`).
 | `PORT` | `3000` | Listen port |
 | `TRUST_PROXY` | `false` | Reverse proxies in front: a number of hops (`1`), `loopback`, or address ranges; needed for correct client IPs in the rate limits |
 | `HSTS` | `false` | Send `Strict-Transport-Security` (only if served via HTTPS) |
+| `SITE_NAME` | (the template's `siteName`, otherwise `Vanishly`) | Name in the header and in the browser tab title (`<page> - <name>`), e.g. `ACME Secrets`; at most 80 characters. Wins over `siteName` in `template.json` |
 | `TEMPLATE` | `default` | Design template, see [templates/README.md](../templates/README.md) |
 | `DEFAULT_MODE` | (the template's `defaultMode`, usually `auto`) | Light or dark at the first visit: `auto` (the visitor's system setting), `light` or `dark`. A visitor's own choice with the button wins (unless `ENABLE_THEME_TOGGLE=false`) |
 | `TEMPLATES_DIR` | `/var/lib/vanishly/templates` | Folder with own templates; searched before the built-in `templates/` |
-| `LANGUAGES` | (all translations: `en,de`) | Languages served, comma-separated. Only these count for `?lang=`, the `lang` cookie and `Accept-Language`. One language (`LANGUAGES=en`) serves every page in it and hides the language link. A code without a translation stops the start |
+| `LANGUAGES` | (all translations: `en,de,es,fr,it,nl,pl,pt`) | Languages served, comma-separated. Only these count for `?lang=`, the `lang` cookie and `Accept-Language`. One language (`LANGUAGES=en`) serves every page in it and hides the language link; two show a link to the other one, more a language menu. A code without a translation stops the start |
 | `DEFAULT_LANG` | `en` (or the first of `LANGUAGES` without `en`) | Language when the browser names none of `LANGUAGES` (and no `?lang=` or cookie decides); must be one of `LANGUAGES` |
 | `TRANSLATIONS_DIR` | `/var/lib/vanishly/translations` | Folder with own translations: `<code>.json` (e.g. `fr.json`) adds a language, `de.json` replaces single German texts; missing keys come from English. Plain JSON files (`"key": "text"`) up to 512 KB, no symbolic links |
 | `TTL_OPTIONS` | (built-in steps) | Entries of the expiry dropdown, comma-separated: `15m,1h,1d,3d,7d` (`m`, `h`, `d`, `w`, or seconds; 1 minute to 1 year). Without it the form offers 5m, 1h, 1d, 3d, 7d, 14d, 30d, 90d up to `MAX_TTL` |
@@ -47,7 +48,7 @@ The container then does not come up (`docker compose logs vanishly`).
 | `PASSPHRASE_COMPLEXITY` | (none) | Character classes the passphrase must contain, comma-separated: `upper`, `lower`, `digit`, `symbol`, or `all` ([details](#minimum-lengths-and-passphrase-rules)) |
 | `REQUIRE_PASSPHRASE` | `false` | `true`: every secret needs a passphrase. `unless-recipients`: every secret without recipients needs one; with recipients (sign-in) it is optional. The form shows the field as required until a recipient is chosen; the API answers `passphrase_required` ("A passphrase is required when no recipients are given"). Without sign-in this means: always |
 | `CONFIRM_CHECKBOX` | `false` | `true`: the sender must tick a confirmation before creating the link; the API then needs `"confirmed": true` and otherwise answers `confirmation_required` with the same text as the checkbox |
-| `CONFIRM_TEXT_EN`, `CONFIRM_TEXT_DE` | (built-in text) | Own text of the confirmation per language; `CONFIRM_TEXT` sets both. Default: "I confirm that this secret contains only one password: not several passwords, no user name and no links that together give access to a whole system." |
+| `CONFIRM_TEXT_<CODE>`, e.g. `CONFIRM_TEXT_EN`, `CONFIRM_TEXT_DE`, `CONFIRM_TEXT_PL` | (built-in text) | Own text of the confirmation in one language. Works for every language code, also for one added in `TRANSLATIONS_DIR` (`sv.json` → `CONFIRM_TEXT_SV`); a code without a translation stops the start. `CONFIRM_TEXT` is the text for all languages without their own. Default: "I confirm that this secret contains only one password: not several passwords, no user name and no links that together give access to a whole system." |
 | `PASSPHRASE_ATTEMPTS` | `5` | Wrong passphrases before the secret is destroyed |
 | `GENERATOR_LENGTH` | `20` | Length of the password of the "Generate" button (8 to 128) |
 | `GENERATOR_COMPLEXITY` | `all` | Character classes of the generated password: `upper`, `lower`, `digit`, `symbol` or `all`; each chosen class appears at least once. Look-alikes (0/O, 1/l/I) are left out |
@@ -585,23 +586,26 @@ call with `X-Audit-Comment`; it cannot issue further admin tokens
 
 ## Languages
 
-English and German are built in (`translations/en.json`,
-`translations/de.json`). Which one a visitor gets:
+Built in (`translations/`): English (`en`), German (`de`), Spanish (`es`),
+French (`fr`), Italian (`it`), Dutch (`nl`), Polish (`pl`) and Portuguese
+(`pt`). Which one a visitor gets:
 
-1. the link in the header (`?lang=de`, remembered in the `lang` cookie),
-   while the language link is on (`ENABLE_LANG_SWITCH`, more than one
+1. the language link or menu in the header (`?lang=de`, remembered in the
+   `lang` cookie), while it is on (`ENABLE_LANG_SWITCH`, more than one
    language);
-2. otherwise the browser (`Accept-Language`): German for a German browser,
-   English for every other one;
+2. otherwise the browser (`Accept-Language`), if it names one of the
+   served languages (a French browser gets French);
 3. otherwise `DEFAULT_LANG` (`en`).
 
 Only the languages in `LANGUAGES` are served (default: all translations).
 `LANGUAGES=en` makes every page English: `?lang=`, the cookie and the
-browser are ignored and the language link disappears.
+browser are ignored and the language link disappears. With two languages
+the header shows a link to the other one, with more a menu of all of them
+(e.g. `LANGUAGES=en,de` for the old two-language header).
 
 Own translations go into `TRANSLATIONS_DIR` (with Docker Compose a mounted
 folder, e.g. `./custom-translations:/var/lib/vanishly/translations:ro`):
-`fr.json` adds French, `de.json` replaces single German texts. Each file is
+`sv.json` adds Swedish, `de.json` replaces single German texts. Each file is
 a JSON object of texts with the keys of `translations/en.json`; missing keys
 come from English, `lang.name` is the name shown in the language link. The
 files are checked at start (plain files up to 512 KB, valid JSON, a
