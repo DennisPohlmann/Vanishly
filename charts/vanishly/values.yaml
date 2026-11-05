@@ -189,6 +189,8 @@ config:
   ENTRA_AUTHORITY: ""
   # Entra ID, national clouds only: Graph host (https://graph.microsoft.com).
   ENTRA_GRAPH_URL: ""
+  # Entra ID: the address shown for a person: upn or mail (upn).
+  ENTRA_SHOW_ADDRESS: ""
   # OIDC: issuer URL, e.g. https://sso.example.com/realms/main.
   OIDC_ISSUER: ""
   # OIDC: client id.
@@ -240,6 +242,8 @@ config:
   RECIPIENT_USER_GROUP: ""
   # Allowed e-mail domains of recipients, e.g. example.com,example.de (any).
   RECIPIENT_DOMAINS: ""
+  # Entra ID with ENTRA_GRAPH: only addresses of users in the directory (false).
+  RECIPIENTS_DIRECTORY_ONLY: ""
   # Show on the status page who opened the secret (false).
   RECEIPT_SHOW_VIEWER: ""
   # Responsible people/groups of a secret: off, optional or required (off).

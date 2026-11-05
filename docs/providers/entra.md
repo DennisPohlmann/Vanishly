@@ -31,6 +31,7 @@ outside the tenant away, the built-in sign-in decides per secret.
 | `ENTRA_AUTHORITY` | `https://login.microsoftonline.com` | Only for national clouds, e.g. `https://login.microsoftonline.us` |
 | `ENTRA_GRAPH` | `false` | `true`: use Microsoft Graph for the group and people search and for users in more than 200 groups (see below) |
 | `ENTRA_GRAPH_URL` | `https://graph.microsoft.com` | Only for national clouds |
+| `ENTRA_SHOW_ADDRESS` | `upn` | The address shown for a person in the header, the people search, the status page and the view log: `upn` (the sign-in name, e.g. `jdoe@example.com`) or `mail` (the mail address, e.g. `john.doe@example.com`; see [Who is who](#who-is-who)) |
 
 Plus `BASE_URL` and `AUTH_SECRET`, and the general sign-in settings in
 [CONFIG.md](../CONFIG.md#sign-in-and-recipients-auth_-entra_-oidc_-directory_-recipient).
@@ -42,6 +43,26 @@ Vanishly matches recipients by names the account cannot pick itself: the
 `preferred_username` / `upn` (the sign-in name), and `email` only when
 Entra verified its domain (optional claim `xms_edov`). Guests are matched
 by their e-mail address.
+
+The UPN often differs from the mail address (`jdoe@example.com` and
+`john.doe@example.com`). The UPN stays the key (API tokens, `ADMIN_USERS`,
+the audit log); `ENTRA_SHOW_ADDRESS=mail` only changes the address shown,
+and the people search then adds a person with their mail address. Vanishly
+takes it from Microsoft Graph (`ENTRA_GRAPH=true` with `User.Read.All`,
+the user's `mail`, kept 5 minutes), otherwise from the `email` claim when
+`xms_edov` is set; without one it shows the UPN.
+
+UPN and mail address both work as recipient, in the form and on the API,
+whatever `ENTRA_SHOW_ADDRESS` says: with `ENTRA_GRAPH=true` Vanishly adds
+the user's mail from Graph to the names they match at sign-in, so a secret
+for `john.doe@example.com` opens for the account `jdoe@example.com`
+(without Graph only when the `email` claim is verified).
+
+`RECIPIENTS_DIRECTORY_ONLY=true` (needs `ENTRA_GRAPH=true` and
+`User.Read.All`) refuses addresses that are no user of the tenant: each
+recipient and responsible person is looked up in Graph (`userPrincipalName`
+or `mail`) when the secret is created, and both the UPN and the mail of the
+user found are stored. Mail aliases (`proxyAddresses`) are not matched.
 
 ## Groups
 
@@ -62,7 +83,8 @@ consent**, then `ENTRA_GRAPH=true`.
 
 `RECIPIENT_USER_GROUP` is the object id of the group whose members the form
 suggests. Entra searches the directory for each query; a person is added
-with their UPN (guests: their e-mail).
+with their UPN (guests: their e-mail; with `ENTRA_SHOW_ADDRESS=mail` their
+mail address).
 
 ## API tokens
 

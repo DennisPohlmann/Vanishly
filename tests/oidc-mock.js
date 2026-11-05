@@ -25,6 +25,10 @@ export async function startMock(opts) {
     groups: [],
     /** @type {Record<string, { displayName: string, mail?: string | null, userPrincipalName: string }[]>} Graph: group id -> users (transitive) */
     members: {},
+    /** @type {Record<string, string>} Graph: oid -> mail */
+    mail: {},
+    /** @type {{ userPrincipalName: string, mail?: string | null }[]} Graph: all users (address check) */
+    users: [],
     /** @type {URLSearchParams | null} */
     lastAuthorize: null,
     /** @type {URLSearchParams | null} */
@@ -126,6 +130,15 @@ export async function startMock(opts) {
       if (req.headers.authorization !== 'Bearer graph-app-token') return json(res, 401, { error: { code: 'InvalidAuthenticationToken' } });
       const m = /^\/v1\.0\/users\/([0-9a-f-]{36})\/getMemberGroups$/.exec(p);
       if (m && req.method === 'POST') return json(res, 200, { value: mock.memberGroups[m[1]] || [] });
+      const u = /^\/v1\.0\/users\/([0-9a-f-]{36})$/.exec(p);
+      if (u && url.searchParams.get('$select') === 'mail') return json(res, 200, { mail: mock.mail[u[1]] || null });
+      if (p === '/v1.0/users') {
+        // userPrincipalName eq 'x' or mail eq 'x' (case-insensitive like Graph)
+        const f = /^userPrincipalName eq '(.*)' or mail eq '\1'$/.exec(url.searchParams.get('$filter') || '');
+        if (!f || req.headers.consistencylevel !== 'eventual') return json(res, 400, { error: { code: 'Request_UnsupportedQuery' } });
+        const a = f[1].replace(/''/g, "'").toLowerCase();
+        return json(res, 200, { value: mock.users.filter((x) => x.userPrincipalName.toLowerCase() === a || String(x.mail || '').toLowerCase() === a) });
+      }
       const t = /^\/v1\.0\/groups\/([0-9a-f-]{36})\/transitiveMembers\/microsoft\.graph\.user$/.exec(p);
       if (t) {
         mock.lastSearch = url.searchParams;

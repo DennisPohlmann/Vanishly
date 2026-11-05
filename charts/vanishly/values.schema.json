@@ -758,6 +758,14 @@
             }
           ]
         },
+        "ENTRA_SHOW_ADDRESS": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(upn|mail)$"
+            }
+          ]
+        },
         "OIDC_ISSUER": {
           "anyOf": [
             {
@@ -958,6 +966,17 @@
             {
               "type": "string",
               "pattern": "^[\\s,;]*$|^[\\s,;]*(?i:[a-z0-9-]+(\\.[a-z0-9-]+)+)([\\s,;]+(?i:[a-z0-9-]+(\\.[a-z0-9-]+)+))*[\\s,;]*$"
+            }
+          ]
+        },
+        "RECIPIENTS_DIRECTORY_ONLY": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
             }
           ]
         },

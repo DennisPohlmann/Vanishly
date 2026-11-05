@@ -423,6 +423,65 @@ test('RECIPIENT_USER_GROUP: people search from one group, picked person can open
   assert.doesNotMatch((await plain.call('/', { cookie: a3 })).data, /role="combobox"/);
 });
 
+test('ENTRA_SHOW_ADDRESS=mail: the mail address is shown, searched and matches as recipient', opts, async () => {
+  assert.throws(() => loadConfig({ AUTH_PROVIDER: 'entra', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_CLIENT_SECRET: SECRET, AUTH_SECRET: 'x'.repeat(40), BASE_URL: 'http://localhost', ENTRA_SHOW_ADDRESS: 'email' }), /ENTRA_SHOW_ADDRESS/);
+  const { call, login } = await startApp({ RECIPIENT_USER_GROUP: IT, ENTRA_GRAPH: 'true', ENTRA_SHOW_ADDRESS: 'mail', AUDIT_LOG: 'false' });
+  mock.members[IT] = [{ displayName: 'Bob Example', mail: 'bob.example@example.com', userPrincipalName: 'Bob@Example.com' }];
+  mock.mail[BOB.oid] = 'Bob.Example@example.com';
+  const alice = (await login(ALICE)).cookie;
+  // Alice has no mail in Graph: her UPN stays.
+  assert.deepEqual((await call('/api/v1/me', { cookie: alice })).data, { signedIn: true, name: 'Alice Example', user: 'alice@example.com', app: false });
+  const found = await call('/api/v1/people?q=bo', { cookie: alice });
+  assert.deepEqual(found.data.people, [{ name: 'Bob Example', user: 'bob.example@example.com', mail: 'bob.example@example.com' }]);
+  const byMail = await create(call, alice, { recipients: ['bob.example@example.com'] });
+  const byUpn = await create(call, alice, { recipients: ['bob@example.com'] });
+  const bob = (await login(BOB)).cookie;
+  const me = (await call('/api/v1/me', { cookie: bob })).data;
+  assert.equal(me.user, 'bob@example.com');
+  assert.equal(me.mail, 'bob.example@example.com');
+  assert.match((await call('/', { cookie: bob })).data, /nav-user-mail">bob\.<wbr>example<wbr>@example\.<wbr>com</);
+  for (const c of [byMail, byUpn]) assert.equal((await call(`/api/v1/secrets/${c.data.id}/reveal`, { cookie: bob, body: {} })).status, 200);
+  // Without Graph: the verified email claim.
+  const noGraph = await startApp({ ENTRA_SHOW_ADDRESS: 'mail' });
+  const carol = (await noGraph.login({ ...CAROL, email: 'Carol.Smith@example.com', xms_edov: true })).cookie;
+  assert.equal((await noGraph.call('/api/v1/me', { cookie: carol })).data.mail, 'carol.smith@example.com');
+  const unverified = (await noGraph.login({ ...CAROL, email: 'carol.smith@example.com' })).cookie;
+  assert.equal((await noGraph.call('/api/v1/me', { cookie: unverified })).data.mail, undefined);
+});
+
+test('UPN and mail both work as recipient; RECIPIENTS_DIRECTORY_ONLY refuses unknown addresses', opts, async () => {
+  assert.throws(() => loadConfig({ AUTH_PROVIDER: 'entra', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_CLIENT_SECRET: SECRET, AUTH_SECRET: 'x'.repeat(40), BASE_URL: 'http://localhost', RECIPIENTS_DIRECTORY_ONLY: 'true' }), /ENTRA_GRAPH=true/);
+  mock.mail[BOB.oid] = 'bob.example@example.com';
+  mock.users = [{ userPrincipalName: 'Bob@Example.com', mail: 'Bob.Example@example.com' }, { userPrincipalName: 'alice@example.com', mail: null }];
+  // Without the check: Graph's mail of the signed-in user matches too (ENTRA_SHOW_ADDRESS=upn).
+  const plain = await startApp({ ENTRA_GRAPH: 'true' });
+  const pa = (await plain.login(ALICE)).cookie;
+  const pByMail = await create(plain.call, pa, { recipients: ['bob.example@example.com'] });
+  const pBob = (await plain.login(BOB)).cookie;
+  assert.equal((await plain.call('/api/v1/me', { cookie: pBob })).data.mail, undefined);
+  assert.equal((await plain.call(`/api/v1/secrets/${pByMail.data.id}/reveal`, { cookie: pBob, body: {} })).status, 200);
+  // With the check: unknown addresses are refused, UPN and mail both accepted and both match.
+  const { call, login } = await startApp({ ENTRA_GRAPH: 'true', RECIPIENTS_DIRECTORY_ONLY: 'true', AUDIT_LOG: 'false' });
+  const alice = (await login(ALICE)).cookie;
+  const unknown = await create(call, alice, { recipients: ['bob@example.com', 'nobody@example.com'] });
+  assert.equal(unknown.status, 400);
+  assert.equal(unknown.data.error, 'unknown_recipient');
+  assert.equal(unknown.data.recipient, 'nobody@example.com');
+  const byUpn = await create(call, alice, { recipients: ['BOB@example.com'] });
+  const byMail = await create(call, alice, { recipients: ['bob.example@example.com'] });
+  assert.equal(byUpn.status, 201);
+  assert.equal(byMail.status, 201);
+  // Bob signs in once without a mail in Graph: the mail entered still matches (its UPN was stored too).
+  delete mock.mail[BOB.oid];
+  const bob = (await login(BOB)).cookie;
+  for (const c of [byUpn, byMail]) assert.equal((await call(`/api/v1/secrets/${c.data.id}/reveal`, { cookie: bob, body: {} })).status, 200);
+  // Graph down: a clear error, nothing created.
+  const down = await startApp({ ENTRA_GRAPH: 'true', RECIPIENTS_DIRECTORY_ONLY: 'true', ENTRA_GRAPH_URL: 'http://127.0.0.1:9' });
+  const da = (await down.login(ALICE)).cookie;
+  assert.equal((await create(down.call, da, { recipients: ['bob@example.com'] })).data.error, 'directory_unavailable');
+  mock.users = [];
+});
+
 test('API bearer tokens: create, open; other tenants and audiences refused', opts, async () => {
   const { call, base } = await startApp({ AUTH_API_AUDIENCE: `api://${CLIENT}` });
   const aud = `api://${CLIENT}`;

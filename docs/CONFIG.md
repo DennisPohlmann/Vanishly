@@ -140,7 +140,7 @@ only that provider has) and what each supports:
 | Variable | Default | Meaning |
 |---|---|---|
 | `AUTH_PROVIDER` | `none` | `none`, `entra` (Microsoft Entra ID), a preset (`keycloak`, `okta`, `auth0`, `google`, `ping`, `jumpcloud`, `cognito`) or `oidc` (any other OpenID Connect provider). The presets use the `OIDC_*` settings and know the provider's issuer format, groups claim and directory ([providers](providers/README.md)). Needs `BASE_URL`: the redirect URI is `<BASE_URL>/auth/callback` |
-| `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` (`_FILE`), `ENTRA_AUTHORITY`, `ENTRA_GRAPH`, `ENTRA_GRAPH_URL` | | `entra` only: tenant, app registration, national clouds, Microsoft Graph for the group and people search ([entra.md](providers/entra.md#settings)) |
+| `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` (`_FILE`), `ENTRA_AUTHORITY`, `ENTRA_GRAPH`, `ENTRA_GRAPH_URL`, `ENTRA_SHOW_ADDRESS` | | `entra` only: tenant, app registration, national clouds, Microsoft Graph for the group and people search, the address shown for a person (UPN or mail address) ([entra.md](providers/entra.md#settings)) |
 | `OIDC_ISSUER` | (required for `oidc` and the presets) | Issuer URL, e.g. `https://sso.example.com/realms/main`; its `/.well-known/openid-configuration` must be reachable. Auth0 and JumpCloud keep their trailing `/` |
 | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | (required for `oidc` and the presets) | The confidential client; `OIDC_CLIENT_SECRET_FILE` instead of the secret |
 | `OIDC_SCOPES` | `openid profile email` | Scopes to ask for (must include `openid`); add the scope that puts the groups into the ID token if your provider needs one |
@@ -160,6 +160,7 @@ only that provider has) and what each supports:
 | `RECIPIENT_GROUPS` | (none) | Groups a sender may pick: `Name=<id>,...` (Entra: the group's object id; otherwise the value in the groups claim), or `*` for a search over all groups in the directory (Entra with `ENTRA_GRAPH=true`; `keycloak`, `okta`, `google`, `cognito` with `DIRECTORY_API=true`) |
 | `RECIPIENT_USER_GROUP` | (none) | People search in the form: the group whose members the form suggests while typing a name (Entra: object id; Keycloak: path or id; Okta, PingOne, JumpCloud: group id; Auth0: role id; Google: group address; Cognito: group name). Needs `ENTRA_GRAPH=true` or `DIRECTORY_API=true` ([details](#people-search)) |
 | `RECIPIENT_DOMAINS` | (any) | Allowed e-mail domains of recipients, e.g. `example.com,example.de` |
+| `RECIPIENTS_DIRECTORY_ONLY` | `false` | `true`: every recipient and responsible person must be a user in the directory. Entra with `ENTRA_GRAPH=true` (`User.Read.All`): looked up by UPN or mail when the secret is created; the UPN and the mail both count afterwards. Unknown addresses: `400 unknown_recipient`; Graph not reachable: `502 directory_unavailable` ([entra.md](providers/entra.md#who-is-who)) |
 | `AUTH_API_AUDIENCE` | (none) | Accept bearer tokens on the API with this audience, e.g. `api://<client id>` ([details](#api-with-sign-in)) |
 | `RECEIPT_SHOW_VIEWER` | `false` | `true`: the status page shows the name and address of the signed-in person who opened the secret (stored with the view time) |
 | `RESPONSIBLE` | `off` | People or groups who look after a secret: `off`, `optional` or `required` (every secret must name one). In the form a folded "Responsible" section with the same picker as the recipients; on the API `responsible` and `responsibleGroups`. Checked like recipients, stored as keyed hashes |
@@ -371,7 +372,8 @@ full e-mail address still works. A group with the whole company makes the
 whole company searchable.
 
 - The person is added with the address they sign in with, so it matches
-  their sign-in.
+  their sign-in (Entra with `ENTRA_SHOW_ADDRESS=mail`: their mail address,
+  which then matches too).
 - At most 10 hits per search, only for signed-in users; nothing goes to
   Redis ([how the search works](providers/README.md#how-the-search-works)).
 - The directory access is read-only and differs per provider: see

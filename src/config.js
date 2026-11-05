@@ -169,11 +169,11 @@ export const SETTINGS = [
   'AUDIT_LOG_WEBHOOK_URL', 'AUDIT_LOG_WEBHOOK_AUTH', 'AUDIT_LOG_WEBHOOK_AUTH_FILE', 'AUDIT_LOG_WEBHOOK_FORMAT',
   'AUDIT_COMMENT', 'AUDIT_COMMENT_MAX',
   'AUTH_PROVIDER', 'ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET', 'ENTRA_CLIENT_SECRET_FILE',
-  'ENTRA_AUTHORITY', 'ENTRA_GRAPH', 'ENTRA_GRAPH_URL', 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET',
+  'ENTRA_AUTHORITY', 'ENTRA_GRAPH', 'ENTRA_GRAPH_URL', 'ENTRA_SHOW_ADDRESS', 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET',
   'OIDC_CLIENT_SECRET_FILE', 'OIDC_SCOPES', 'OIDC_GROUPS_CLAIM', 'AUTH_ALLOWED_DOMAINS', 'DIRECTORY_API', 'DIRECTORY_URL',
   'DIRECTORY_CLIENT_ID', 'DIRECTORY_CLIENT_SECRET', 'DIRECTORY_CLIENT_SECRET_FILE', 'DIRECTORY_API_TOKEN',
   'DIRECTORY_API_TOKEN_FILE', 'DIRECTORY_GOOGLE_CREDENTIALS_FILE', 'DIRECTORY_GOOGLE_ADMIN', 'AUTH_SECRET', 'AUTH_SECRET_FILE', 'AUTH_SESSION_TTL', 'AUTH_LOGOUT', 'AUTH_AUTO_LOGIN', 'AUTH_CREATE', 'AUTH_API_AUDIENCE', 'RECIPIENTS', 'RECIPIENTS_MAX', 'RECIPIENT_GROUPS',
-  'RECIPIENT_USER_GROUP', 'RECIPIENT_DOMAINS', 'RECEIPT_SHOW_VIEWER',
+  'RECIPIENT_USER_GROUP', 'RECIPIENT_DOMAINS', 'RECIPIENTS_DIRECTORY_ONLY', 'RECEIPT_SHOW_VIEWER',
   'ADMIN_USERS', 'ADMIN_GROUPS', 'AUDIT_ADMIN_VIEW',
   'API_TOKENS', 'API_TOKEN_REQUIRED', 'API_TOKEN_USERS', 'API_TOKEN_GROUPS', 'API_TOKEN_IP_BINDING',
   'API_TOKEN_EXPIRY_OPTIONS', 'API_TOKEN_DEFAULT_EXPIRY', 'API_TOKEN_MAX_EXPIRY', 'API_TOKEN_MAX_PER_USER',
@@ -528,6 +528,12 @@ function authConfig(env, baseUrl) {
   // asks again. Not for Entra by default: that ends the Microsoft 365 session too.
   const logout = env.AUTH_LOGOUT || (entra ? 'local' : 'provider');
   if (!/^(provider|local)$/.test(logout)) throw new Error('AUTH_LOGOUT: provider or local');
+  // Only addresses of users in the directory (Entra: UPN or mail, checked in Graph).
+  const directoryOnly = named('RECIPIENTS_DIRECTORY_ONLY', () => flag(env.RECIPIENTS_DIRECTORY_ONLY, false));
+  if (directoryOnly && !graph) throw new Error('RECIPIENTS_DIRECTORY_ONLY needs AUTH_PROVIDER=entra with ENTRA_GRAPH=true (the addresses are checked in Microsoft Graph)');
+  // The address shown for a person: the UPN (the sign-in name) or the mail address.
+  const showAddress = env.ENTRA_SHOW_ADDRESS || 'upn';
+  if (!/^(upn|mail)$/.test(showAddress)) throw new Error('ENTRA_SHOW_ADDRESS: upn or mail');
   const create = env.AUTH_CREATE || 'signed-in';
   if (!/^(signed-in|anyone)$/.test(create)) throw new Error('AUTH_CREATE: signed-in or anyone');
   const domains = (env.RECIPIENT_DOMAINS || '').toLowerCase().split(/[\s,;]+/).filter(Boolean);
@@ -599,6 +605,8 @@ function authConfig(env, baseUrl) {
     userGroup,
     domains,
     logout: /** @type {'provider' | 'local'} */ (logout),
+    showMail: entra && showAddress === 'mail',
+    directoryOnly,
     // A visitor who is not signed in is signed in silently (prompt=none) when
     // the provider still knows them; otherwise the page stays as it is.
     autoLogin: named('AUTH_AUTO_LOGIN', () => flag(env.AUTH_AUTO_LOGIN, false)),

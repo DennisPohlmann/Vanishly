@@ -194,7 +194,7 @@
             }
           },
           "400": {
-            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short` (below MIN_SECRET_CHARS, judged from the ciphertext size) or `passphrase_required` (REQUIRE_PASSPHRASE=true and no verifier, or REQUIRE_PASSPHRASE=unless-recipients with neither verifier nor recipients) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `responsibles_disabled`, `responsibles_required`, `invalid_responsible`, `responsible_domain`, `too_many_responsibles`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients` With AUDIT_COMMENT: `comment_required`, `comment_disabled`, `invalid_comment`; with API_TOKEN_COMMENT=required also for every POST with a token.",
+            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short` (below MIN_SECRET_CHARS, judged from the ciphertext size) or `passphrase_required` (REQUIRE_PASSPHRASE=true and no verifier, or REQUIRE_PASSPHRASE=unless-recipients with neither verifier nor recipients) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `responsibles_disabled`, `responsibles_required`, `invalid_responsible`, `responsible_domain`, `too_many_responsibles`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `unknown_recipient` / `unknown_responsible` (RECIPIENTS_DIRECTORY_ONLY: not a user in the directory), `groups_disabled`, `invalid_group`, `invalid_recipients` With AUDIT_COMMENT: `comment_required`, `comment_disabled`, `invalid_comment`; with API_TOKEN_COMMENT=required also for every POST with a token.",
             "content": {
               "application/json": {
                 "schema": {
@@ -278,6 +278,21 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "RECIPIENTS_DIRECTORY_ONLY: the directory (Microsoft Graph) is not reachable to check the addresses (`directory_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
           }
         },
         "description": "ENABLE_CREATE_API=false: only this server's form may call it (404 for scripts).",
@@ -355,7 +370,7 @@
             }
           },
           "400": {
-            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short`, `passphrase_required` (REQUIRE_PASSPHRASE=true without passphrase, or unless-recipients with neither passphrase nor recipients), `passphrase_too_short` (MIN_PASSPHRASE_LENGTH) or `passphrase_too_weak` (PASSPHRASE_COMPLEXITY; `missing` lists the classes) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `responsibles_disabled`, `responsibles_required`, `invalid_responsible`, `responsible_domain`, `too_many_responsibles`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `groups_disabled`, `invalid_group`, `invalid_recipients` With AUDIT_COMMENT: `comment_required`, `comment_disabled`, `invalid_comment`; with API_TOKEN_COMMENT=required also for every POST with a token.",
+            "description": "Invalid field; `confirmation_required` (CONFIRM_CHECKBOX on and no `\"confirmed\": true`), `too_short`, `passphrase_required` (REQUIRE_PASSPHRASE=true without passphrase, or unless-recipients with neither passphrase nor recipients), `passphrase_too_short` (MIN_PASSPHRASE_LENGTH) or `passphrase_too_weak` (PASSPHRASE_COMPLEXITY; `missing` lists the classes) (`passphrase_disabled` when ENABLE_PASSPHRASE=false); with sign-in: `recipients_disabled`, `recipients_required`, `responsibles_disabled`, `responsibles_required`, `invalid_responsible`, `responsible_domain`, `too_many_responsibles`, `too_many_recipients`, `invalid_recipient`, `recipient_domain`, `unknown_recipient` / `unknown_responsible` (RECIPIENTS_DIRECTORY_ONLY: not a user in the directory), `groups_disabled`, `invalid_group`, `invalid_recipients` With AUDIT_COMMENT: `comment_required`, `comment_disabled`, `invalid_comment`; with API_TOKEN_COMMENT=required also for every POST with a token.",
             "content": {
               "application/json": {
                 "schema": {
@@ -452,6 +467,21 @@
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            }
+          },
+          "502": {
+            "description": "RECIPIENTS_DIRECTORY_ONLY: the directory (Microsoft Graph) is not reachable to check the addresses (`directory_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
               }
             }
           }
@@ -1252,7 +1282,11 @@
                     },
                     "user": {
                       "type": "string",
-                      "description": "user name / e-mail"
+                      "description": "user name / e-mail (the sign-in address)"
+                    },
+                    "mail": {
+                      "type": "string",
+                      "description": "Entra with ENTRA_SHOW_ADDRESS=mail: the mail address shown instead of user, when it differs"
                     },
                     "app": {
                       "type": "boolean",
@@ -1455,7 +1489,7 @@
         ],
         "operationId": "searchPeople",
         "summary": "Search people for recipients",
-        "description": "Only with RECIPIENT_USER_GROUP and a directory (Entra with ENTRA_GRAPH=true, a preset with DIRECTORY_API=true), for signed-in users (not app tokens): members of that group (with Entra, Google and JumpCloud also through nested groups) whose name, e-mail or user name starts with q, at most 10. Put \"user\" into \"recipients\" of a new secret; it is the address the person signs in with.",
+        "description": "Only with RECIPIENT_USER_GROUP and a directory (Entra with ENTRA_GRAPH=true, a preset with DIRECTORY_API=true), for signed-in users (not app tokens): members of that group (with Entra, Google and JumpCloud also through nested groups) whose name, e-mail or user name starts with q, at most 10. Put \"user\" into \"recipients\" of a new secret; it is the address the person signs in with (Entra with ENTRA_SHOW_ADDRESS=mail: their mail address, which matches too).",
         "parameters": [
           {
             "name": "q",

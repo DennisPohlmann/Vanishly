@@ -3,7 +3,7 @@
 // and the recipient check. People and group search: src/directory/.
 //
 // Keys (below REDIS_PREFIX):
-//   sess:<sha256 of the cookie>  hash  name user ids created, it (the ID token, only
+//   sess:<sha256 of the cookie>  hash  name user mail ids created, it (the ID token, only
 //                                      with AUTH_LOGOUT=provider); expires with the session
 //   oidc:<state>                 hash  PKCE verifier, nonce, return path; 10 minutes
 // Recipients are stored as HMAC-SHA256(AUTH_SECRET, "u:<address>" | "g:<group>"),
@@ -19,8 +19,9 @@ import { createDirectory } from './directory/index.js';
 
 /** @typedef {NonNullable<import('./config.js').Config['auth']>} AuthConfig */
 /**
- * @typedef {{ name: string, user: string, ids: string[], app?: boolean,
+ * @typedef {{ name: string, user: string, mail?: string, ids: string[], app?: boolean,
  *   token?: { id: string, name: string, scopes: string[] }, service?: string }} User
+ * user: the sign-in address (the key); mail: the address shown instead (ENTRA_SHOW_ADDRESS=mail);
  * ids: the recipient hashes this user matches (addresses and groups);
  * token: set when the request came with an API token (src/tokens.js); service: the
  * technical user it belongs to (then user is "svc:<name>")
@@ -68,6 +69,8 @@ export class Auth {
     this.formOrigins = '';
     /** @type {Map<string, { ids: string[], until: number }>} groups of API callers, 5 minutes */
     this.groupCache = new Map();
+    /** @type {Map<string, { mail: string, until: number }>} mail addresses from the directory, 5 minutes */
+    this.mailCache = new Map();
     /** @type {Map<string, { people: { name: string, user: string, mail: string }[], until: number }>} people search, 1 minute */
     this.peopleCache = new Map();
   }
@@ -173,17 +176,57 @@ export class Auth {
     // sign-in name are set by the tenant; "email" only when Entra verified
     // its domain (xms_edov). Other providers: "email" unless they call it
     // unverified; preferred_username is often free to pick there.
+    const verified = claims.xms_edov === true || claims.xms_edov === '1' ? claims.email : '';
     const names =
       this.c.provider === 'entra'
-        ? [claims.preferred_username, claims.upn, claims.unique_name, claims.xms_edov === true || claims.xms_edov === '1' ? claims.email : '']
+        ? [claims.preferred_username, claims.upn, claims.unique_name, verified]
         : [claims.email_verified === false || claims.email_verified === 'false' ? '' : claims.email];
     const user = names.filter((v) => typeof v === 'string' && Auth.validEmail(v)).map((v) => v.trim().toLowerCase());
     if (!this.signInAllowed(claims, user[0] || '')) throw new Error('account of a domain that may not sign in');
-    const ids = [...new Set(user)].map((u) => this.hash('u', u));
+    // The mail address from Graph (ENTRA_GRAPH=true) or the verified email
+    // claim: recipients entered with it match too; ENTRA_SHOW_ADDRESS=mail shows it.
+    let mail = '';
+    if (this.c.provider === 'entra') {
+      const m = (await this.mailOf(claims)) || verified;
+      mail = typeof m === 'string' && Auth.validEmail(m) ? m.trim().toLowerCase() : '';
+    }
+    const ids = [...new Set(mail ? [...user, mail] : user)].map((u) => this.hash('u', u));
     const groups = await this.groupsOf(claims);
     for (const g of groups) ids.push(this.hash('g', g));
     const name = typeof claims.name === 'string' && claims.name.trim() ? claims.name.trim() : user[0] || '';
-    return { name: name.slice(0, 100), user: user[0] || '', ids };
+    return { name: name.slice(0, 100), user: user[0] || '', ...(this.c.showMail && mail && mail !== user[0] ? { mail } : {}), ids };
+  }
+
+  /**
+   * RECIPIENTS_DIRECTORY_ONLY: the addresses (UPN and mail) of the directory
+   * user with this address, null when there is none. Errors go to the caller.
+   * @param {string} address
+   */
+  async findUser(address) {
+    if (!this.directory) return null;
+    const found = await this.directory.findUser(address.trim().toLowerCase());
+    return found ? found.filter((v) => Auth.validEmail(v)) : null;
+  }
+
+  /**
+   * The mail address from the directory (ENTRA_GRAPH=true), kept 5 minutes;
+   * "" without directory or when Graph fails (then only the claims count).
+   * @param {Record<string, any>} claims
+   */
+  async mailOf(claims) {
+    const key = String(claims.oid || '');
+    if (!this.directory || !key) return '';
+    const cached = this.mailCache.get(key);
+    if (cached && cached.until > Date.now()) return cached.mail;
+    try {
+      const mail = await this.directory.mailOf(claims);
+      this.mailCache.set(key, { mail, until: Date.now() + 300000 });
+      if (this.mailCache.size > 1000) this.mailCache.delete(this.mailCache.keys().next().value || '');
+      return mail;
+    } catch (err) {
+      console.error(`auth: mail lookup failed: ${/** @type {Error} */ (err).message}`);
+      return '';
+    }
   }
 
   /**
@@ -253,7 +296,8 @@ export class Auth {
   /**
    * Members of RECIPIENT_USER_GROUP whose name, mail or user name starts
    * with q, at most 10. "user" is the address the person signs in with, so
-   * it matches identity(). Answers are kept for a minute.
+   * it matches identity(); with ENTRA_SHOW_ADDRESS=mail their mail address
+   * (identity() adds it too). Answers are kept for a minute.
    * @param {string} q
    * @returns {Promise<{ name: string, user: string, mail: string }[]>}
    */
@@ -264,8 +308,8 @@ export class Auth {
     if (cached && cached.until > Date.now()) return cached.people;
     const people = [];
     for (const p of await this.directory.searchPeople(term)) {
-      const user = typeof p?.user === 'string' ? p.user.trim().toLowerCase() : '';
       const mail = typeof p?.mail === 'string' ? p.mail.trim().toLowerCase() : '';
+      const user = this.c.showMail && Auth.validEmail(mail) ? mail : typeof p?.user === 'string' ? p.user.trim().toLowerCase() : '';
       if (!Auth.validEmail(user) || people.some((x) => x.user === user)) continue;
       if (this.c.domains.length && !this.domainAllowed(user)) continue;
       const name = typeof p.name === 'string' && p.name.trim() ? p.name.trim().slice(0, 100) : user;
@@ -366,7 +410,7 @@ export class Auth {
     const key = `${this.p}sess:${sha256(sid)}`;
     await this.redis
       .multi()
-      .hSet(key, { name: who.name, user: who.user, ids: who.ids.join(' '), created: String(Date.now()), ...(idToken ? { it: idToken } : {}) })
+      .hSet(key, { name: who.name, user: who.user, ...(who.mail ? { mail: who.mail } : {}), ids: who.ids.join(' '), created: String(Date.now()), ...(idToken ? { it: idToken } : {}) })
       .expire(key, this.c.sessionTtl)
       .exec();
     return sid;
@@ -448,7 +492,7 @@ export class Auth {
     }
     const h = await this.redis.hGetAll(`${this.p}sess:${sha256(sid)}`);
     if (!h?.ids) return null;
-    return { name: h.name, user: h.user, ids: h.ids.split(' ').filter(Boolean) };
+    return { name: h.name, user: h.user, ...(h.mail ? { mail: h.mail } : {}), ids: h.ids.split(' ').filter(Boolean) };
   }
 
   /**

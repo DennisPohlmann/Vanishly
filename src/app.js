@@ -540,7 +540,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
    * @param {unknown} usersIn @param {unknown} groupsIn @param {import('express').Response} res
    * @param {{ field: string, groupField: string, mode: string, code: string, what: string, required: string }} k
    */
-  const peopleOf = (usersIn, groupsIn, res, k) => {
+  const peopleOf = async (usersIn, groupsIn, res, k) => {
     const users = usersIn ?? [];
     const groups = groupsIn ?? [];
     if (!Array.isArray(users) || !Array.isArray(groups)) {
@@ -564,6 +564,22 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       }
       ids.add(auth.hash('u', u));
       names.push(String(u).trim().toLowerCase());
+    }
+    // RECIPIENTS_DIRECTORY_ONLY: every address must be a user in the directory;
+    // their UPN and mail both count, whichever was entered.
+    if (auth.c.directoryOnly && names.length) {
+      const found = await Promise.all(
+        names.map((u) =>
+          auth.findUser(u).catch((err) => {
+            console.error(`auth: address check failed: ${/** @type {Error} */ (err).message}`);
+            throw new ApiError(502, 'directory_unavailable', 'The directory is not available right now to check the addresses');
+          }),
+        ),
+      );
+      found.forEach((addrs, i) => {
+        if (!addrs?.length) throw new ApiError(400, `unknown_${k.code}`, `A ${k.what} is not a user in the directory`, { [k.code]: names[i] });
+        for (const v of addrs) ids.add(auth.hash('u', v));
+      });
     }
     if (groups.length && !auth.c.groups.any && !auth.c.groups.list.length) {
       throw new ApiError(400, 'groups_disabled', `Groups as ${k.what}s are switched off on this server`);
@@ -597,7 +613,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     return {
       creator,
       responsible: resp.ids,
-      who: show && (creator || resp.ids.length) ? { creator: creator ? { name: user?.name || '', user: user?.user || '' } : null, responsible: { users: resp.users, groups: resp.groups } } : null,
+      who: show && (creator || resp.ids.length) ? { creator: creator ? { name: user?.name || '', user: user?.mail || user?.user || '' } : null, responsible: { users: resp.users, groups: resp.groups } } : null,
     };
   };
 
@@ -659,7 +675,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     const u = userOf(res);
     if (!auth?.c.showViewer || !u) return '';
     /** @param {string} v */ const clean = (v) => String(v || '').replace(/[\t\r\n]/g, ' ');
-    return `${clean(u.name || u.user)}\t${clean(u.user)}`;
+    return `${clean(u.name || u.mail || u.user)}\t${clean(u.mail || u.user)}`;
   };
   /** STATUS_ACCESS=signed-in: who opened it may see the status. @param {import('express').Response} res */
   const openerOf = (res) => {
@@ -773,7 +789,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   api.get('/v1/me', (_req, res) => {
     switchedOff(config.features.meApi);
     const u = userOf(res);
-    res.json(u ? { signedIn: true, name: u.name, user: u.user, app: Boolean(u.app) } : { signedIn: false });
+    res.json(u ? { signedIn: true, name: u.name, user: u.user, ...(u.mail ? { mail: u.mail } : {}), app: Boolean(u.app) } : { signedIn: false });
   });
 
   // RECIPIENT_GROUPS=*: group search for the form (Microsoft Graph).
@@ -835,9 +851,9 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     // leaves the browser. The form enforces it; /v1/share checks it.
     if (config.confirmCheckbox && b.confirmed !== true) throw confirmationRequired(res);
     const comment = secretComment(req, res, b);
-    const rcp = recipientsOf(b, res);
+    const rcp = await recipientsOf(b, res);
     const to = rcp.ids;
-    const resp = responsibleOf(b, res);
+    const resp = await responsibleOf(b, res);
     const noPass = b.verifier ? null : passphraseNeeded(to);
     if (noPass) throw noPass;
     const { ttl, views } = options(b);
@@ -881,9 +897,9 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       throw new ApiError(400, 'passphrase_disabled', 'Passphrases are switched off on this server');
     }
     const comment = secretComment(req, res, b);
-    const rcp = recipientsOf(b, res);
+    const rcp = await recipientsOf(b, res);
     const to = rcp.ids;
-    const resp = responsibleOf(b, res);
+    const resp = await responsibleOf(b, res);
     const noPass = pass ? null : passphraseNeeded(to);
     if (noPass) throw noPass;
     if (pass && pass.length < config.minPassphraseLength) {
@@ -1514,14 +1530,15 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     }
     // A menu under the user's name (<details>: works with keyboard and without
     // script): the full name and address, "Sign out" and "another account".
-    const name = u.name || u.user;
+    const shown = u.mail || u.user;
+    const name = u.name || shown;
     const back = RETURN.test(req.path) ? req.path : '/';
     return (
       // Name and address always in full: they wrap and get smaller instead of being cut.
       `<details class="nav-menu"><summary class="nav-user">` +
       `<span class="nav-user-who"><span class="nav-user-name">${escapeHtml(name)}</span>` +
       // <wbr>: a long address breaks before "@" and after "." and "-", not in a word.
-      (u.user && u.user !== name ? `<span class="nav-user-mail">${escapeHtml(u.user).replace(/@/g, '<wbr>@').replace(/([.-])/g, '$1<wbr>')}</span>` : '') +
+      (shown && shown !== name ? `<span class="nav-user-mail">${escapeHtml(shown).replace(/@/g, '<wbr>@').replace(/([.-])/g, '$1<wbr>')}</span>` : '') +
       `</span><span class="nav-caret" aria-hidden="true"></span></summary>` +
       `<div class="nav-menu-panel">` +
       // API_TOKENS: the user's own tokens; admins: the audit log and all tokens.

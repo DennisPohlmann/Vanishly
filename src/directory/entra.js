@@ -45,6 +45,28 @@ export class Entra extends Directory {
     return strings(r.value);
   }
 
+  /**
+   * The mail attribute (ENTRA_SHOW_ADDRESS=mail): set by the tenant, not by the user.
+   * @param {Record<string, any>} claims
+   */
+  async mailOf(claims) {
+    if (typeof claims.oid !== 'string' || !/^[0-9a-f-]{36}$/i.test(claims.oid)) return '';
+    return str((await this.graph(`/users/${claims.oid}?$select=mail`)).mail).toLowerCase();
+  }
+
+  /**
+   * The user whose UPN or mail is this address: their UPN and mail, null when none.
+   * @param {string} address lower case, checked by Auth.validEmail (no quotes)
+   */
+  async findUser(address) {
+    const a = address.replace(/'/g, "''");
+    const params = new URLSearchParams({ $filter: `userPrincipalName eq '${a}' or mail eq '${a}'`, $select: 'userPrincipalName,mail', $top: '1', $count: 'true' });
+    const r = await this.graph(`/users?${params}`, { headers: { ConsistencyLevel: 'eventual' } });
+    const u = Array.isArray(r.value) ? r.value[0] : null;
+    if (!u) return null;
+    return [str(u.userPrincipalName).toLowerCase(), str(u.mail).toLowerCase()].filter(Boolean);
+  }
+
   /** @param {string} term */
   async searchGroups(term) {
     const params = new URLSearchParams({

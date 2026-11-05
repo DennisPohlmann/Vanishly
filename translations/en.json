@@ -123,6 +123,7 @@
   "home.recipientDomains": "Allowed: {list}.",
   "error.recipientInvalid": "{name} is not a valid e-mail address.",
   "error.recipientDomain": "Only addresses of {list} are allowed.",
+  "error.recipientUnknown": "{name} is not a user in the directory.",
   "error.recipientsRequired": "Add at least one recipient.",
   "error.recipientsMax": "At most {n} recipients.",
   "error.loginRequired": "Your sign-in has expired. Sign in again.",

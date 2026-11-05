@@ -558,11 +558,13 @@ function initHome() {
         if (status === 401) return showError(err, t('error.loginRequired'));
         if (data.error === 'invalid_recipient') return showError(err, t('error.recipientInvalid', { name: data.recipient }), $('recipient-email'));
         if (data.error === 'recipient_domain') return showError(err, t('error.recipientDomain', { list: data.domains.join(', ') }), $('recipient-email'));
+        if (data.error === 'unknown_recipient') return showError(err, t('error.recipientUnknown', { name: data.recipient }), $('recipient-email'));
         if (data.error === 'recipients_required') return showError(err, t('error.recipientsRequired'), $('recipient-email'));
         if (data.error === 'too_many_recipients') return showError(err, t('error.recipientsMax', { n: data.max }), $('recipient-email'));
         if (data.error === 'responsibles_required') return showError(err, t('error.responsibleRequired'), $('responsible-email'));
         if (data.error === 'invalid_responsible') return showError(err, t('error.recipientInvalid', { name: data.responsible }), $('responsible-email'));
         if (data.error === 'responsible_domain') return showError(err, t('error.recipientDomain', { list: data.domains.join(', ') }), $('responsible-email'));
+        if (data.error === 'unknown_responsible') return showError(err, t('error.recipientUnknown', { name: data.responsible }), $('responsible-email'));
         if (data.error === 'too_many_responsibles') return showError(err, t('error.recipientsMax', { n: data.max }), $('responsible-email'));
         if (data.error === 'too_short') return showError(err, t('error.tooShort', { n: minChars }), secret);
         if (data.error === 'confirmation_required') return showError(err, t('error.confirm'), confirmBox);

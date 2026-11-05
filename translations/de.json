@@ -123,6 +123,7 @@
   "home.recipientDomains": "Erlaubt: {list}.",
   "error.recipientInvalid": "{name} ist keine gültige E-Mail-Adresse.",
   "error.recipientDomain": "Nur Adressen von {list} sind erlaubt.",
+  "error.recipientUnknown": "{name} ist kein Benutzer im Verzeichnis.",
   "error.recipientsRequired": "Bitte mindestens einen Empfänger hinzufügen.",
   "error.recipientsMax": "Höchstens {n} Empfänger.",
   "error.loginRequired": "Die Anmeldung ist abgelaufen. Bitte neu anmelden.",

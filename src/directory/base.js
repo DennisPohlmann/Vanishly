@@ -153,6 +153,24 @@ export class Directory {
   }
 
   /**
+   * The mail address of a user from the directory (ENTRA_SHOW_ADDRESS=mail), "" when none.
+   * @param {Record<string, any>} _claims
+   * @returns {Promise<string>}
+   */
+  async mailOf(_claims) {
+    return '';
+  }
+
+  /**
+   * The addresses of the user with this address (RECIPIENTS_DIRECTORY_ONLY), null when unknown.
+   * @param {string} _address lower case
+   * @returns {Promise<string[] | null>}
+   */
+  async findUser(_address) {
+    return null;
+  }
+
+  /**
    * The groups of a user from the directory, or null to use the groups claim.
    * @param {Record<string, any>} _claims
    * @returns {Promise<string[] | null>}
