@@ -200,22 +200,45 @@ if (document.body.classList.contains('auto-login')) {
   }
 }
 
+/** The people search (RECIPIENT_USER_GROUP). */
+const PEOPLE = {
+  kind: /** @type {'user'} */ ('user'),
+  /** @param {string} q */
+  url: (q) => `/api/v1/people?q=${encodeURIComponent(q)}`,
+  /** @param {any} data @returns {{ id: string, name: string, detail: string }[]} */
+  list: (data) => data.people.map((/** @type {any} */ p) => ({ id: p.user, name: p.name, detail: p.user })),
+  none: 'home.peopleNone',
+  // A full address is typed, not searched.
+  skip: /** @param {string} q */ (q) => /@.*\./.test(q),
+};
+/** The group search (RECIPIENT_GROUPS). */
+const GROUPS = {
+  kind: /** @type {'group'} */ ('group'),
+  /** @param {string} q */
+  url: (q) => `/api/v1/groups?q=${encodeURIComponent(q)}`,
+  /** @param {any} data @returns {{ id: string, name: string, detail: string }[]} */
+  list: (data) => data.groups.map((/** @type {any} */ g) => ({ id: g.id, name: g.name, detail: '' })),
+  none: 'home.groupNone',
+  skip: () => false,
+};
+
 /**
  * The "Only for" field: e-mail addresses and groups as a list of chips.
  * @returns {{ users: () => string[], groups: () => string[], flush: () => string, clear: () => void } | null}
  */
 /**
- * RECIPIENT_USER_GROUP: the address field also searches people (ARIA
- * combobox with a listbox of suggestions from /api/v1/people).
+ * A search field with suggestions (ARIA combobox with a listbox): people
+ * for the address field (RECIPIENT_USER_GROUP), groups (RECIPIENT_GROUPS).
  * @param {HTMLInputElement} input
  * @param {(kind: 'user' | 'group', id: string, name: string) => boolean} add
  * @param {() => void} clearError
  * @param {{ results: string, status: string, opt: string }} [ids] the element ids (responsible: prefixed)
+ * @param {typeof PEOPLE | typeof GROUPS} [src] what is searched
  */
-function initPeople(input, add, clearError, ids = { results: 'people-results', status: 'people-status', opt: 'people-opt' }) {
+function initPeople(input, add, clearError, ids = { results: 'people-results', status: 'people-status', opt: 'people-opt' }, src = PEOPLE) {
   const box = $(ids.results);
   const status = $(ids.status);
-  /** @type {{ name: string, user: string, mail: string }[]} */
+  /** @type {{ id: string, name: string, detail: string }[]} */
   let found = [];
   let active = -1;
   /** @type {any} */ let timer;
@@ -240,7 +263,7 @@ function initPeople(input, add, clearError, ids = { results: 'people-results', s
     const p = found[i];
     if (!p) return;
     clearError();
-    if (add('user', p.user, p.name)) {
+    if (add(src.kind, p.id, p.name)) {
       input.value = '';
       status.textContent = '';
       close();
@@ -255,18 +278,18 @@ function initPeople(input, add, clearError, ids = { results: 'people-results', s
   input.addEventListener('input', () => {
     clearTimeout(timer);
     const q = input.value.trim();
-    if (q.length < 2 || /@.*\./.test(q)) {
+    if (q.length < 2 || src.skip(q)) {
       say('', '');
       return close();
     }
     timer = setTimeout(async () => {
       say('loading', '');
-      const { status: code, data } = await api(`/api/v1/people?q=${encodeURIComponent(q)}`);
+      const { status: code, data } = await api(src.url(q));
       if (input.value.trim() !== q) return;
       close();
       if (code !== 200) return say('error', errorText(code));
-      found = data.people;
-      if (!found.length) return say('empty', t('home.peopleNone'));
+      found = src.list(data);
+      if (!found.length) return say('empty', t(src.none));
       box.replaceChildren(
         ...found.map((p, i) => {
           const li = document.createElement('li');
@@ -279,8 +302,8 @@ function initPeople(input, add, clearError, ids = { results: 'people-results', s
           name.textContent = p.name;
           const detail = document.createElement('span');
           detail.className = 'suggestion-detail';
-          detail.textContent = p.user;
-          li.append(name, detail);
+          detail.textContent = p.detail;
+          li.append(name, ...(p.detail ? [detail] : []));
           // mousedown, not click: the field keeps the focus.
           li.addEventListener('mousedown', (e) => {
             e.preventDefault();
@@ -331,10 +354,10 @@ function pickerIds(kind) {
     results: `${p}people-results`,
     status: `${p}people-status`,
     list: r ? 'recipient-list' : 'responsible-list',
-    group: r ? 'recipient-group' : 'responsible-group',
-    groupAdd: r ? 'recipient-group-add' : 'responsible-group-add',
     groupSearch: `${p}group-search`,
     groupResults: `${p}group-results`,
+    groupStatus: `${p}group-status`,
+    groupOpt: `${p}group-opt`,
     opt: r ? 'people-opt' : 'responsible-opt',
   };
 }
@@ -417,48 +440,12 @@ function initRecipients(kind = 'recipients') {
       addEmail();
     }
   });
-  const groupSelect = $(ids.group);
-  $(ids.groupAdd)?.addEventListener('click', () => {
-    const o = groupSelect.selectedOptions[0];
-    if (o?.value) add('group', o.value, o.textContent || o.value);
-    groupSelect.value = '';
-  });
-  const search = $(ids.groupSearch);
+  const search = /** @type {HTMLInputElement | null} */ ($(ids.groupSearch));
   if (search) {
-    const results = $(ids.groupResults);
-    /** @type {any} */ let timer;
-    search.addEventListener('input', () => {
-      clearTimeout(timer);
-      const q = search.value.trim();
-      if (q.length < 2) return results.replaceChildren();
-      timer = setTimeout(async () => {
-        const { status, data } = await api(`/api/v1/groups?q=${encodeURIComponent(q)}`);
-        if (search.value.trim() !== q) return;
-        const groups = status === 200 ? data.groups : [];
-        results.replaceChildren(
-          ...(groups.length ? groups : [null]).map((/** @type {{ id: string, name: string } | null} */ g) => {
-            const li = document.createElement('li');
-            if (!g) {
-              li.textContent = status === 200 ? t('home.groupNone') : errorText(status);
-              return li;
-            }
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.className = 'btn btn-small btn-ghost';
-            b.textContent = `${t('home.recipientAdd')}: ${g.name}`;
-            b.addEventListener('click', () => {
-              if (add('group', g.id, g.name)) {
-                search.value = '';
-                results.replaceChildren();
-                search.focus();
-              }
-            });
-            li.append(b);
-            return li;
-          }),
-        );
-        announce(groups.length ? `${groups.length}` : t('home.groupNone'));
-      }, 250);
+    const groups = initPeople(search, add, () => showError(err, ''), { results: ids.groupResults, status: ids.groupStatus, opt: ids.groupOpt }, GROUPS);
+    search.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => {
+      // Enter only picks a suggestion; it never sends the form.
+      if (!groups.key(e) && e.key === 'Enter') e.preventDefault();
     });
   }
   return {

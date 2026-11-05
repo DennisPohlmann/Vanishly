@@ -298,7 +298,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     [f.receipts && f.receiptApi, 'GET', '/v1/receipts/{id}'],
     [f.receipts && f.burn && f.receiptApi, 'POST', '/v1/receipts/{id}/burn'],
     [Boolean(auth) && f.meApi, 'GET', '/v1/me'],
-    [Boolean(auth?.c.groups.any), 'GET', '/v1/groups'],
+    [Boolean(auth?.c.groups.any || auth?.c.groups.list.length), 'GET', '/v1/groups'],
     [Boolean(auth?.c.userGroup), 'GET', '/v1/people'],
     [Boolean(tokens), 'GET', '/v1/tokens'],
     [Boolean(tokens), 'POST', '/v1/tokens'],
@@ -792,9 +792,9 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     res.json(u ? { signedIn: true, name: u.name, user: u.user, ...(u.mail ? { mail: u.mail } : {}), app: Boolean(u.app) } : { signedIn: false });
   });
 
-  // RECIPIENT_GROUPS=*: group search for the form (Microsoft Graph).
+  // RECIPIENT_GROUPS: group search for the form (the directory with "*", otherwise the listed groups).
   api.get('/v1/groups', limit('read'), async (req, res) => {
-    if (!auth?.c.groups.any) throw disabled();
+    if (!auth?.c.groups.any && !auth?.c.groups.list.length) throw disabled();
     if (!userOf(res)) throw new ApiError(401, 'login_required', 'Sign in first');
     const q = typeof req.query.q === 'string' ? req.query.q : '';
     try {
@@ -1658,7 +1658,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   /**
    * The "Only for" field of the form: addresses, and groups from
-   * RECIPIENT_GROUPS (a dropdown, or a search with "*").
+   * RECIPIENT_GROUPS (a search in the list, or in the directory with "*").
    * @param {import('express').Response} res
    */
   /** @param {import('express').Response} res can this sender choose recipients? */
@@ -1675,11 +1675,11 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       peopleHint: `${p}people-hint`,
       hint: kind === 'recipients' ? 'recipients-hint' : 'responsible-hint',
       list: kind === 'recipients' ? 'recipient-list' : 'responsible-list',
-      group: kind === 'recipients' ? 'recipient-group' : 'responsible-group',
-      groupAdd: kind === 'recipients' ? 'recipient-group-add' : 'responsible-group-add',
       groupSearch: `${p}group-search`,
       groupSearchHint: `${p}group-search-hint`,
       groupResults: `${p}group-results`,
+      groupStatus: `${p}group-status`,
+      groupOpt: `${p}group-opt`,
       opt: kind === 'recipients' ? 'people-opt' : 'responsible-opt',
     };
   };
@@ -1696,20 +1696,16 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     const required = kind === 'recipients' ? auth.c.recipients === 'required' : config.responsible === 'required';
     const g = auth.c.groups;
     const people = Boolean(auth.c.userGroup);
-    let groups = '';
-    if (g.list.length) {
-      const opts = g.list.map((x) => `<option value="${escapeHtml(x.id)}">${escapeHtml(x.name)}</option>`).join('');
-      groups =
-        `<label for="${ids.group}">${escapeHtml(t['home.recipientGroup'])}</label>` +
-        `<div class="copy-row"><select id="${ids.group}"><option value="">${escapeHtml(t['home.recipientGroupPick'])}</option>${opts}</select>` +
-        `<button type="button" class="btn" id="${ids.groupAdd}">${escapeHtml(t['home.recipientAdd'])}</button></div>`;
-    } else if (g.any) {
-      groups =
-        `<label for="${ids.groupSearch}">${escapeHtml(t['home.groupSearch'])}</label>` +
-        `<input type="search" id="${ids.groupSearch}" maxlength="64" autocomplete="off" aria-describedby="${ids.groupSearchHint}" aria-controls="${ids.groupResults}">` +
-        `<div class="hint" id="${ids.groupSearchHint}">${escapeHtml(t['home.groupSearchHint'])}</div>` +
-        `<ul class="plain group-results" id="${ids.groupResults}"></ul>`;
-    }
+    // RECIPIENT_GROUPS: a group search (ARIA combobox like the people search), in the directory with "*", otherwise in the listed groups.
+    const groups =
+      g.any || g.list.length
+        ? `<label for="${ids.groupSearch}">${escapeHtml(t['home.groupSearch'])}</label>` +
+          `<div class="combo"><input type="text" id="${ids.groupSearch}" maxlength="64" autocomplete="off" spellcheck="false" ` +
+          `role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${ids.groupResults}" aria-describedby="${ids.groupSearchHint}">` +
+          `<ul class="suggestions" id="${ids.groupResults}" role="listbox" aria-label="${escapeHtml(t['home.peopleResults'])}" hidden></ul></div>` +
+          `<div class="hint" id="${ids.groupSearchHint}">${escapeHtml(t['home.groupSearchHint'])}</div>` +
+          `<div class="suggestion-status" id="${ids.groupStatus}" role="status"></div>`
+        : '';
     const domains = auth.c.domains.length ? ` ${t['home.recipientDomains'].replace('{list}', auth.c.domains.join(', '))}` : '';
     const legend = kind === 'recipients' ? (required ? t['home.recipientsRequired'] : t['home.recipients']) : required ? t['home.responsibleRequired'] : t['home.responsible'];
     const hint = kind === 'recipients' ? t['home.recipientsHint'] : t['home.responsibleHint'];

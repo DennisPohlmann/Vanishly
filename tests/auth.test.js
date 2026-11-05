@@ -353,7 +353,13 @@ test('groups from a fixed list (groups claim)', opts, async () => {
   const carol = (await login({ ...CAROL, groups: [IT.toUpperCase(), 'f0000000-0000-0000-0000-000000000000'] })).cookie;
   const bob = (await login({ ...BOB, groups: [HR] })).cookie;
   const home = (await call('/', { cookie: alice })).data;
-  assert.match(home, /<option value="0f0f0f0f-1111-2222-3333-444444444444">IT Admins<\/option>/);
+  // The form searches the listed groups (no directory needed), no dropdown.
+  assert.match(home, /id="group-search"[^>]*role="combobox"/);
+  assert.doesNotMatch(home, /<select id="recipient-group"/);
+  assert.equal((await call('/api/v1/groups?q=it')).status, 401);
+  assert.deepEqual((await call('/api/v1/groups?q=adm', { cookie: alice })).data.groups, [{ name: 'IT Admins', id: IT }]);
+  assert.deepEqual((await call('/api/v1/groups?q=h', { cookie: alice })).data.groups, []); // at least 2 letters
+  assert.deepEqual((await call('/api/v1/groups?q=xyz', { cookie: alice })).data.groups, []);
   assert.equal((await call('/api/v1/config')).data.auth.groupList.length, 0); // only for signed-in users
   assert.equal((await call('/api/v1/config', { cookie: alice })).data.auth.groupList.length, 2);
   assert.equal((await create(call, alice, { recipientGroups: ['f0000000-0000-0000-0000-000000000000'] })).data.error, 'invalid_group');
@@ -732,7 +738,7 @@ test('the form: a folded "Responsible" section with the same picker, open when r
   const html = String((await opt.call('/', { cookie: a })).data);
   assert.match(html, /<details class="field responsible-box"><summary>Responsible \(optional\)<\/summary><fieldset class="field recipients responsible" id="responsible-wrap" data-kind="responsible"/);
   assert.match(html, /id="responsible-email"/);
-  assert.match(html, /<select id="responsible-group">/);
+  assert.match(html, /<input type="text" id="responsible-group-search"[^>]*role="combobox"/);
   assert.match(html, /id="recipient-email"/); // the recipients keep their ids
   const req = await startApp({ RESPONSIBLE: 'required' });
   const b = (await req.login(ALICE)).cookie;

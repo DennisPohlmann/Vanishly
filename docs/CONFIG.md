@@ -108,7 +108,7 @@ switched off, still answered for this server's own pages (the browser's
 | `GET /api/v1/receipts/{id}` | `ENABLE_RECEIPT_API` (`ENABLE_RECEIPTS` also removes the status page) | 404 for scripts, the status page keeps working |
 | `POST /api/v1/receipts/{id}/burn` | `ENABLE_RECEIPT_API`, `ENABLE_BURN` | as above; `ENABLE_BURN=false` removes it for all |
 | `GET /api/v1/me` | `ENABLE_ME_API` (only with sign-in) | 404 |
-| `GET /api/v1/groups` | `RECIPIENT_GROUPS=*` (only then) | 404 |
+| `GET /api/v1/groups` | `RECIPIENT_GROUPS` (only then) | 404 |
 | `GET /api/v1/people` | `RECIPIENT_USER_GROUP` (only then) | 404 |
 
 **Create and reveal only.** To offer nothing but creating a secret and
@@ -158,7 +158,7 @@ only that provider has) and what each supports:
 | `AUTH_CREATE` | `signed-in` | Who may create secrets: `signed-in` or `anyone` (restricting a secret always needs a sign-in) |
 | `RECIPIENTS` | `optional` | `off` (no recipients field), `optional`, or `required` (every secret must name someone) |
 | `RECIPIENTS_MAX` | `10` | Most recipients (addresses and groups) per secret, 1 to 50 |
-| `RECIPIENT_GROUPS` | (none) | Groups a sender may pick: `Name=<id>,...` (Entra: the group's object id; otherwise the value in the groups claim), or `*` for a search over all groups in the directory (Entra with `ENTRA_GRAPH=true`; `keycloak`, `okta`, `google`, `cognito` with `DIRECTORY_API=true`) |
+| `RECIPIENT_GROUPS` | (none) | Groups a sender may search for and pick in the form: `Name=<id>,...` (Entra: the group's object id; otherwise the value in the groups claim), or `*` for a search over all groups in the directory (Entra with `ENTRA_GRAPH=true`; `keycloak`, `okta`, `google`, `cognito` with `DIRECTORY_API=true`) |
 | `RECIPIENT_USER_GROUP` | (none) | People search in the form: the group whose members the form suggests while typing a name (Entra: object id; Keycloak: path or id; Okta, PingOne, JumpCloud: group id; Auth0: role id; Google: group address; Cognito: group name). Needs `ENTRA_GRAPH=true` or `DIRECTORY_API=true` ([details](#people-search)) |
 | `RECIPIENT_DOMAINS` | (any) | Allowed e-mail domains of recipients, e.g. `example.com,example.de` |
 | `RECIPIENTS_DIRECTORY_ONLY` | `false` | `true`: every recipient and responsible person must be a user in the directory. Entra with `ENTRA_GRAPH=true` (`User.Read.All`): looked up by UPN or mail when the secret is created; the UPN and the mail both count afterwards. Unknown addresses: `400 unknown_recipient`; Graph not reachable: `502 directory_unavailable` ([entra.md](providers/entra.md#who-is-who)) |
@@ -338,8 +338,10 @@ With any `AUTH_PROVIDER`:
   [providers](providers/README.md).
 - `AUTH_ALLOWED_DOMAINS` limits who may sign in at all, by the domain of
   the address (Google: and the Workspace domain).
-- With `RECIPIENT_GROUPS=*` the form offers a search over the groups of
-  the directory, and every signed-in sender can see the group names.
+- With `RECIPIENT_GROUPS` the form has a group search (type at least 2
+  letters, pick a suggestion): over the listed groups, or with `*` over
+  the groups of the directory. Every signed-in sender can see the group
+  names.
 - With `RECIPIENT_USER_GROUP` the address field also searches people, see
   [People search](#people-search).
 - Redis stores the recipients only as keyed hashes (HMAC with

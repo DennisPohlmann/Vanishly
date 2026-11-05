@@ -32,7 +32,7 @@ and `rule` give the rule of the form's checkbox in the language of the request:
 | `GET /api/v1/receipts/{id}` | status for the sender (`STATUS_ACCESS=signed-in`: creator, responsible, openers after sign-in; `ENABLE_RECEIPT_API`) |
 | `POST /api/v1/receipts/{id}/burn` | destroy the secret now (`STATUS_ACCESS=signed-in`: creator and responsible only) |
 | `GET /api/v1/me` | who is signed in (sign-in on; `ENABLE_ME_API`) |
-| `GET /api/v1/groups?q=` | search groups for recipients (`RECIPIENT_GROUPS=*`) |
+| `GET /api/v1/groups?q=` | search groups for recipients (`RECIPIENT_GROUPS`: the listed groups, with `*` the directory) |
 | `GET /api/v1/people?q=` | search people for recipients (`RECIPIENT_USER_GROUP`, in the provider's directory): `{ people: [{ name, user, mail }] }`, put `user` into `recipients` |
 | `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{id}/revoke` | personal API tokens (`API_TOKENS`; session only), see [API tokens](#api-tokens-and-admin-api) |
 | `GET /api/v1/admin/audit`, `/admin/audit/verify`, `/admin/tokens` | audit log and all tokens for admins (`ADMIN_USERS`, `ADMIN_GROUPS`) |

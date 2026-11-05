@@ -275,13 +275,16 @@ export class Auth {
 
   // ------------------------------------------------------------ directory
   /**
-   * Groups whose name starts with q (RECIPIENT_GROUPS=*), at most 10.
+   * Groups whose name starts with q, at most 10: the directory with
+   * RECIPIENT_GROUPS=*, otherwise the listed groups (name or value contains q).
    * @param {string} q
    * @returns {Promise<{ id: string, name: string }[]>}
    */
   async searchGroups(q) {
     const term = q.replace(/["\\]/g, '').trim().toLowerCase().slice(0, 64);
-    if (term.length < 2 || !this.directory || !this.c.groups.any) return [];
+    if (term.length < 2) return [];
+    if (!this.c.groups.any) return this.c.groups.list.filter((g) => g.name.toLowerCase().includes(term) || g.id.toLowerCase().includes(term)).slice(0, 10);
+    if (!this.directory) return [];
     const found = await this.directory.searchGroups(term);
     /** @type {{ id: string, name: string }[]} */
     const out = [];

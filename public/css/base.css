@@ -185,7 +185,6 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible, .mode-toggle:focu
 .chip-remove { min-width: 1.9rem; min-height: 1.9rem; border: 0; border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: 1.1rem; cursor: pointer; }
 .chip-remove:hover { background: var(--border); }
 .chip-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.group-results { margin: .25rem 0 .75rem; display: flex; flex-direction: column; align-items: flex-start; gap: .25rem; color: var(--muted); font-size: .9rem; }
 
 /* People search (RECIPIENT_USER_GROUP): suggestions under the field */
 .combo { position: relative; }

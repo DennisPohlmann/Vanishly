@@ -1346,7 +1346,7 @@
         ],
         "operationId": "searchGroups",
         "summary": "Search groups for recipients",
-        "description": "Only with RECIPIENT_GROUPS=* and a directory (Entra with ENTRA_GRAPH=true; keycloak, okta, google or cognito with DIRECTORY_API=true), for signed-in callers: groups whose name starts with or contains q, at most 10. id is the value to put into recipientGroups.",
+        "description": "Only with RECIPIENT_GROUPS, for signed-in callers: groups whose name contains q (at least 2 letters), at most 10. With a list (Name=<value>,...) the listed groups; with * the directory (Entra with ENTRA_GRAPH=true; keycloak, okta, google or cognito with DIRECTORY_API=true). id is the value to put into recipientGroups.",
         "parameters": [
           {
             "name": "q",

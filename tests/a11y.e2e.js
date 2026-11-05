@@ -215,14 +215,19 @@ test('WCAG 2.2 AA and flow: sign-in and recipients', async () => {
         assert.equal(await page.getAttribute('#passphrase', 'aria-required'), null);
         assert.match((await page.textContent('#passphrase-label')) || '', /optional/);
         assert.match((await page.textContent('#recipient-list')) || '', /Bob Example/);
-        await page.selectOption('#recipient-group', IT);
-        await page.click('#recipient-group-add');
+        // Group search: type, pick with the arrow keys and Enter.
+        await page.fill('#group-search', 'it');
+        await page.waitForSelector('#group-results:not([hidden]) [role="option"]');
+        await page.keyboard.press('ArrowDown');
+        assert.equal(await page.getAttribute('#group-search', 'aria-activedescendant'), 'group-opt-0');
+        problems.push(...(await scan(page, at('home-group-search'))));
+        await page.keyboard.press('Enter');
         assert.equal(await page.locator('#recipient-list li').count(), 2);
         problems.push(...(await scan(page, at('home-recipients'))));
         // RESPONSIBLE: the folded section with its own picker.
         await page.click('.responsible-box > summary');
-        await page.selectOption('#responsible-group', IT);
-        await page.click('#responsible-group-add');
+        await page.fill('#responsible-group-search', 'it');
+        await page.click('#responsible-group-results [role="option"]');
         assert.equal(await page.locator('#responsible-list li').count(), 1);
         problems.push(...(await scan(page, at('home-responsible'))));
         await page.click('#create-submit');

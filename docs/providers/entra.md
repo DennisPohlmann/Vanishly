@@ -69,6 +69,9 @@ user found are stored. Mail aliases (`proxyAddresses`) are not matched.
 **Token configuration** → **Add groups claim** → "Security groups" (ID
 token: "Group ID"). The values are the groups' object ids:
 `RECIPIENT_GROUPS=IT Admins=<group object id>,HR=<group object id>`.
+The form searches these groups by name (no Graph needed); with
+`RECIPIENT_GROUPS=*` and `ENTRA_GRAPH=true` it searches all groups of the
+tenant instead.
 
 Users in more than 200 groups get no `groups` claim. Vanishly then asks
 Microsoft Graph when `ENTRA_GRAPH=true`; otherwise such a user cannot open

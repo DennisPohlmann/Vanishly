@@ -107,8 +107,6 @@
   "home.recipientsRequired": "Nur für diese Personen (Pflicht)",
   "home.recipientEmail": "E-Mail-Adresse",
   "home.recipientAdd": "Hinzufügen",
-  "home.recipientGroup": "Gruppe",
-  "home.recipientGroupPick": "Gruppe wählen",
   "home.groupSearch": "Gruppe suchen",
   "home.groupSearchHint": "Mindestens 2 Buchstaben des Gruppennamens eingeben.",
   "home.groupNone": "Keine Gruppe gefunden.",
