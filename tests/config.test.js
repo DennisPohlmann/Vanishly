@@ -46,13 +46,13 @@ test('the env files of the Compose examples: the defaults, and only settings of 
   assert.deepEqual(loadConfig(standalone), loadConfig({ REDIS_URL: 'redis://redis:6379', DEFAULT_LANG: 'en' }));
   // All settings in every .env.example (NAME= or #NAME=): a new, renamed or removed one fails here.
   // KEYCLOAK_PORT is no setting: only Compose reads it, for Keycloak's port.
-  for (const path of ['.env.example', 'docker-compose/standalone/.env.example', 'docker-compose/keycloak/.env.example']) {
+  for (const path of ['.env.example', 'docker-compose/standalone/.env.example', 'docker-compose/keycloak/.env.example', 'docker-compose/entra/.env.example']) {
     const text = readFileSync(path, 'utf8');
     for (const name of Object.keys(envFile(path))) assert.ok(SETTINGS.includes(name) || name === 'KEYCLOAK_PORT', `${path}: ${name} is no setting`);
     for (const name of SETTINGS) assert.match(text, new RegExp(`^#?${name}=`, 'm'), `${path}: ${name} is missing`);
   }
   // The Compose files set no settings: their env files must be enough to start.
-  for (const file of ['standalone', 'keycloak']) {
+  for (const file of ['standalone', 'keycloak', 'entra']) {
     assert.ok(!/^ +environment:/m.test(readFileSync(`docker-compose/${file}/docker-compose.yml`, 'utf8').split(/^ {2}vanishly:/m)[1].split(/^ {2}\w+:/m)[0]), file);
   }
   const c = loadConfig(envFile('docker-compose/keycloak/.env.example'));
@@ -60,6 +60,13 @@ test('the env files of the Compose examples: the defaults, and only settings of 
   assert.equal(c.baseUrl, 'http://localhost:3000');
   assert.equal(c.rateLimitKey, '');
   assert.deepEqual(c.auth?.groups.list.map((g) => g.name), ['Finance', 'IT']);
+  // The Entra example starts once the tenant's ids are in.
+  const entra = envFile('docker-compose/entra/.env.example');
+  assert.throws(() => loadConfig(entra), /ENTRA_TENANT_ID is required/);
+  const id = '00000000-0000-0000-0000-000000000000';
+  const e = loadConfig({ ...entra, ENTRA_TENANT_ID: id, ENTRA_CLIENT_ID: id, ENTRA_CLIENT_SECRET: 'x', AUTH_SECRET: 'x'.repeat(32) });
+  assert.equal(e.auth?.provider, 'entra');
+  assert.equal(e.auth?.graph, true);
 });
 
 test('dropdown defaults follow TTL_OPTIONS', () => {

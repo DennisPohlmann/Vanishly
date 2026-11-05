@@ -1,0 +1,66 @@
+# Vanishly with Redis and sign-in through Microsoft Entra ID.
+#
+#   cp .env.example .env     # required: all settings, then your tenant's values
+#   docker compose up -d     # or: podman-compose up -d
+#
+# The app registration in Entra (redirect URI, Graph permissions, admin
+# consent) is in README.md. The app listens on 127.0.0.1:3000; on a server put
+# a reverse proxy with TLS in front (docs/INSTALLATION.md). Redis is reachable
+# only inside this network.
+# All settings are in .env; your own docker-compose.override.yml can add environment:, which wins (docs/INSTALLATION.md).
+name: vanishly-entra
+
+# podman-compose: no pod and no extra infra container; Docker ignores this.
+x-podman:
+  in_pod: false
+
+services:
+  vanishly:
+    image: ghcr.io/dennispohlmann/vanishly:latest
+    # The image runs as the unprivileged user "node" (uid 1000).
+    # This file only pulls images, so with its .env it works in any folder.
+    restart: unless-stopped
+    # Every setting is in .env next to this file (cp .env.example .env), also
+    # the Entra ids and secrets and REDIS_URL. A wrong value or a misspelt name
+    # stops the start with a message (docker compose logs vanishly).
+    # docs/CONFIG.md explains each one.
+    env_file: .env
+    ports:
+      - "127.0.0.1:3000:3000"
+    # A plain start order is enough: at start Vanishly checks that Redis is
+    # reachable and writable (exit 69 after 10 s otherwise), and
+    # restart: unless-stopped tries again. This also works with podman-compose.
+    depends_on: [redis]
+    # Same check as the Dockerfile's HEALTHCHECK, which the published OCI
+    # image does not carry (Podman then has no health check at all).
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    # The latest Redis 8 (8.x on Alpine): `docker compose pull` brings its
+    # updates. CI scans this exact image with Trivy on every build.
+    image: redis:8-alpine
+    restart: unless-stopped
+    # Secrets live in memory only: no snapshots, no append-only file, so
+    # nothing of them lands on disk. A restart of Redis drops open secrets;
+    # see docs/CONFIG.md to keep them across restarts.
+    # Runs as the unprivileged user "redis" of the image (uid 999), not root.
+    user: "999:1000"
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-ttl"]
+    read_only: true
+    # Working folder in memory; mode instead of uid/gid, which Podman refuses.
+    tmpfs:
+      - /data:mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true

@@ -2,10 +2,11 @@
 
 All settings are environment variables. With Compose they are in `.env` next
 to `docker-compose.yml`, loaded with `env_file:`, and the Compose file sets
-none itself. `docker-compose/standalone/.env.example` and
-`docker-compose/keycloak/.env.example` list all of them, to copy to `.env`
-(required): with their defaults, and with what the demo sets
-([README](../docker-compose/keycloak/README.md#how-it-is-set-up)). `#NAME=`
+none itself. `docker-compose/standalone/.env.example`,
+`docker-compose/keycloak/.env.example` and `docker-compose/entra/.env.example`
+list all of them, to copy to `.env` (required): with their defaults, and with
+what the example sets ([Keycloak](../docker-compose/keycloak/README.md#how-it-is-set-up),
+[Entra](../docker-compose/entra/README.md#how-it-is-set-up)). `#NAME=`
 marks an optional form, such as `NAME_FILE`. The `.env.example` at the top lists
 all of them too and is the template for `/etc/vanishly/vanishly.env` (systemd).
 An empty value means the default. The examples keep everything in `.env`; in

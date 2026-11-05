@@ -96,9 +96,11 @@ issuer, audience, expiry and tenant. Details:
 
 ## Example (`.env` or Compose)
 
-The same lines go into `.env` next to `docker-compose.yml`
-([docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml))
-or into its `environment:` block.
+A ready Compose example with every setting is
+[docker-compose/entra](../../docker-compose/entra/README.md). The same lines go
+into `.env` next to its `docker-compose.yml` (or that of
+[docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml))
+or into an `environment:` block.
 
 ```bash
 AUTH_PROVIDER=entra

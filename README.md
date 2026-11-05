@@ -152,6 +152,7 @@ The Compose files live in [`docker-compose/`](docker-compose/) (until 1.2.1
 |---|---|
 | [`docker-compose/standalone/`](docker-compose/standalone/) | Vanishly with its own Redis; the file above. `docker-compose.build.yml` builds from a checkout, `docker-compose.auth-test.yml` adds a test login server |
 | [`docker-compose/keycloak/`](docker-compose/keycloak/README.md) | Example with Keycloak and demo users: sign-in, recipients, responsible groups, people search |
+| [`docker-compose/entra/`](docker-compose/entra/README.md) | Sign-in through Microsoft Entra ID: app registration, Graph permissions, groups and admins |
 
 `docker-compose.yml` pulls the published image, so it needs nothing else
 from the repository but its `.env`. To build from a checkout instead, in
@@ -188,7 +189,7 @@ curl -s -X POST http://127.0.0.1:3000/api/v1/share \
 | [docs/USAGE.md](docs/USAGE.md) | pages, how sharing works, receipts, health and monitoring |
 | [docs/SECURITY.md](docs/SECURITY.md) | how a secret is protected: encryption in the browser, what Redis stores, passphrase, behaviour on Redis errors, limits |
 | [docs/providers/](docs/providers/README.md) | sign-in providers: what each supports, one page per provider (none, Entra ID, Keycloak, Okta, Auth0, Google, PingOne, JumpCloud, Cognito, other OIDC) |
-| [docker-compose/](docker-compose/keycloak/README.md) | Compose examples: `standalone` (Vanishly with Redis), `keycloak` (local sign-in demo) |
+| [docker-compose/](docker-compose/keycloak/README.md) | Compose examples: `standalone` (Vanishly with Redis), `keycloak` (local sign-in demo), `entra` (Microsoft Entra ID) |
 | [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) | accessibility statement: WCAG 2.2 AA target, how it is checked, known limits, feedback |
 | [docs/INTERFACE.md](docs/INTERFACE.md) | REST API (OpenAPI), crypto format, Redis keys |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | local development, tests, CI and releases |
