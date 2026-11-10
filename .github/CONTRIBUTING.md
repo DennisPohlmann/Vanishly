@@ -30,7 +30,7 @@ By taking part you agree to the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Rules the code keeps
 
-`CLAUDE.md` lists the invariants in full. The most important ones:
+The invariants every change keeps ([docs/SECURITY.md](../docs/SECURITY.md) has the design behind them):
 
 - The server never gets the key or the plaintext. Nothing sends, logs or
   stores `location.hash`.

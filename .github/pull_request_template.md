@@ -16,5 +16,5 @@
 - [ ] Documentation, `openapi/openapi.json` and translations are updated
 - [ ] A new setting is in `docs/CONFIG.md`, `.env.example`, both `docker-compose/*/.env.example`, the chart `values.yaml` and `values.schema.json`
 - [ ] New dependencies are in `THIRD-PARTY-LICENSES.md`
-- [ ] The [invariants](https://github.com/DennisPohlmann/Vanishly/blob/main/CLAUDE.md#invariants-that-must-not-break) still hold: no key or plaintext reaches the server, no ids, IPs or secrets in logs
+- [ ] The [invariants](https://github.com/DennisPohlmann/Vanishly/blob/main/.github/CONTRIBUTING.md#rules-the-code-keeps) still hold: no key or plaintext reaches the server, no ids, IPs or secrets in logs
 - [ ] No real secrets, links, tokens, IP addresses or personal data in code, tests, screenshots or this description

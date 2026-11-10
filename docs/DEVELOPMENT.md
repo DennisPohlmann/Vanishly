@@ -212,10 +212,5 @@ public (a new package starts private: Package settings, Change visibility).
 Never edit `VERSION`, `CHANGELOG.md` or the version in `package.json` by
 hand, never tag by hand. Write Conventional Commits; the release run (see
 [Releases (manual only)](#releases-manual-only)) does the rest. Before
-starting it, run the `release-security-gate` skill (`.claude/skills/`).
-
-## Claude skills
-
-`.claude/skills/` holds the project's skills:
-`pre-commit-checklist`, `security-check`, `release-security-gate`,
-`security-privacy-audit`. `CLAUDE.md` says when they are mandatory.
+starting it, do a full security review of the repository (see
+[SECURITY.md](SECURITY.md)).
