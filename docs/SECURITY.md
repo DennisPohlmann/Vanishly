@@ -246,12 +246,16 @@ Optional (`AUDIT_LOG`, `API_TOKENS`, see [CONFIG.md](CONFIG.md#audit-log)).
   every call is then logged under that user).
 - **Technical users and admin tokens:** technical users have no sign-in, only
   the tokens an admin issues; disabling or deleting one revokes them all.
-  The scope `admin` (the admin API) exists only with
-  `API_ADMIN_TOKENS=true`, only for technical users, only given by a
-  signed-in admin (not by another admin token unless
-  `API_ADMIN_TOKEN_CAN_ISSUE_ADMIN=true`), bound to IP networks and for at
-  most 90 days by default, and every call needs a comment. The admin
-  interface shows secrets' metadata only, never content or keys.
+  The scope `admin` (the admin API) exists only with `API_ADMIN_TOKENS`
+  (on by default when admins are set), only for technical users, given by a
+  signed-in admin or, unless `API_ADMIN_TOKEN_CAN_ISSUE_ADMIN=false`, by
+  another admin token, bound to IP networks and for at most 90 days by
+  default, and every call needs a comment. Set
+  `API_ADMIN_TOKEN_CAN_ISSUE_ADMIN=false` (or `API_ADMIN_TOKENS=false`) to
+  keep admin tokens in the hands of signed-in admins. The admin interface
+  shows secrets' metadata only, never content or keys; with `ADMIN_BURN`
+  (default on) an admin can burn a secret that is not opened yet (it never
+  sees its content), logged as `secret.burned` with reason `admin`.
 
 ## What Vanishly cannot protect against
 

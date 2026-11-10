@@ -309,6 +309,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     [Boolean(tokens?.c.adminPolicy), 'GET', '/v1/admin/token-policies'],
     [Boolean(auth?.c.admin.ui && (auth.c.admin.users.length || auth.c.admin.groups.length)), 'GET', '/v1/admin/status'],
     [Boolean(auth?.c.admin.ui && audit?.c.redis && (auth.c.admin.users.length || auth.c.admin.groups.length)), 'GET', '/v1/admin/secrets'],
+    [Boolean(auth?.c.admin.burn && audit?.c.redis), 'POST', '/v1/admin/secrets/{ref}/burn'],
     [Boolean(tokens?.c.services), 'GET', '/v1/admin/service-accounts'],
     [Boolean(tokens?.c.services), 'POST', '/v1/admin/service-accounts'],
     [Boolean(tokens?.c.services), 'POST', '/v1/admin/service-accounts/{name}'],
@@ -1260,6 +1261,22 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     res.json({ count: list.length, secrets: list });
   });
 
+  // ADMIN_BURN: an admin destroys a secret, found by its ref from the list above.
+  api.post('/v1/admin/secrets/:ref/burn', limit('create'), async (req, res) => {
+    if (!audit?.c.redis || !auth?.c.admin.burn) throw disabled();
+    const u = await adminActor(req, res);
+    const ref = String(req.params.ref);
+    if (!validId(ref)) throw new ApiError(404, 'not_found', 'Unknown secret');
+    const s = await store.findSecret((id) => audit.ref('s', id) === ref);
+    if (!s || !(await store.burnSecret(s.id, s.rid))) {
+      const known = (await audit.secrets({ limit: 5000 })).find((x) => x.ref === ref);
+      if (known) throw new ApiError(409, 'gone', `The secret is already gone (${known.status === 'open' || known.status === 'partly_opened' ? 'expired' : known.status})`);
+      throw new ApiError(404, 'not_found', 'Unknown secret');
+    }
+    await ev(req, res, 'secret.burned', { reason: 'admin', secret: { ref, receiptRef: s.rid ? audit.ref('r', s.rid) : undefined }, details: { admin: u.name || u.user }, comment: commentOf(req, req.body) });
+    res.json({ state: 'burned' });
+  });
+
   // ------------------------------------------------------------ technical users
   /** @param {import('express').Request} req */
   const svcOf = async (req) => {
@@ -1917,6 +1934,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         verify: auth.c.admin.auditView && audit?.c.file ? '1' : '0',
         tokens: tokens ? '1' : '0',
         policies: tokens?.c.adminPolicy ? '1' : '0',
+        burn: auth.c.admin.burn ? '1' : '0',
       }),
     );
   });

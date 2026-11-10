@@ -178,7 +178,7 @@ export const SETTINGS = [
   'DIRECTORY_CLIENT_ID', 'DIRECTORY_CLIENT_SECRET', 'DIRECTORY_CLIENT_SECRET_FILE', 'DIRECTORY_API_TOKEN',
   'DIRECTORY_API_TOKEN_FILE', 'DIRECTORY_GOOGLE_CREDENTIALS_FILE', 'DIRECTORY_GOOGLE_ADMIN', 'AUTH_SECRET', 'AUTH_SECRET_FILE', 'AUTH_SESSION_TTL', 'AUTH_LOGOUT', 'AUTH_AUTO_LOGIN', 'AUTH_CREATE', 'AUTH_API_AUDIENCE', 'RECIPIENTS', 'RECIPIENTS_MAX', 'RECIPIENT_GROUPS',
   'RECIPIENT_USER_GROUP', 'RECIPIENT_DOMAINS', 'RECIPIENTS_DIRECTORY_ONLY', 'RECEIPT_SHOW_VIEWER',
-  'ADMIN_USERS', 'ADMIN_GROUPS', 'AUDIT_ADMIN_VIEW',
+  'ADMIN_USERS', 'ADMIN_GROUPS', 'AUDIT_ADMIN_VIEW', 'ADMIN_BURN',
   'API_TOKENS', 'API_TOKEN_REQUIRED', 'API_TOKEN_USERS', 'API_TOKEN_GROUPS', 'API_TOKEN_IP_BINDING',
   'API_TOKEN_EXPIRY_OPTIONS', 'API_TOKEN_DEFAULT_EXPIRY', 'API_TOKEN_MAX_EXPIRY', 'API_TOKEN_MAX_PER_USER',
   'API_TOKEN_RATE_LIMIT', 'API_TOKEN_COMMENT', 'API_TOKEN_ALLOWED_SCOPES', 'API_TOKEN_DEFAULT_SCOPES',
@@ -569,7 +569,7 @@ function authConfig(env, baseUrl) {
     });
   // Admins: may read the audit log and see and revoke every API token.
   // ADMIN_UI: the admin pages (/admin) and the admin API at all.
-  const admin = { users: addresses('ADMIN_USERS'), groups: groupList('ADMIN_GROUPS'), auditView: sw('AUDIT_ADMIN_VIEW', true), ui: sw('ADMIN_UI', true) };
+  const admin = { users: addresses('ADMIN_USERS'), groups: groupList('ADMIN_GROUPS'), auditView: sw('AUDIT_ADMIN_VIEW', true), ui: sw('ADMIN_UI', true), burn: sw('ADMIN_BURN', true) };
   // API_TOKENS: personal API tokens (src/tokens.js).
   const tokensOn = sw('API_TOKENS', false);
   if (!tokensOn) {
@@ -580,10 +580,20 @@ function authConfig(env, baseUrl) {
   }
   const tokens = tokensOn ? tokenConfig(env, { num, sw, addresses, groupList, normGroup: (g) => groupValue(g, lower, groupPaths), entra }) : null;
   const anyAdmin = admin.users.length > 0 || admin.groups.length > 0;
-  if (tokens?.adminPolicy && (!anyAdmin || !admin.ui)) throw new Error('API_TOKEN_ADMIN_POLICY needs ADMIN_USERS or ADMIN_GROUPS (who sets the policies) and ADMIN_UI=true');
-  if (tokens?.adminTokens.enabled && (!tokens.services || !anyAdmin || !admin.ui)) throw new Error('API_ADMIN_TOKENS needs API_SERVICE_ACCOUNTS=true, ADMIN_USERS or ADMIN_GROUPS and ADMIN_UI=true');
+  // On by default where possible: only an explicit "true" without its prerequisites is an error.
+  if (tokens?.adminPolicy && (!anyAdmin || !admin.ui)) {
+    if (env.API_TOKEN_ADMIN_POLICY) throw new Error('API_TOKEN_ADMIN_POLICY needs ADMIN_USERS or ADMIN_GROUPS (who sets the policies) and ADMIN_UI=true');
+    tokens.adminPolicy = false;
+  }
   // Technical users are managed by admins on /admin: without them, none.
   if (tokens && (!anyAdmin || !admin.ui)) tokens.services = false;
+  if (tokens?.adminTokens.enabled && !tokens.services) {
+    if (env.API_ADMIN_TOKENS) throw new Error('API_ADMIN_TOKENS needs API_SERVICE_ACCOUNTS=true, ADMIN_USERS or ADMIN_GROUPS and ADMIN_UI=true');
+    tokens.adminTokens.enabled = false;
+  }
+  if (tokens && !tokens.adminTokens.enabled) tokens.adminTokens.canIssueAdmin = false;
+  // ADMIN_BURN: admins may burn any secret (/admin, Secrets tab, needs ENABLE_BURN).
+  admin.burn = admin.burn && admin.ui && anyAdmin;
   return {
     provider,
     tenant,
@@ -714,15 +724,15 @@ function tokenScopes(env, h) {
     allowedScopes,
     defaultScopes,
     scopesByGroup,
-    adminPolicy: h.sw('API_TOKEN_ADMIN_POLICY', false),
+    adminPolicy: h.sw('API_TOKEN_ADMIN_POLICY', true),
     // API_SERVICE_ACCOUNTS: technical users (API only, no sign-in), made by admins.
     services: h.sw('API_SERVICE_ACCOUNTS', true),
     // API_ADMIN_TOKENS: the "admin" scope for technical users' tokens (the admin API).
     adminTokens: {
-      enabled: h.sw('API_ADMIN_TOKENS', false),
+      enabled: h.sw('API_ADMIN_TOKENS', true),
       requireIp: h.sw('API_ADMIN_TOKEN_REQUIRE_IP', true),
       maxExpiry: named('API_ADMIN_TOKEN_MAX_EXPIRY', () => parseExpiry(env.API_ADMIN_TOKEN_MAX_EXPIRY || '90d')),
-      canIssueAdmin: h.sw('API_ADMIN_TOKEN_CAN_ISSUE_ADMIN', false),
+      canIssueAdmin: h.sw('API_ADMIN_TOKEN_CAN_ISSUE_ADMIN', true),
       comment: /** @type {'optional' | 'required'} */ (adminComment),
     },
   };
@@ -1017,6 +1027,7 @@ export function loadConfig(env = process.env) {
   if (auth && config.audit && env.AUDIT_ADMIN_VIEW && flag(env.AUDIT_ADMIN_VIEW, true) && !config.audit.file && !config.audit.redis) {
     throw new Error('AUDIT_ADMIN_VIEW needs AUDIT_LOG_FILE or AUDIT_LOG_REDIS=true (stdout cannot be read back)');
   }
+  if (auth && !config.features.burn) auth.admin.burn = false;
   if (auth) auth.admin.auditView = Boolean(auth.admin.auditView && auth.admin.ui && config.audit && (config.audit.file || config.audit.redis) && (auth.admin.users.length || auth.admin.groups.length));
   if (!config.api) {
     config.apiDocs = false;

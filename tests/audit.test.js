@@ -641,7 +641,7 @@ test('API_TOKEN_ADMIN_POLICY: per user beats per group beats env; tighter polici
   assert.match(page, /data-policies="1"/);
   assert.match(page, /id="policy-form"/);
   // Off: no endpoint.
-  const off = await startApp();
+  const off = await startApp({ API_TOKEN_ADMIN_POLICY: 'false' });
   const c2 = await off.login(ALICE);
   assert.equal((await off.call('/api/v1/admin/token-policies', { cookie: c2 })).data.error, 'endpoint_disabled');
 });
@@ -767,7 +767,7 @@ test('technical users: create, tokens act as the technical user, disable/delete 
 });
 
 test('admin API with an admin token: IP binding, comment, max expiry, no admin from admin; non-admin tokens get 403 everywhere', opts, async () => {
-  const a = await adminApp();
+  const a = await adminApp({ API_ADMIN_TOKEN_CAN_ISSUE_ADMIN: 'false' });
   const alice = await a.login(ALICE);
   const bob = await a.login(BOB);
   /** @param {string} path @param {any} body */
@@ -804,6 +804,7 @@ test('admin API with an admin token: IP binding, comment, max expiry, no admin f
     ['GET', '/api/v1/admin/tokens'], ['POST', '/api/v1/admin/tokens/0123456789abcdef/revoke'], ['GET', '/api/v1/admin/token-policies'], ['POST', '/api/v1/admin/token-policies'],
     ['GET', '/api/v1/admin/service-accounts'], ['POST', '/api/v1/admin/service-accounts'], ['POST', '/api/v1/admin/service-accounts/ops'], ['POST', '/api/v1/admin/service-accounts/ops/delete'],
     ['GET', '/api/v1/admin/service-accounts/ops/tokens'], ['POST', '/api/v1/admin/service-accounts/ops/tokens'], ['POST', '/api/v1/admin/service-accounts/ops/tokens/0123456789abcdef/rotate'],
+    ['POST', '/api/v1/admin/secrets/0123456789abcdefghijkl/burn'],
   ];
   for (const [method, path] of routes) {
     for (const [who, auth] of /** @type {const} */ ([['personal token', { bearer: personal }], ['technical user without admin', { bearer: svcPlain }], ['non-admin session', { cookie: bob }]])) {
@@ -819,16 +820,70 @@ test('admin API with an admin token: IP binding, comment, max expiry, no admin f
   assert.equal((await noAdm.call('/api/v1/admin/status', { bearer: adm, headers: { ...from, 'X-Audit-Comment': 'x' } })).status, 403);
 });
 
+test('ADMIN_BURN: an admin burns any secret by its ref; others may not; off when disabled', opts, async () => {
+  const a = await adminApp();
+  const alice = await a.login(ALICE);
+  const bob = await a.login(BOB);
+  const one = await a.call('/api/v1/share', { cookie: bob, body: { secret: PLAIN, ttl: 600, comment: 'to burn' } });
+  const two = await a.call('/api/v1/share', { cookie: bob, body: { secret: 'other', ttl: 600, comment: 'to open' } });
+  await a.call('/api/v1/open', { body: { link: two.data.shareUrl } });
+  const list = (await a.call('/api/v1/admin/secrets', { cookie: alice })).data.secrets;
+  const ref = list.find((/** @type {any} */ x) => x.comment === 'to burn').ref;
+  const opened = list.find((/** @type {any} */ x) => x.comment === 'to open').ref;
+  const html = await (await fetch(`${a.base}/admin?tab=secrets`, { headers: { Cookie: alice } })).text();
+  assert.match(html, /data-burn="1"/);
+  // Not an admin: refused, the secret stays.
+  assert.equal((await a.call(`/api/v1/admin/secrets/${ref}/burn`, { cookie: bob, body: {} })).status, 403);
+  // The admin: burned and logged; then gone.
+  const r = await a.call(`/api/v1/admin/secrets/${ref}/burn`, { cookie: alice, body: { comment: 'leaked in chat' } });
+  assert.deepEqual([r.status, r.data.state], [200, 'burned'], r.text);
+  assert.equal((await a.call('/api/v1/open', { body: { link: one.data.shareUrl } })).status, 404);
+  const e = (await a.events()).find((x) => x.type === 'secret.burned' && x.reason === 'admin');
+  assert.deepEqual([e?.secretRef, e?.actor.user, e?.details.admin, e?.comment], [ref, 'alice@example.com', 'Alice Example', 'leaked in chat']);
+  assert.equal((await a.call(`/api/v1/admin/secrets?status=burned`, { cookie: alice })).data.secrets[0].ref, ref);
+  // Already burned, already opened: 409; unknown or no ref: 404.
+  assert.equal((await a.call(`/api/v1/admin/secrets/${ref}/burn`, { cookie: alice, body: {} })).status, 409);
+  assert.equal((await a.call(`/api/v1/admin/secrets/${opened}/burn`, { cookie: alice, body: {} })).status, 409);
+  assert.equal((await a.call('/api/v1/admin/secrets/0123456789abcdefghijkl/burn', { cookie: alice, body: {} })).status, 404);
+  assert.equal((await a.call('/api/v1/admin/secrets/nope/burn', { cookie: alice, body: {} })).status, 404);
+  // ADMIN_BURN=false or ENABLE_BURN=false: the route is off, no button.
+  for (const env of [{ ADMIN_BURN: 'false' }, { ENABLE_BURN: 'false' }]) {
+    const b = await adminApp(env);
+    const c = await b.login(ALICE);
+    const s = await b.call('/api/v1/share', { cookie: c, body: { secret: 'x', ttl: 600 } });
+    assert.equal(s.status, 201);
+    const sref = (await b.call('/api/v1/admin/secrets', { cookie: c })).data.secrets[0].ref;
+    assert.equal((await b.call(`/api/v1/admin/secrets/${sref}/burn`, { cookie: c, body: {} })).data.error, 'endpoint_disabled', JSON.stringify(env));
+    assert.match(await (await fetch(`${b.base}/admin?tab=secrets`, { headers: { Cookie: c } })).text(), /data-burn="0"/);
+  }
+});
+
 test('admin and technical user settings are checked at start', () => {
   const base = { BASE_URL: 'https://ots.example.com', AUTH_PROVIDER: 'entra', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_CLIENT_SECRET: SECRET, AUTH_SECRET: 'x'.repeat(40) };
   assert.throws(() => loadConfig({ ...base, API_ADMIN_TOKENS: 'true' }), /needs API_TOKENS=true/);
   assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_ADMIN_TOKENS: 'true' }), /API_ADMIN_TOKENS needs/);
+  assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_ADMIN_POLICY: 'true' }), /API_TOKEN_ADMIN_POLICY needs/);
+  assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', ADMIN_USERS: 'a@example.com', ADMIN_UI: 'false', API_ADMIN_TOKENS: 'true' }), /API_ADMIN_TOKENS needs/);
   assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', ADMIN_USERS: 'a@example.com', API_SERVICE_ACCOUNTS: 'false', API_ADMIN_TOKENS: 'true' }), /API_SERVICE_ACCOUNTS=true/);
   assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', ADMIN_USERS: 'a@example.com', API_ADMIN_TOKENS: 'true', API_ADMIN_TOKEN_MAX_EXPIRY: '5x' }), /API_ADMIN_TOKEN_MAX_EXPIRY/);
   assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_ADMIN_COMMENT: 'maybe' }), /API_ADMIN_COMMENT/);
-  const t = loadConfig({ ...base, API_TOKENS: 'true', ADMIN_USERS: 'a@example.com' }).auth?.tokens;
-  assert.deepEqual([t?.services, t?.adminTokens], [true, { enabled: false, requireIp: true, maxExpiry: '90d', canIssueAdmin: false, comment: 'required' }]);
-  assert.equal(loadConfig({ ...base, API_TOKENS: 'true' }).auth?.tokens?.services, false, 'no admins: no technical users');
+  // With admins: everything on by default.
+  const withAdmins = loadConfig({ ...base, API_TOKENS: 'true', ADMIN_USERS: 'a@example.com' }).auth;
+  const t = withAdmins?.tokens;
+  assert.deepEqual([t?.services, t?.adminPolicy, t?.adminTokens], [true, true, { enabled: true, requireIp: true, maxExpiry: '90d', canIssueAdmin: true, comment: 'required' }]);
+  assert.equal(withAdmins?.admin.burn, true);
+  // Without admins (or with ADMIN_UI=false): starts, the admin features are off.
+  for (const env of [{ API_TOKENS: 'true' }, { API_TOKENS: 'true', ADMIN_USERS: 'a@example.com', ADMIN_UI: 'false' }]) {
+    const c = loadConfig({ ...base, ...env }).auth;
+    assert.deepEqual([c?.tokens?.services, c?.tokens?.adminPolicy, c?.tokens?.adminTokens.enabled, c?.tokens?.adminTokens.canIssueAdmin, c?.admin.burn], [false, false, false, false, false], JSON.stringify(env));
+  }
+  // Without API_TOKENS: starts as before.
+  assert.equal(loadConfig({ ...base, ADMIN_USERS: 'a@example.com' }).auth?.tokens, null);
+  // Explicitly off, and ADMIN_BURN off or without ENABLE_BURN.
+  const offT = loadConfig({ ...base, API_TOKENS: 'true', ADMIN_USERS: 'a@example.com', API_TOKEN_ADMIN_POLICY: 'false', API_ADMIN_TOKENS: 'false' }).auth?.tokens;
+  assert.deepEqual([offT?.adminPolicy, offT?.adminTokens.enabled, offT?.adminTokens.canIssueAdmin], [false, false, false]);
+  assert.equal(loadConfig({ ...base, ADMIN_USERS: 'a@example.com', ADMIN_BURN: 'false' }).auth?.admin.burn, false);
+  assert.equal(loadConfig({ ...base, ADMIN_USERS: 'a@example.com', ENABLE_BURN: 'false' }).auth?.admin.burn, false);
 });
 
 test('API_TOKEN_REQUIRED: scripts need a token, the pages keep working; API_TOKEN_USERS limits who makes tokens', opts, async () => {

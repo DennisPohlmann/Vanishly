@@ -341,7 +341,7 @@ config:
   API_TOKEN_DEFAULT_SCOPES: ""
   # Other scopes per group: <group>=<scopes>;... e.g. /support=read (none).
   API_TOKEN_SCOPES_BY_GROUP: ""
-  # Admins set scopes and token limits per user and group on /admin (false).
+  # Admins set scopes and token limits per user and group on /admin (true, with admins).
   API_TOKEN_ADMIN_POLICY: ""
   # Admins (addresses): the whole admin interface /admin and the admin API (none).
   ADMIN_USERS: ""
@@ -351,15 +351,17 @@ config:
   ADMIN_UI: ""
   # The audit log tab for admins (true).
   AUDIT_ADMIN_VIEW: ""
+  # Admins may burn any secret (Secrets tab, admin API; needs ENABLE_BURN) (true).
+  ADMIN_BURN: ""
   # Technical users (API only, made by admins) (true).
   API_SERVICE_ACCOUNTS: ""
-  # The "admin" scope for technical users' tokens: the admin API by token (false).
+  # The "admin" scope for technical users' tokens: the admin API by token (true, with admins).
   API_ADMIN_TOKENS: ""
   # Admin tokens must be bound to IP networks (true).
   API_ADMIN_TOKEN_REQUIRE_IP: ""
   # Longest lifetime of an admin token (90d).
   API_ADMIN_TOKEN_MAX_EXPIRY: ""
-  # An admin token may issue further admin tokens (false).
+  # An admin token may issue further admin tokens (true).
   API_ADMIN_TOKEN_CAN_ISSUE_ADMIN: ""
   # Comment (X-Audit-Comment) on every admin API call with a token: required or optional (required).
   API_ADMIN_COMMENT: ""

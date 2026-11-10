@@ -220,15 +220,16 @@ Need sign-in. See [API tokens](#api-tokens) below.
 | `API_TOKEN_ALLOWED_SCOPES` | `create,read,status` | What users may give their tokens: `create` (create secrets), `read` (retrieve/open them), `status` (status page and burn), or `none`. The form then offers only "only create", "only retrieve", "both" and the status box as far as allowed |
 | `API_TOKEN_DEFAULT_SCOPES` | `create,status` (within the allowed ones) | Preselected in the form and used when the API call names no `scopes`; must be within `API_TOKEN_ALLOWED_SCOPES` |
 | `API_TOKEN_SCOPES_BY_GROUP` | (none) | Other scopes for the members of groups, wins over `API_TOKEN_ALLOWED_SCOPES` (several groups add up): `<group>=<scopes>;...`, e.g. `/support=read;/it=create,read,status` (Entra: object ids). For GitOps |
-| `API_TOKEN_ADMIN_POLICY` | `false` | `true`: admins set the scopes and the token limit per user and per group on `/admin` ("Token permissions", stored in Redis). Order: user > group > `API_TOKEN_SCOPES_BY_GROUP` > `API_TOKEN_ALLOWED_SCOPES` / `API_TOKEN_MAX_PER_USER`. Needs `ADMIN_USERS` or `ADMIN_GROUPS` |
+| `API_TOKEN_ADMIN_POLICY` | `true` (with admins) | Admins set the scopes and the token limit per user and per group on `/admin` ("Token permissions", stored in Redis). Order: user > group > `API_TOKEN_SCOPES_BY_GROUP` > `API_TOKEN_ALLOWED_SCOPES` / `API_TOKEN_MAX_PER_USER`. Needs `ADMIN_USERS` or `ADMIN_GROUPS` and `ADMIN_UI`: unset it is off without them, an explicit `true` is an error |
 | `ADMIN_USERS`, `ADMIN_GROUPS` | (none) | Admins get the whole admin interface (`/admin`, "Administration" in the user menu) and the admin API. `ADMIN_GROUPS` as in the groups claim, like `RECIPIENT_GROUPS` (Keycloak: `/vanishly-admins`; Entra: the object id); see [Admin interface](#admin-interface) |
 | `ADMIN_UI` | `true` | The admin interface and the admin API at all (`false`: neither) |
 | `AUDIT_ADMIN_VIEW` | `true` | The "Audit log" tab; needs `AUDIT_LOG` with `AUDIT_LOG_FILE` or `AUDIT_LOG_REDIS=true` |
+| `ADMIN_BURN` | `true` | Admins may burn any secret that is not yet opened, expired or burned ("Burn" in the Secrets tab, `POST /api/v1/admin/secrets/{ref}/burn`); needs `ADMIN_UI`, admins, `ENABLE_BURN` and `AUDIT_LOG_REDIS=true` |
 | `API_SERVICE_ACCOUNTS` | `true` | Technical users: API-only accounts (e.g. `api_aap`) that admins make on `/admin` and issue tokens for; they cannot sign in |
-| `API_ADMIN_TOKENS` | `false` | The scope `admin` for technical users' tokens: every admin function over the API. Only a signed-in admin can give it |
+| `API_ADMIN_TOKENS` | `true` (with admins) | The scope `admin` for technical users' tokens: every admin function over the API. Only a signed-in admin can give it. Needs `API_SERVICE_ACCOUNTS`, admins and `ADMIN_UI`: unset it is off without them, an explicit `true` is an error |
 | `API_ADMIN_TOKEN_REQUIRE_IP` | `true` | Admin tokens must name the IP networks they work from |
 | `API_ADMIN_TOKEN_MAX_EXPIRY` | `90d` | Longest lifetime of an admin token (`d`, `m`, `y`) |
-| `API_ADMIN_TOKEN_CAN_ISSUE_ADMIN` | `false` | `true`: an admin token may issue further admin tokens |
+| `API_ADMIN_TOKEN_CAN_ISSUE_ADMIN` | `true` | An admin token may issue further admin tokens (`false`: only a signed-in admin) |
 | `API_ADMIN_COMMENT` | `required` | Every admin API call with a token needs `X-Audit-Comment` (`optional`: not) |
 
 The container sets `NODE_ENV=production`, `HOST=0.0.0.0`, `PORT=3000` and
@@ -557,7 +558,7 @@ in the user menu (`/admin`), with tabs:
 | Tab | What | Needs |
 |---|---|---|
 | Audit log | filter, export (CSV, JSON lines), hash chain check | `AUDIT_LOG` with a file or `AUDIT_LOG_REDIS` |
-| Secrets | every secret with creator, recipients, comment, expiry, state (not opened, opened, expired, burned) and who opened it when and how (web page, API, token); never content or keys | `AUDIT_LOG_REDIS=true` |
+| Secrets | every secret with creator, recipients, comment, expiry, state (not opened, opened, expired, burned) and who opened it when and how (web page, API, token); never content or keys; burn a secret that is not opened yet (`ADMIN_BURN`) | `AUDIT_LOG_REDIS=true` |
 | API tokens | all tokens of all users and technical users: owner, scopes, created, last used, expiry, networks, state; revoke | `API_TOKENS` |
 | Technical users | API-only accounts: create, change, disable, delete (revokes their tokens); issue, rotate (with a grace period) and revoke their tokens | `API_SERVICE_ACCOUNTS` |
 | Token permissions | scopes and token limit per user and group | `API_TOKEN_ADMIN_POLICY` |
@@ -578,11 +579,17 @@ append-only file (`--appendonly yes`) or snapshots: an external Redis, the
 Compose file with a volume, or the Helm chart's `redis.persistence.enabled`.
 Note that the (encrypted) secrets are then on disk too.
 
-**Admin tokens** (`API_ADMIN_TOKENS=true`): a signed-in admin issues a
-technical user a token with the scope `admin` (bound to networks, at most
-90 days by default). It can do every admin function over the API, each
-call with `X-Audit-Comment`; it cannot issue further admin tokens
-(`API_ADMIN_TOKEN_CAN_ISSUE_ADMIN`). Personal tokens never get `admin`.
+**Admin tokens** (`API_ADMIN_TOKENS`, on by default with admins): a
+signed-in admin issues a technical user a token with the scope `admin`
+(bound to networks, at most 90 days by default). It can do every admin
+function over the API, each call with `X-Audit-Comment`, and by default
+issue further admin tokens (`API_ADMIN_TOKEN_CAN_ISSUE_ADMIN=false`: it
+cannot). Personal tokens never get `admin`.
+
+**Burning as admin** (`ADMIN_BURN`): the Secrets tab shows "Burn" for every
+secret that is not opened, expired or burned yet; after a confirmation the
+secret is deleted at once. The audit log gets `secret.burned` with
+`reason: admin`, the admin and the comment.
 
 ## Languages
 

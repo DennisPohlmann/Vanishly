@@ -307,6 +307,8 @@
   "secrets.anonymous": "anónimo",
   "secrets.anyone": "qualquer pessoa com o link",
   "secrets.denied": "{n} tentativa(s) recusada(s)",
+  "secrets.burn": "Destruir",
+  "secrets.burnConfirm": "Destruir agora o segredo {ref}? Depois ninguém poderá abri-lo.",
   "secrets.via.browser": "página web",
   "secrets.via.api": "API",
   "secrets.via.token": "token de API",

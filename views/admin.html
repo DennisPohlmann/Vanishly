@@ -1,4 +1,4 @@
-<section class="card card-wide admin-head" id="admin-card" data-tab="{{ tab }}" data-audit="{{ audit }}" data-verify="{{ verify }}" data-tokens="{{ tokens }}" data-policies="{{ policies }}" data-services="{{ services }}" data-admin-scope="{{ adminScope }}">
+<section class="card card-wide admin-head" id="admin-card" data-tab="{{ tab }}" data-audit="{{ audit }}" data-verify="{{ verify }}" data-tokens="{{ tokens }}" data-policies="{{ policies }}" data-services="{{ services }}" data-admin-scope="{{ adminScope }}" data-burn="{{ burn }}">
   <h1>{{ t:admin.heading }}</h1>
   <nav class="tabs" aria-label="{{ t:admin.tabs }}">{{{ adminTabs }}}</nav>
   {{{ adminWarnings }}}
@@ -126,7 +126,7 @@
   <p class="hint" id="secrets-count" role="status"></p>
   <div class="table-wrap">
     <table class="data">
-      <thead><tr><th scope="col">{{ t:secrets.col.created }}</th><th scope="col">{{ t:secrets.col.creator }}</th><th scope="col">{{ t:secrets.col.for }}</th><th scope="col">{{ t:secrets.col.comment }}</th><th scope="col">{{ t:secrets.col.expires }}</th><th scope="col">{{ t:secrets.col.status }}</th><th scope="col">{{ t:secrets.col.opened }}</th><th scope="col">{{ t:secrets.col.ref }}</th></tr></thead>
+      <thead><tr><th scope="col">{{ t:secrets.col.created }}</th><th scope="col">{{ t:secrets.col.creator }}</th><th scope="col">{{ t:secrets.col.for }}</th><th scope="col">{{ t:secrets.col.comment }}</th><th scope="col">{{ t:secrets.col.expires }}</th><th scope="col">{{ t:secrets.col.status }}</th><th scope="col">{{ t:secrets.col.opened }}</th><th scope="col">{{ t:secrets.col.ref }}</th><th scope="col"><span class="sr-only">{{ t:secrets.burn }}</span></th></tr></thead>
       <tbody id="secrets-rows"></tbody>
     </table>
   </div>

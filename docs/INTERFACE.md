@@ -154,7 +154,7 @@ UTC with milliseconds.
 | `secret.created` | a secret was stored: creator, recipients (addresses, groups), responsible, comment, `details` (`encrypted` browser/server, `ttl_s`, `expires`, `max_views`, `passphrase` yes/no, `restricted`, `size` bucket) | success |
 | `secret.revealed` | a view was handed out (`details.via` browser/server, `views_left`) | success |
 | `secret.reveal_denied` | `login_required`, `not_recipient`, `bad_passphrase` (`attempts_left`), `not_found` | denied |
-| `secret.burned` | `reason`: `manual` (status page) or `passphrase_attempts` | success |
+| `secret.burned` | `reason`: `manual` (status page), `admin` (an admin, `details.admin`; `ADMIN_BURN`) or `passphrase_attempts` | success |
 | `secret.burn_denied`, `receipt.viewed`, `receipt.denied` | the status page | success / denied |
 | `auth.login`, `auth.logout`, `auth.failed` | sign-in | success / denied |
 | `api.token_created`, `api.token_revoked`, `api.token_create_denied` | the API token page (`details.token` id and name, `expires`, `networks`, `scopes`); denied with `reason` `not_enabled` (API_TOKEN_USERS/GROUPS) or `limit_reached` (`details.active`, `details.max`) | success / denied |
@@ -249,6 +249,7 @@ technical user and token, the comment and the run id.
 | `GET /admin/status` | what is on, Redis persistence, warnings |
 | `GET /admin/audit`, `GET /admin/audit/verify` | audit log (filter, `format=csv\|jsonl`), chain check |
 | `GET /admin/secrets?creator=&recipient=&status=&from=&to=&limit=` | secrets overview from the audit stream (metadata only; `AUDIT_LOG_REDIS`) |
+| `POST /admin/secrets/{ref}/burn` | burn a secret by its `ref` from the overview (`ADMIN_BURN`, `ENABLE_BURN`): `200 {state: "burned"}`, `409 gone` (already opened, expired or burned), `404` unknown |
 | `GET /admin/tokens`, `POST /admin/tokens/{id}/revoke` | all tokens |
 | `GET /admin/service-accounts`, `POST /admin/service-accounts` | technical users; create `{name, description, responsible, ips, enabled, max}` |
 | `POST /admin/service-accounts/{name}`, `POST /admin/service-accounts/{name}/delete` | change (also `enabled: false`: revokes its tokens), delete |

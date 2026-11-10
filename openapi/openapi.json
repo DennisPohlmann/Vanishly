@@ -2703,6 +2703,151 @@
         }
       }
     },
+    "/v1/admin/secrets/{ref}/burn": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "adminBurnSecret",
+        "summary": "Burn a secret (admin)",
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "description": "The secret's ref from the overview",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{22}$"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/OnBehalfOf"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Burned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "const": "burned"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`; with a token `invalid_token`, `token_expired`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown secret (also when ADMIN_BURN=false, ENABLE_BURN=false or without AUDIT_LOG_REDIS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "409": {
+            "description": "`gone`: already opened, expired or burned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`audit_unavailable`: AUDIT_LOG_FAIL=closed and the audit log cannot be written; nothing was done (a new secret is removed again, a secret is not handed out)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Destroys a secret that is not opened, expired or burned yet, found by its `ref` from GET /v1/admin/secrets (ADMIN_BURN, ENABLE_BURN, AUDIT_LOG_REDIS). Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged as `secret.burned` with reason `admin`.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ]
+      }
+    },
     "/v1/admin/service-accounts": {
       "get": {
         "tags": [

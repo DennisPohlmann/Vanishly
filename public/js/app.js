@@ -1012,6 +1012,7 @@ function initAdmin() {
 /** Admins: the secrets as the audit log knows them (metadata only). */
 function initSecrets() {
   const form = $('secrets-filter');
+  const canBurn = $('admin-card').dataset.burn === '1';
   /** @param {any} s */
   const who = (s) => (s.creator.token ? `${s.creator.user} (${s.creator.token})` : person(s.creator.name, s.creator.user) || t(`secrets.anonymous`));
   const load = async () => {
@@ -1034,7 +1035,26 @@ function initSecrets() {
         st.append(b);
         const opened = s.views.map((/** @type {any} */ v) => `${fmt(v.at)} · ${v.token ? `${v.by} (${v.token})` : person(v.name, v.by) || t('secrets.anonymous')} · ${t(`secrets.via.${v.via}`)}`).join('; ');
         const created = s.encrypted ? `${t(`secrets.via.${s.creator.token ? 'token' : s.encrypted === 'server' ? 'api' : 'browser'}`)}` : '';
-        tr.append(cell(fmt(s.created)), cell(`${who(s)}${created ? ` · ${created}` : ''}`), cell(s.recipients.join(', ') || t('secrets.anyone')), cell(s.comment), cell(s.expires ? fmt(s.expires) : ''), st, cell(opened || (s.denied ? t('secrets.denied', { n: s.denied }) : '')), cell(s.ref.slice(0, 10), 'mono'));
+        const act = document.createElement('td');
+        if (canBurn && (s.status === 'open' || s.status === 'partly_opened')) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn btn-small btn-danger';
+          btn.textContent = t('secrets.burn');
+          btn.setAttribute('aria-label', `${t('secrets.burn')}: ${s.ref.slice(0, 10)}`);
+          btn.addEventListener('click', async () => {
+            if (!confirm(t('secrets.burnConfirm', { ref: s.ref.slice(0, 10) }))) return;
+            btn.disabled = true;
+            const r = await api(`/api/v1/admin/secrets/${encodeURIComponent(s.ref)}/burn`, {});
+            if (r.status !== 200) {
+              btn.disabled = false;
+              return showError($('secrets-error'), r.data.message || errorText(r.status));
+            }
+            load();
+          });
+          act.append(btn);
+        }
+        tr.append(cell(fmt(s.created)), cell(`${who(s)}${created ? ` · ${created}` : ''}`), cell(s.recipients.join(', ') || t('secrets.anyone')), cell(s.comment), cell(s.expires ? fmt(s.expires) : ''), st, cell(opened || (s.denied ? t('secrets.denied', { n: s.denied }) : '')), cell(s.ref.slice(0, 10), 'mono'), act);
         return tr;
       }),
     );

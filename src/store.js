@@ -302,6 +302,26 @@ export class Store {
     return true;
   }
 
+  /**
+   * The id and receipt id of the stored secret for which match(id) is true,
+   * else null (opened, expired or burned). The admin view knows secrets only
+   * by audit refs (HMACs), so the live keys are scanned.
+   * shortcut: a SCAN over all live secrets, fine for admin clicks; an index ref -> id if it ever gets slow.
+   * @param {(id: string) => boolean} match
+   */
+  async findSecret(match) {
+    const pattern = `${this.p.replace(/[*?[\]\\]/g, '\\$&')}s:*`;
+    for await (const batch of this.redis.scanIterator({ MATCH: pattern, COUNT: 500 })) {
+      for (const key of /** @type {string[]} */ ([]).concat(batch)) {
+        const id = key.slice(this.p.length + 2);
+        if (!validId(id) || !match(id)) continue;
+        const rid = await this.redis.hGet(key, 'rid');
+        return rid == null ? null : { id, rid };
+      }
+    }
+    return null;
+  }
+
   /** @param {string} rid */
   async receipt(rid) {
     const r = `${this.p}r:${rid}`;
