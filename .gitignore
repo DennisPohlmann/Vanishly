@@ -8,3 +8,5 @@ dist/
 /docker-compose/*/.env
 /docker-compose/*/keycloak.env
 vendor/
+.claude/
+CLAUDE.md
