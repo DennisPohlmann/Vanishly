@@ -53,7 +53,7 @@ Single steps:
 ```bash
 npm run lint    # tsc --checkJs over src, public/js, tests (jsconfig.json)
 npm test        # node --test; API tests need Redis: REDIS_URL or a redis-server in PATH
-npx --yes @redocly/cli@2.72.0 lint --extends=minimal openapi/openapi.json
+npx --yes @redocly/cli@2.77.0 lint --extends=minimal openapi/openapi.json
 npx playwright install chromium && npm run test:a11y   # accessibility, needs Redis too
 npm run audit:verify -- /path/to/audit.jsonl            # hash chain of an audit log
 ```

@@ -80,7 +80,7 @@ step "tests"
 npm test
 
 step "OpenAPI document"
-npx --yes @redocly/cli@2.72.0 lint --extends=minimal openapi/openapi.json
+npx --yes @redocly/cli@2.77.0 lint --extends=minimal openapi/openapi.json
 
 if [ "$FAST" = 1 ]; then
   skip "accessibility (--fast)"
