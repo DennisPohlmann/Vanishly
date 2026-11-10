@@ -353,6 +353,8 @@ config:
   AUDIT_ADMIN_VIEW: ""
   # Admins may burn any secret (Secrets tab, admin API; needs ENABLE_BURN) (true).
   ADMIN_BURN: ""
+  # "My secrets" in the user menu: own secrets and those for the user or their groups (needs AUDIT_LOG_REDIS) (true).
+  MY_SECRETS: ""
   # Technical users (API only, made by admins) (true).
   API_SERVICE_ACCOUNTS: ""
   # The "admin" scope for technical users' tokens: the admin API by token (true, with admins).

@@ -33,14 +33,15 @@ test('RATE_LIMIT_KEY: optional, checked, also from a file; a wrong one stops the
   assert.ok(!(r.stdout + r.stderr).includes(bad), 'the value is not logged');
 });
 
+/** The settings of an env file (comments and empty lines left out). @param {string} path */
+const envFile = (path) => Object.fromEntries(
+  readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((l) => l && !l.startsWith('#'))
+    .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
+);
+
 test('the env files of the Compose examples: the defaults, and only settings of the app', () => {
-  /** @param {string} path */
-  const envFile = (path) => Object.fromEntries(
-    readFileSync(path, 'utf8')
-      .split('\n')
-      .filter((l) => l && !l.startsWith('#'))
-      .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
-  );
   const standalone = envFile('docker-compose/standalone/.env.example');
   // DEFAULT_LANG=en is what empty means while LANGUAGES is empty.
   assert.deepEqual(loadConfig(standalone), loadConfig({ REDIS_URL: 'redis://redis:6379', DEFAULT_LANG: 'en' }));
@@ -67,6 +68,16 @@ test('the env files of the Compose examples: the defaults, and only settings of 
   const e = loadConfig({ ...entra, ENTRA_TENANT_ID: id, ENTRA_CLIENT_ID: id, ENTRA_CLIENT_SECRET: 'x', AUTH_SECRET: 'x'.repeat(32) });
   assert.equal(e.auth?.provider, 'entra');
   assert.equal(e.auth?.graph, true);
+});
+
+test('MY_SECRETS: on by default with sign-in and the audit stream in Redis; asked for without it, an error', () => {
+  const kc = envFile('docker-compose/keycloak/.env.example');
+  assert.equal(loadConfig(kc).auth?.mySecrets, false, 'no audit stream: off');
+  const redis = { ...kc, AUDIT_LOG: 'true', AUDIT_LOG_REDIS: 'true' };
+  assert.equal(loadConfig(redis).auth?.mySecrets, true);
+  assert.equal(loadConfig({ ...redis, MY_SECRETS: 'false' }).auth?.mySecrets, false);
+  assert.throws(() => loadConfig({ ...kc, MY_SECRETS: 'true' }), /MY_SECRETS needs AUDIT_LOG=true with AUDIT_LOG_REDIS=true/);
+  assert.throws(() => loadConfig({ MY_SECRETS: 'true' }), /MY_SECRETS/, 'needs sign-in');
 });
 
 test('dropdown defaults follow TTL_OPTIONS', () => {

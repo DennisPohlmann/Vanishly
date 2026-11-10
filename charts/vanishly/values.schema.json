@@ -1370,6 +1370,17 @@
             }
           ]
         },
+        "MY_SECRETS": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
         "API_TOKEN_ALLOWED_SCOPES": {
           "anyOf": [
             {

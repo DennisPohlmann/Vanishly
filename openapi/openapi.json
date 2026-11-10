@@ -1339,6 +1339,133 @@
         ]
       }
     },
+    "/v1/me/secrets": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "operationId": "mySecrets",
+        "summary": "My secrets (metadata)",
+        "description": "The signed-in user's secrets as the audit log in Redis knows them: the ones they created and the ones for them or one of their groups, with recipients, comment, expiry, state and openings, newest first; never content or keys. The page \"My secrets\" (`/secrets`) uses it. Only with sign-in, AUDIT_LOG_REDIS=true and MY_SECRETS (default true); otherwise 404 `endpoint_disabled`. Session only, no API tokens.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "partly_opened",
+                "opened",
+                "expired",
+                "burned"
+              ]
+            },
+            "description": "state"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "created from"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "created until"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            },
+            "description": "default 200"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secrets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "secrets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SecretOverview"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_status`, `invalid_time`, `invalid_limit`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`session_required` (called with an API token)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`endpoint_disabled`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/groups": {
       "get": {
         "tags": [

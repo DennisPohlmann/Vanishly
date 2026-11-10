@@ -183,7 +183,7 @@ export const SETTINGS = [
   'API_TOKEN_EXPIRY_OPTIONS', 'API_TOKEN_DEFAULT_EXPIRY', 'API_TOKEN_MAX_EXPIRY', 'API_TOKEN_MAX_PER_USER',
   'API_TOKEN_RATE_LIMIT', 'API_TOKEN_COMMENT', 'API_TOKEN_ALLOWED_SCOPES', 'API_TOKEN_DEFAULT_SCOPES',
   'API_TOKEN_SCOPES_BY_GROUP', 'API_TOKEN_ADMIN_POLICY', 'API_SERVICE_ACCOUNTS', 'API_ADMIN_TOKENS',
-  'API_ADMIN_TOKEN_REQUIRE_IP', 'API_ADMIN_TOKEN_MAX_EXPIRY', 'API_ADMIN_TOKEN_CAN_ISSUE_ADMIN', 'API_ADMIN_COMMENT', 'ADMIN_UI',
+  'API_ADMIN_TOKEN_REQUIRE_IP', 'API_ADMIN_TOKEN_MAX_EXPIRY', 'API_ADMIN_TOKEN_CAN_ISSUE_ADMIN', 'API_ADMIN_COMMENT', 'ADMIN_UI', 'MY_SECRETS',
 ];
 const AUTH_SETTINGS = SETTINGS.slice(SETTINGS.indexOf('ENTRA_TENANT_ID'));
 /**
@@ -626,6 +626,8 @@ function authConfig(env, baseUrl) {
     autoLogin: named('AUTH_AUTO_LOGIN', () => flag(env.AUTH_AUTO_LOGIN, false)),
     showViewer: named('RECEIPT_SHOW_VIEWER', () => flag(env.RECEIPT_SHOW_VIEWER, false)),
     admin,
+    // MY_SECRETS: "My secrets" in the user menu (needs AUDIT_LOG_REDIS, checked below).
+    mySecrets: sw('MY_SECRETS', true),
     tokens,
     // Groups the identity must keep besides RECIPIENT_GROUPS (admins, token makers).
     extraGroups: [...new Set([...admin.groups, ...(tokens?.groups || []), ...(tokens?.scopesByGroup.map((g) => g.group) || [])])],
@@ -1028,6 +1030,8 @@ export function loadConfig(env = process.env) {
     throw new Error('AUDIT_ADMIN_VIEW needs AUDIT_LOG_FILE or AUDIT_LOG_REDIS=true (stdout cannot be read back)');
   }
   if (auth && !config.features.burn) auth.admin.burn = false;
+  if (auth && env.MY_SECRETS && flag(env.MY_SECRETS, true) && !config.audit?.redis) throw new Error('MY_SECRETS needs AUDIT_LOG=true with AUDIT_LOG_REDIS=true (the overview reads the audit stream)');
+  if (auth) auth.mySecrets = Boolean(auth.mySecrets && config.audit?.redis);
   if (auth) auth.admin.auditView = Boolean(auth.admin.auditView && auth.admin.ui && config.audit && (config.audit.file || config.audit.redis) && (auth.admin.users.length || auth.admin.groups.length));
   if (!config.api) {
     config.apiDocs = false;

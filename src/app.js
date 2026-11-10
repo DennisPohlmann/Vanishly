@@ -284,6 +284,8 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   const api = express.Router();
   // A switched-off endpoint (ENABLE_*): 404, but told apart from a wrong path.
   const disabled = () => new ApiError(404, 'endpoint_disabled', 'This endpoint is disabled on this server');
+  // MY_SECRETS: "My secrets" (page, menu entry, API) only with sign-in and the audit stream in Redis.
+  const mySecretsOn = Boolean(auth?.c.mySecrets && audit?.c.redis);
   // The endpoints switched on (ENABLE_*, sign-in features): the /api index
   // and the served OpenAPI document both list exactly these.
   const f = config.features;
@@ -298,6 +300,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     [f.receipts && f.receiptApi, 'GET', '/v1/receipts/{id}'],
     [f.receipts && f.burn && f.receiptApi, 'POST', '/v1/receipts/{id}/burn'],
     [Boolean(auth) && f.meApi, 'GET', '/v1/me'],
+    [mySecretsOn, 'GET', '/v1/me/secrets'],
     [Boolean(auth?.c.groups.any || auth?.c.groups.list.length), 'GET', '/v1/groups'],
     [Boolean(auth?.c.userGroup), 'GET', '/v1/people'],
     [Boolean(tokens), 'GET', '/v1/tokens'],
@@ -1250,12 +1253,34 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   });
 
   // The secrets as the audit log in Redis knows them: metadata only.
+  /** The status filter of the secrets overviews. @param {import('express').Request} req */
+  const secretStatus = (req) => {
+    const status = typeof req.query.status === 'string' ? req.query.status : '';
+    if (status && !/^(open|partly_opened|opened|expired|burned)$/.test(status)) throw new ApiError(400, 'invalid_status', 'status: open, partly_opened, opened, expired or burned');
+    return status;
+  };
+
+  // MY_SECRETS: the signed-in user's secrets as the audit log knows them: made
+  // by them, or for them or one of their groups (metadata only, like /v1/admin/secrets).
+  api.get('/v1/me/secrets', limit('read'), async (req, res) => {
+    if (!mySecretsOn || !audit || !auth) throw disabled();
+    const u = sessionUser(res);
+    const f = auditFilter(req);
+    const me = u.user.toLowerCase();
+    /** @param {any} s */
+    const match = (s) =>
+      String(s.creator.user || '').toLowerCase() === me ||
+      // The log keeps recipients in plain text (listed groups by their name): they match the user's hashes as an address or a group.
+      Auth.allowed(u, s.recipients.flatMap((/** @type {string} */ r) => [auth.hash('u', r), auth.hash('g', auth.c.groups.list.find((g) => g.name === r)?.id || r)]));
+    const list = await audit.secrets({ status: secretStatus(req), from: f.from, to: f.to, limit: f.limit, match });
+    res.json({ count: list.length, secrets: list });
+  });
+
   api.get('/v1/admin/secrets', limit('read'), async (req, res) => {
     if (!audit?.c.redis) throw disabled();
     await adminActor(req, res);
     const f = auditFilter(req);
-    const status = typeof req.query.status === 'string' ? req.query.status : '';
-    if (status && !/^(open|partly_opened|opened|expired|burned)$/.test(status)) throw new ApiError(400, 'invalid_status', 'status: open, partly_opened, opened, expired or burned');
+    const status = secretStatus(req);
     await ev(req, res, 'admin.secrets_viewed', { details: { filter: { creator: f.actor, recipient: f.recipient, status } } }, true);
     const list = await audit.secrets({ creator: f.actor || (typeof req.query.creator === 'string' ? sanitizeText(req.query.creator, 200) : ''), recipient: f.recipient, status, from: f.from, to: f.to, limit: f.limit });
     res.json({ count: list.length, secrets: list });
@@ -1558,6 +1583,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       (shown && shown !== name ? `<span class="nav-user-mail">${escapeHtml(shown).replace(/@/g, '<wbr>@').replace(/([.-])/g, '$1<wbr>')}</span>` : '') +
       `</span><span class="nav-caret" aria-hidden="true"></span></summary>` +
       `<div class="nav-menu-panel">` +
+      (mySecretsOn ? `<a class="nav-menu-item" href="/secrets">${escapeHtml(t['nav.mySecrets'])}</a>` : '') +
       // API_TOKENS: the user's own tokens; admins: the audit log and all tokens.
       (tokens?.mayCreate(u) ? `<a class="nav-menu-item" href="/settings/tokens">${escapeHtml(t['nav.tokens'])}</a>` : '') +
       (auth.c.admin.ui && auth.isAdmin(u) ? `<a class="nav-menu-item" href="/admin">${escapeHtml(t['nav.admin'])}</a>` : '') +
@@ -1896,6 +1922,14 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         origin: config.baseUrl || `${req.protocol}://${req.get('host')}`,
       }),
     );
+  });
+
+  // MY_SECRETS: the user's own secrets and those for their groups ("My secrets" in the user menu).
+  app.get('/secrets', (req, res, next) => {
+    if (!mySecretsOn) return next();
+    const t = theme.strings[lang(res)];
+    if (!userOf(res)) return void res.type('html').send(page('login', req, res, { page: 'login', title: t['mine.title'], heading: t['mine.title'], text: t['mine.loginText'], returnTo: '/secrets' }));
+    res.type('html').send(page('mysecrets', req, res, { page: 'mysecrets', title: t['mine.title'] }));
   });
 
   // Admins: the audit log (filter, export, chain check) and all API tokens.

@@ -315,7 +315,7 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible, .mode-toggle:focu
 .no-new-link .site-nav > a[href="/"] { display: none !important; }
 
 /* API tokens and the audit log: wider pages with tables */
-body[data-page="tokens"] .site-main, body[data-page="admin"] .site-main { max-width: 72rem; }
+body[data-page="tokens"] .site-main, body[data-page="admin"] .site-main, body[data-page="mysecrets"] .site-main { max-width: 72rem; }
 .card-wide h2 { margin-top: 0; }
 .table-wrap { overflow-x: auto; margin: 0 0 1rem; border: 1px solid var(--border); border-radius: calc(var(--radius) / 1.5); }
 table.data { width: 100%; border-collapse: collapse; font-size: .9rem; }

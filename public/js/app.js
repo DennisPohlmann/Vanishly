@@ -928,7 +928,7 @@ function initAdmin() {
   // One tab at a time (the links reload the page with ?tab=).
   const tab = card.dataset.tab;
   if (tab) $(`tab-${tab}`).hidden = false;
-  if (tab === 'secrets') return initSecrets();
+  if (tab === 'secrets') return initSecrets('/api/v1/admin/secrets');
   if (tab === 'services') return initServices();
   if (tab === 'policies') return initPolicies();
   if (tab === 'audit') {
@@ -1009,10 +1009,16 @@ function initAdmin() {
   }
 }
 
-/** Admins: the secrets as the audit log knows them (metadata only). */
-function initSecrets() {
+/**
+ * The secrets as the audit log knows them (metadata only): all of them for
+ * admins, the user's own and those for their groups on "My secrets".
+ * @param {string} url
+ */
+function initSecrets(url) {
   const form = $('secrets-filter');
-  const canBurn = $('admin-card').dataset.burn === '1';
+  // The burn column only on /admin ("My secrets" has none).
+  const admin = $('admin-card');
+  const canBurn = admin?.dataset.burn === '1';
   /** @param {any} s */
   const who = (s) => (s.creator.token ? `${s.creator.user} (${s.creator.token})` : person(s.creator.name, s.creator.user) || t(`secrets.anonymous`));
   const load = async () => {
@@ -1021,7 +1027,7 @@ function initSecrets() {
       const v = /** @type {HTMLInputElement} */ (el).value.trim();
       if (v) p.set(el.name, el.type === 'datetime-local' ? new Date(v).toISOString() : v);
     }
-    const { status, data } = await api(`/api/v1/admin/secrets?${p}`);
+    const { status, data } = await api(`${url}?${p}`);
     if (status !== 200) return showError($('secrets-error'), data.message || errorText(status));
     showError($('secrets-error'), '');
     $('secrets-count').textContent = data.count ? t('secrets.count', { n: data.count }) : t('admin.none');
@@ -1054,7 +1060,7 @@ function initSecrets() {
           });
           act.append(btn);
         }
-        tr.append(cell(fmt(s.created)), cell(`${who(s)}${created ? ` · ${created}` : ''}`), cell(s.recipients.join(', ') || t('secrets.anyone')), cell(s.comment), cell(s.expires ? fmt(s.expires) : ''), st, cell(opened || (s.denied ? t('secrets.denied', { n: s.denied }) : '')), cell(s.ref.slice(0, 10), 'mono'), act);
+        tr.append(cell(fmt(s.created)), cell(`${who(s)}${created ? ` · ${created}` : ''}`), cell(s.recipients.join(', ') || t('secrets.anyone')), cell(s.comment), cell(s.expires ? fmt(s.expires) : ''), st, cell(opened || (s.denied ? t('secrets.denied', { n: s.denied }) : '')), cell(s.ref.slice(0, 10), 'mono'), ...(admin ? [act] : []));
         return tr;
       }),
     );
@@ -1358,3 +1364,4 @@ else if (page === 'secret') initSecret();
 else if (page === 'receipt') initReceipt();
 else if (page === 'tokens') initTokens();
 else if (page === 'admin') initAdmin();
+else if (page === 'mysecrets') initSecrets('/api/v1/me/secrets');

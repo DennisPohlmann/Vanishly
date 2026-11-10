@@ -366,7 +366,8 @@ export function normalize(r) {
  * keys): one entry per secret ref with creator, recipients, comment,
  * expiry, the openings (who, when, how) and the state, newest first.
  * @param {Iterable<any>} events normalized events, oldest first
- * @param {{ creator?: string, recipient?: string, status?: string, from?: number, to?: number, limit?: number }} [f]
+ * @param {{ creator?: string, recipient?: string, status?: string, from?: number, to?: number, limit?: number, match?: (s: any) => boolean }} [f]
+ *   match: keeps only these secrets (MY_SECRETS: the user's own), before the limit
  */
 export function secretsOverview(events, f = {}, now = Date.now()) {
   /** @type {Map<string, any>} */
@@ -411,6 +412,7 @@ export function secretsOverview(events, f = {}, now = Date.now()) {
     if (f.status && s.status !== f.status) continue;
     if (f.creator && !`${t(s.creator.user)} ${t(s.creator.name)} ${t(s.creator.token)}`.includes(t(f.creator))) continue;
     if (f.recipient && !s.recipients.some((/** @type {string} */ r) => t(r).includes(t(f.recipient)))) continue;
+    if (f.match && !f.match(s)) continue;
     out.push(s);
   }
   out.reverse();

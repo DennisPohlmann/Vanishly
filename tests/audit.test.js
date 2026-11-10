@@ -718,6 +718,39 @@ test('admin interface: tabs, Redis warnings, secrets overview from the audit str
   assert.equal((await off.call('/api/v1/admin/status', { cookie: c3 })).data.error, 'endpoint_disabled');
 });
 
+test('MY_SECRETS: "My secrets" lists the own secrets and those for the user or their groups; off without the audit stream or by setting', opts, async () => {
+  const a = await startApp({ RECIPIENT_GROUPS: `IT Admins=${IT}` });
+  const alice = await a.login(ALICE);
+  const bob = await a.login(BOB);
+  const carol = await a.login({ oid: '00000000-0000-0000-0000-00000000000c', tid: TENANT, name: 'Carol', preferred_username: 'carol@example.com', groups: [IT] });
+  const dave = await a.login({ oid: '00000000-0000-0000-0000-00000000000d', tid: TENANT, name: 'Dave', preferred_username: 'dave@example.com' });
+  await a.call('/api/v1/share', { cookie: alice, body: { secret: PLAIN, ttl: 600, recipients: ['bob@example.com'], comment: 'for bob' } });
+  await a.call('/api/v1/share', { cookie: alice, body: { secret: PLAIN, ttl: 600, recipientGroups: [IT], comment: 'for it' } });
+  await a.call('/api/v1/share', { cookie: bob, body: { secret: PLAIN, ttl: 600, comment: 'by bob' } });
+  /** @param {string} c */
+  const mine = async (c) => (await a.call('/api/v1/me/secrets', { cookie: c })).data.secrets.map((/** @type {any} */ x) => x.comment).sort();
+  assert.deepEqual(await mine(alice), ['for bob', 'for it']);
+  assert.deepEqual(await mine(bob), ['by bob', 'for bob']);
+  assert.deepEqual(await mine(carol), ['for it'], 'through the group');
+  assert.deepEqual(await mine(dave), []);
+  assert.equal((await a.call('/api/v1/me/secrets?status=opened', { cookie: alice })).data.count, 0);
+  assert.equal((await a.call('/api/v1/me/secrets?status=nope', { cookie: alice })).data.error, 'invalid_status');
+  assert.equal((await a.call('/api/v1/me/secrets')).status, 401);
+  // The menu entry and the page, only for signed-in users.
+  const page = await (await fetch(`${a.base}/secrets`, { headers: { Cookie: bob } })).text();
+  assert.match(page, /href="\/secrets">My secrets</);
+  assert.match(page, /data-page="mysecrets"/);
+  assert.doesNotMatch(await (await fetch(`${a.base}/`)).text(), /href="\/secrets"/);
+  // MY_SECRETS=false, or no audit stream in Redis: no entry, page 404, API endpoint_disabled.
+  for (const env of [{ MY_SECRETS: 'false' }, { AUDIT_LOG_REDIS: 'false' }]) {
+    const b = await startApp(env);
+    const c = await b.login(ALICE);
+    assert.doesNotMatch(await (await fetch(`${b.base}/`, { headers: { Cookie: c } })).text(), /href="\/secrets"/);
+    assert.equal((await fetch(`${b.base}/secrets`, { headers: { Cookie: c } })).status, 404);
+    assert.equal((await b.call('/api/v1/me/secrets', { cookie: c })).data.error, 'endpoint_disabled');
+  }
+});
+
 test('technical users: create, tokens act as the technical user, disable/delete revoke, rotate with grace', opts, async () => {
   const a = await adminApp();
   const alice = await a.login(ALICE);
