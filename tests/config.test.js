@@ -378,3 +378,24 @@ test('the local Compose example starts once the first admin is in', () => {
   assert.equal(c.auth?.provider, 'local');
   assert.equal(c.auth?.local?.adminUser, 'admin@example.com');
 });
+
+test('contradictory combinations stop the start, naming both settings', () => {
+  const kc = { ...envFile('docker-compose/keycloak/.env.example'), AUDIT_LOG: 'true', AUDIT_LOG_REDIS: 'true', ADMIN_USERS: 'admin@example.com' };
+  /** @type {[Record<string, string>, RegExp][]} */
+  const bad = [
+    [{ API_TOKENS: 'true', API_TOKEN_REQUIRED: 'true', AUTH_API_AUDIENCE: 'api://vanishly' }, /AUTH_API_AUDIENCE does not work with API_TOKEN_REQUIRED=true/],
+    [{ ADMIN_BURN: 'true', ENABLE_BURN: 'false' }, /ADMIN_BURN=true needs ENABLE_BURN=true/],
+    [{ ADMIN_BURN: 'true', ENABLE_RECEIPTS: 'false' }, /ADMIN_BURN=true needs ENABLE_BURN=true/],
+    [{ ADMIN_BURN: 'true', ADMIN_UI: 'false' }, /ADMIN_BURN=true needs ADMIN_UI=true/],
+    [{ ADMIN_BURN: 'true', ADMIN_USERS: '' }, /ADMIN_BURN=true needs admins/],
+    [{ ADMIN_BURN: 'true', AUDIT_LOG_REDIS: 'false', AUDIT_LOG_STDOUT: 'true' }, /ADMIN_BURN=true needs AUDIT_LOG=true with AUDIT_LOG_REDIS=true/],
+    [{ RECEIPT_SHOW_VIEWER: 'true', ENABLE_RECEIPTS: 'false' }, /RECEIPT_SHOW_VIEWER=true needs ENABLE_RECEIPTS=true/],
+  ];
+  for (const [env, re] of bad) assert.throws(() => loadConfig({ ...kc, ...env }), re, JSON.stringify(env));
+  // Each alone, or with its prerequisites, is fine; ADMIN_BURN left empty still switches itself off quietly.
+  assert.equal(loadConfig({ ...kc, ADMIN_BURN: 'true' }).auth?.admin.burn, true);
+  assert.equal(loadConfig({ ...kc, ENABLE_BURN: 'false' }).auth?.admin.burn, false);
+  assert.equal(loadConfig({ ...kc, ADMIN_BURN: 'false', ENABLE_BURN: 'false' }).auth?.admin.burn, false);
+  assert.equal(loadConfig({ ...kc, API_TOKENS: 'true', API_TOKEN_REQUIRED: 'true' }).auth?.tokens?.required, true);
+  assert.equal(loadConfig({ ...kc, AUTH_API_AUDIENCE: 'api://vanishly' }).auth?.apiAudience, 'api://vanishly');
+});

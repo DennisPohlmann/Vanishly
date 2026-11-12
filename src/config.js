@@ -1061,7 +1061,17 @@ export function loadConfig(env = process.env) {
   if (auth && config.audit && env.AUDIT_ADMIN_VIEW && flag(env.AUDIT_ADMIN_VIEW, true) && !config.audit.file && !config.audit.redis) {
     throw new Error('AUDIT_ADMIN_VIEW needs AUDIT_LOG_FILE or AUDIT_LOG_REDIS=true (stdout cannot be read back)');
   }
+  // An explicit "true" whose prerequisites are missing would do nothing: stop instead.
+  const asked = (/** @type {string} */ name) => Boolean(env[name]) && flag(env[name], false);
+  if (auth && asked('ADMIN_BURN')) {
+    if (!config.features.burn) throw new Error('ADMIN_BURN=true needs ENABLE_BURN=true (and ENABLE_RECEIPTS=true)');
+    if (!auth.admin.ui) throw new Error('ADMIN_BURN=true needs ADMIN_UI=true');
+    if (!auth.admin.any) throw new Error('ADMIN_BURN=true needs admins (ADMIN_USERS or ADMIN_GROUPS)');
+    if (!config.audit?.redis) throw new Error('ADMIN_BURN=true needs AUDIT_LOG=true with AUDIT_LOG_REDIS=true (admins find the secrets in the audit stream)');
+  }
   if (auth && !config.features.burn) auth.admin.burn = false;
+  if (auth?.showViewer && !config.features.receipts) throw new Error('RECEIPT_SHOW_VIEWER=true needs ENABLE_RECEIPTS=true (it is shown on the status page)');
+  if (auth?.tokens?.required && auth.apiAudience) throw new Error('AUTH_API_AUDIENCE does not work with API_TOKEN_REQUIRED=true (the API then takes only Vanishly API tokens); set one of them');
   if (auth && env.MY_SECRETS && flag(env.MY_SECRETS, true) && !config.audit?.redis) throw new Error('MY_SECRETS needs AUDIT_LOG=true with AUDIT_LOG_REDIS=true (the overview reads the audit stream)');
   if (auth) auth.mySecrets = Boolean(auth.mySecrets && config.audit?.redis);
   if (auth) auth.admin.auditView = Boolean(auth.admin.auditView && auth.admin.ui && config.audit && (config.audit.file || config.audit.redis) && auth.admin.any);
