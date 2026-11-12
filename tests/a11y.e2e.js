@@ -297,3 +297,106 @@ test('WCAG 2.2 AA and flow: sign-in and recipients', async () => {
   for (const p of problems) console.log(`a11y: ${p}`);
   assert.equal(problems.length, 0, `${problems.length} accessibility problems, see the a11y: lines`);
 });
+
+// Local accounts (AUTH_PROVIDER=local): the sign-in form with an error, the
+// key kept across the sign-in, "Change password" and the admin's Users tab.
+test('WCAG 2.2 AA and flow: local accounts', async () => {
+  /** @type {any} */ let handler = null;
+  const { createServer } = await import('node:http');
+  const srv = createServer((req, res) => handler(req, res));
+  await new Promise((r) => srv.listen(0, '127.0.0.1', () => r(undefined)));
+  const base = `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`;
+  const config = loadConfig({
+    REDIS_URL: redisUrl,
+    REDIS_PREFIX: `a11ylocal${process.pid}:`,
+    RATE_LIMIT_CREATE: '1000',
+    RATE_LIMIT_READ: '1000',
+    ACCESS_LOG: 'false',
+    BASE_URL: base,
+    AUTH_PROVIDER: 'local',
+    AUTH_SECRET: 'x'.repeat(40),
+    LOCAL_ADMIN_USERNAME: 'admin@example.com',
+    LOCAL_ADMIN_PASSWORD: 'change-me-admin-password',
+    LOCAL_LOGIN_ATTEMPTS: '100',
+    RECIPIENT_GROUPS: 'Finance=finance',
+  });
+  const store = await Store.connect(redisUrl, config);
+  const app = createApp({ config, store, theme: loadTheme(config, 'test'), version: 'test' });
+  await app.locals.users.bootstrap();
+  await app.locals.users.create({ user: 'bob@example.com', name: 'Bob Example', password: 'bobs-password-123', groups: ['finance'] });
+  handler = app;
+  /** @type {string[]} */
+  const problems = [];
+  /** @param {import('playwright').Page} page @param {string} user @param {string} pw */
+  const signIn = async (page, user, pw) => {
+    await page.fill('#login-user', user);
+    await page.fill('#login-password', pw);
+    await page.click('#login-card button[type="submit"]');
+  };
+  try {
+    for (const mode of ['light', 'dark']) {
+      for (const [device, viewport] of /** @type {const} */ ([['desktop', { width: 1280, height: 900 }], ['phone', { width: 320, height: 640 }]])) {
+        const ctx = await browser.newContext({ viewport, colorScheme: /** @type {any} */ (mode), bypassCSP: true });
+        await ctx.addInitScript((m) => localStorage.setItem('vanishly-mode', m), mode);
+        const page = await ctx.newPage();
+        const at = (/** @type {string} */ s) => `local/${mode}/${device}/${s}`;
+        await page.goto(`${base}/`);
+        await page.click('#login-card [data-login]');
+        await page.waitForSelector('#login-user');
+        problems.push(...(await scan(page, at('local-login'))));
+        await signIn(page, 'admin@example.com', 'wrong-password-1');
+        await page.waitForSelector('.notice-error');
+        problems.push(...(await scan(page, at('local-login-failed'))));
+        await signIn(page, 'admin@example.com', 'change-me-admin-password');
+        await page.waitForSelector('#create-form');
+        await page.fill('#secret', 'for finance');
+        await page.fill('#passphrase', '');
+        await page.click('#create-submit');
+        await page.waitForFunction(() => !document.getElementById('created-card')?.hidden);
+        await page.goto(`${base}/admin?tab=users`);
+        await page.waitForSelector('#users-rows tr');
+        problems.push(...(await scan(page, at('admin-users'))));
+        await page.goto(`${base}/settings/password`);
+        problems.push(...(await scan(page, at('password'))));
+        await page.fill('#pw-current', 'nope');
+        await page.fill('#pw-new', 'change-me-admin-password');
+        await page.fill('#pw-repeat', 'change-me-admin-password');
+        await page.click('#password-card button[type="submit"]');
+        await page.waitForSelector('.notice-error');
+        problems.push(...(await scan(page, at('password-failed'))));
+        await ctx.close();
+      }
+    }
+    // The key survives the sign-in round trip like with a provider.
+    const ctx = await browser.newContext({ bypassCSP: true });
+    const page = await ctx.newPage();
+    await page.goto(`${base}/auth/login`);
+    await signIn(page, 'admin@example.com', 'change-me-admin-password');
+    await page.waitForSelector('#create-form');
+    await page.fill('#secret', 'only for finance');
+    await page.fill('#group-search', 'Fin');
+    await page.waitForSelector('#group-results li');
+    await page.click('#group-results li');
+    await page.click('#create-submit');
+    await page.waitForFunction(() => !document.getElementById('created-card')?.hidden);
+    const link = await page.inputValue('#share-link');
+    await page.click('.nav-menu summary');
+    await page.click('.nav-logout button');
+    await page.waitForURL(`${base}/`);
+    await page.goto(link);
+    await page.waitForSelector('#locked-login:not([hidden])');
+    await page.click('#locked-login');
+    await page.waitForSelector('#login-user');
+    await signIn(page, 'bob@example.com', 'bobs-password-123');
+    await page.waitForURL(/#[A-Za-z0-9_-]{43}$/);
+    await page.click('#reveal-submit');
+    await page.waitForFunction(() => !document.getElementById('revealed')?.hidden);
+    assert.equal(await page.inputValue('#revealed-secret'), 'only for finance');
+    await ctx.close();
+  } finally {
+    srv.close();
+    await store.close();
+  }
+  for (const p of problems) console.log(`a11y: ${p}`);
+  assert.equal(problems.length, 0, `${problems.length} accessibility problems, see the a11y: lines`);
+});

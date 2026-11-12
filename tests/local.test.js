@@ -178,6 +178,65 @@ test('lockout: LOCAL_LOGIN_ATTEMPTS per account, also for the right password; cl
   assert.equal((await login('ghost@example.com', 'bad-password-1')).status, 429);
 });
 
+test('admin API: users, last admin, self, disabled and new passwords end sessions, tokens revoked', opts, async () => {
+  const { call, login, users } = await startApp({ API_TOKENS: 'true' });
+  const admin = (await login(ADMIN, PW)).cookie;
+  const list = await call('/api/v1/admin/users', { cookie: admin });
+  assert.equal(list.status, 200);
+  assert.deepEqual(list.data.users.map((/** @type {any} */ u) => [u.user, u.role]), [[ADMIN, 'admin']]);
+  assert.ok(!JSON.stringify(list.data).includes('scrypt'), 'no hashes in the API');
+  // Create: checked fields.
+  assert.equal((await call('/api/v1/admin/users', { cookie: admin, body: { user: 'carol', password: 'carols-password-1' } })).data.error, 'invalid_user');
+  assert.equal((await call('/api/v1/admin/users', { cookie: admin, body: { user: 'carol@example.com', password: 'short' } })).data.error, 'invalid_password');
+  assert.equal((await call('/api/v1/admin/users', { cookie: admin, body: { user: 'carol@example.com', password: 'carols-password-1', role: 'root' } })).data.error, 'invalid_role');
+  assert.equal((await call('/api/v1/admin/users', { cookie: admin, body: { user: 'carol@example.com', password: 'carols-password-1', groups: ['a,b'] } })).data.error, 'invalid_groups');
+  const made = await call('/api/v1/admin/users', { cookie: admin, body: { user: 'Carol@Example.com', name: 'Carol <b>', password: 'carols-password-1', groups: ['finance'] } });
+  assert.equal(made.status, 201);
+  assert.equal(made.data.user.user, 'carol@example.com');
+  assert.equal((await call('/api/v1/admin/users', { cookie: admin, body: { user: 'carol@example.com', password: 'carols-password-1' } })).status, 409);
+  // A user is no admin.
+  const carol = (await login('carol@example.com', 'carols-password-1')).cookie;
+  assert.equal((await call('/api/v1/admin/users', { cookie: carol })).status, 403);
+  assert.equal((await call('/admin', { cookie: carol })).status, 403);
+  assert.match(String((await call('/admin?tab=users', { cookie: admin })).data), /id="tab-users"/);
+  // Nobody deletes, disables or demotes themselves; the last admin stays.
+  assert.equal((await call(`/api/v1/admin/users/${ADMIN}/delete`, { cookie: admin, body: {} })).data.error, 'self');
+  assert.equal((await call(`/api/v1/admin/users/${ADMIN}`, { cookie: admin, body: { role: 'user' } })).data.error, 'self');
+  assert.equal((await call(`/api/v1/admin/users/${ADMIN}`, { cookie: admin, body: { disabled: true } })).data.error, 'self');
+  assert.equal(/** @type {any} */ (await users.update(ADMIN, { role: 'user' })).error, 'last_admin');
+  assert.equal(/** @type {any} */ (await users.remove(ADMIN)).error, 'last_admin');
+  // Role counts from the next request on: Carol becomes admin.
+  assert.equal((await call('/api/v1/admin/users/carol@example.com', { cookie: admin, body: { role: 'admin' } })).status, 200);
+  assert.equal((await call('/api/v1/admin/users', { cookie: carol })).status, 200);
+  // Carol's token; disabling her ends her session and revokes it.
+  const tok = await call('/api/v1/tokens', { cookie: carol, body: { name: 'ci', scopes: ['create'], expires: '30d' } });
+  assert.equal(tok.status, 201);
+  const off = await call('/api/v1/admin/users/carol@example.com', { cookie: admin, body: { disabled: true } });
+  assert.equal(off.status, 200);
+  assert.equal(off.data.revoked.length, 1);
+  assert.equal((await call('/api/v1/me', { cookie: carol })).data.signedIn, false);
+  assert.equal((await login('carol@example.com', 'carols-password-1')).status, 401, 'a disabled account cannot sign in');
+  assert.equal(/** @type {any} */ (await users.update(ADMIN, { role: 'user' })).error, 'last_admin', 'a disabled admin does not count');
+  // Enable and reset the password: old sessions end, the new password works.
+  await call('/api/v1/admin/users/carol@example.com', { cookie: admin, body: { disabled: false } });
+  const carol2 = (await login('carol@example.com', 'carols-password-1')).cookie;
+  assert.equal((await call('/api/v1/admin/users/carol@example.com/password', { cookie: admin, body: { password: 'x' } })).data.error, 'invalid_password');
+  assert.equal((await call('/api/v1/admin/users/carol@example.com/password', { cookie: admin, body: { password: 'carols-new-password' } })).status, 200);
+  assert.equal((await call('/api/v1/me', { cookie: carol2 })).data.signedIn, false);
+  assert.equal((await login('carol@example.com', 'carols-new-password')).status, 303);
+  // Delete; unknown users are 404.
+  assert.equal((await call('/api/v1/admin/users/carol@example.com/delete', { cookie: admin, body: {} })).status, 200);
+  assert.equal((await call('/api/v1/admin/users/carol@example.com/delete', { cookie: admin, body: {} })).status, 404);
+  assert.equal((await call('/api/v1/admin/users/..%2F..%2Fx/delete', { cookie: admin, body: {} })).status, 404);
+  // All of it is in the audit log, without passwords.
+  const audit = await call('/api/v1/admin/audit?type=admin.', { cookie: admin });
+  const types = audit.data.events.map((/** @type {any} */ e) => e.type);
+  for (const t of ['admin.user_created', 'admin.user_changed', 'admin.user_disabled', 'admin.user_enabled', 'admin.user_password_reset', 'admin.user_deleted']) assert.ok(types.includes(t), t);
+  const all = JSON.stringify((await call('/api/v1/admin/audit', { cookie: admin })).data);
+  for (const pw of [PW, 'carols-password-1', 'carols-new-password']) assert.ok(!all.includes(pw), 'no password in the log');
+  assert.match(all, /"auth.failed"/);
+});
+
 test('own password: current one needed, other sessions end, this one goes on; groups open secrets', opts, async () => {
   const { form, login, call, users } = await startApp({ RECIPIENT_GROUPS: 'Finance=finance' });
   await users.create({ user: 'dave@example.com', password: 'daves-password-123', groups: ['finance'] });

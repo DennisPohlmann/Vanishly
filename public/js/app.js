@@ -930,6 +930,7 @@ function initAdmin() {
   if (tab) $(`tab-${tab}`).hidden = false;
   if (tab === 'secrets') return initSecrets('/api/v1/admin/secrets');
   if (tab === 'services') return initServices();
+  if (tab === 'users') return initUsers();
   if (tab === 'policies') return initPolicies();
   if (tab === 'audit') {
     $('audit-verify').hidden = card.dataset.verify !== '1';
@@ -1247,6 +1248,128 @@ function initServices() {
     }
   });
   void card;
+  load();
+}
+
+/** Admins: the local accounts (AUTH_PROVIDER=local). */
+function initUsers() {
+  const err = $('users-error');
+  const ok = $('users-ok');
+  /** @type {string} */ let editing = '';
+  /** @param {string} text */
+  const done = (text) => {
+    showError(err, '');
+    ok.hidden = !text;
+    ok.textContent = text;
+  };
+  /** @param {string} url @param {any} body */
+  const post = async (url, body) => {
+    const r = await api(url, body);
+    if (r.status >= 300) {
+      ok.hidden = true;
+      showError(err, r.data.message || errorText(r.status));
+    }
+    return r;
+  };
+  /** @param {string} user */
+  const path = (user) => `/api/v1/admin/users/${encodeURIComponent(user)}`;
+  const resetForm = () => {
+    editing = '';
+    $('users-form').reset();
+    $('users-user').disabled = false;
+    $('users-form-title').textContent = t('users.new');
+    $('users-password-label').textContent = t('users.password');
+    $('users-cancel').hidden = true;
+  };
+  /** @param {any} u */
+  const edit = (u) => {
+    editing = u.user;
+    $('users-user').value = u.user;
+    $('users-user').disabled = true;
+    $('users-name').value = u.name;
+    $('users-role').value = u.role;
+    $('users-groups').value = u.groups.join(', ');
+    $('users-password').value = '';
+    $('users-enabled').checked = !u.disabled;
+    $('users-form-title').textContent = t('users.edit', { name: u.user });
+    $('users-password-label').textContent = t('users.passwordEdit');
+    $('users-cancel').hidden = false;
+    $('users-name').focus();
+  };
+  const load = async () => {
+    const { status, data } = await api('/api/v1/admin/users');
+    if (status !== 200) return showError(err, errorText(status));
+    $('users-rows').replaceChildren(
+      ...data.users.map((/** @type {any} */ u) => {
+        const tr = document.createElement('tr');
+        const st = document.createElement('td');
+        const b = document.createElement('span');
+        b.className = `badge badge-${u.disabled ? 'burned' : 'new'}`;
+        b.textContent = t(u.disabled ? 'svc.off' : 'svc.on');
+        st.append(b);
+        const act = document.createElement('td');
+        /** @param {string} label @param {string} cls @param {() => void} fn */
+        const btn = (label, cls, fn) => {
+          const x = document.createElement('button');
+          x.type = 'button';
+          x.className = `btn btn-small ${cls}`;
+          x.textContent = label;
+          x.setAttribute('aria-label', `${label}: ${u.user}`);
+          x.addEventListener('click', fn);
+          act.append(x, ' ');
+        };
+        btn(t('policy.edit'), '', () => edit(u));
+        btn(t(u.disabled ? 'svc.enable' : 'svc.disable'), '', async () => {
+          if (!u.disabled && !confirm(t('users.disableConfirm', { name: u.user }))) return;
+          const r = await post(path(u.user), { disabled: !u.disabled });
+          if (r.status === 200) done(t(u.disabled ? 'users.enabledDone' : 'users.disabled', { name: u.user, n: r.data.revoked.length }));
+          await load();
+        });
+        btn(t('policy.delete'), 'btn-danger', async () => {
+          if (!confirm(t('users.deleteConfirm', { name: u.user }))) return;
+          const r = await post(`${path(u.user)}/delete`, {});
+          if (r.status === 200) done(t('users.deleted', { name: u.user, n: r.data.revoked.length }));
+          if (editing === u.user) resetForm();
+          await load();
+        });
+        tr.append(cell(u.user, 'mono'), cell(u.name), cell(t(`users.role.${u.role}`)), cell(u.groups.join(', ')), st, act);
+        return tr;
+      }),
+    );
+    labelCells($('users-rows'));
+    $('users-none').hidden = data.users.length > 0;
+  };
+  $('users-cancel').addEventListener('click', resetForm);
+  $('users-form').addEventListener('submit', async (/** @type {Event} */ e) => {
+    e.preventDefault();
+    const fields = {
+      name: $('users-name').value.trim(),
+      role: $('users-role').value,
+      groups: $('users-groups').value.split(',').map((/** @type {string} */ g) => g.trim()).filter(Boolean),
+      disabled: !$('users-enabled').checked,
+    };
+    const password = $('users-password').value;
+    $('users-save').disabled = true;
+    try {
+      if (!editing) {
+        const r = await post('/api/v1/admin/users', { user: $('users-user').value.trim(), password, ...fields });
+        if (r.status !== 201) return;
+        done(t('users.created', { name: r.data.user.user }));
+      } else {
+        const r = await post(path(editing), fields);
+        if (r.status !== 200) return;
+        if (password) {
+          const p = await post(`${path(editing)}/password`, { password });
+          if (p.status !== 200) return;
+        }
+        done(t(password ? 'users.passwordReset' : 'users.saved', { name: editing }));
+      }
+      resetForm();
+      await load();
+    } finally {
+      $('users-save').disabled = false;
+    }
+  });
   load();
 }
 

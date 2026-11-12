@@ -10,6 +10,7 @@ import { decryptSecret, encryptSecret, PBKDF2_ITERATIONS, unlockKey, verifierFor
 import { validId } from './store.js';
 import { limiter } from './ratelimit.js';
 import { Auth, RETURN } from './auth.js';
+import { Users } from './users.js';
 import { missingClasses } from '../public/js/rules.js';
 import { escapeHtml, ROOT } from './theme.js';
 
@@ -289,6 +290,8 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   const disabled = () => new ApiError(404, 'endpoint_disabled', 'This endpoint is disabled on this server');
   // MY_SECRETS: "My secrets" (page, menu entry, API) only with sign-in and the audit stream in Redis.
   const mySecretsOn = Boolean(auth?.c.mySecrets && audit?.c.redis);
+  // AUTH_PROVIDER=local: the "Users" tab and its admin API.
+  const usersOn = Boolean(users && auth?.c.admin.ui);
   // The endpoints switched on (ENABLE_*, sign-in features): the /api index
   // and the served OpenAPI document both list exactly these.
   const f = config.features;
@@ -316,6 +319,11 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     [Boolean(auth?.c.admin.ui && auth.c.admin.any), 'GET', '/v1/admin/status'],
     [Boolean(auth?.c.admin.ui && audit?.c.redis && auth.c.admin.any), 'GET', '/v1/admin/secrets'],
     [Boolean(auth?.c.admin.burn && audit?.c.redis), 'POST', '/v1/admin/secrets/{ref}/burn'],
+    [usersOn, 'GET', '/v1/admin/users'],
+    [usersOn, 'POST', '/v1/admin/users'],
+    [usersOn, 'POST', '/v1/admin/users/{user}'],
+    [usersOn, 'POST', '/v1/admin/users/{user}/password'],
+    [usersOn, 'POST', '/v1/admin/users/{user}/delete'],
     [Boolean(tokens?.c.services), 'GET', '/v1/admin/service-accounts'],
     [Boolean(tokens?.c.services), 'POST', '/v1/admin/service-accounts'],
     [Boolean(tokens?.c.services), 'POST', '/v1/admin/service-accounts/{name}'],
@@ -1305,6 +1313,89 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     res.json({ state: 'burned' });
   });
 
+  // ------------------------------------------------------------ local users
+  /** @param {import('express').Request} req */
+  const localUserOf = async (req) => {
+    const u = users ? await users.get(String(req.params.user)) : null;
+    if (!u) throw new ApiError(404, 'not_found', 'No such user');
+    return u;
+  };
+  /** An error of src/users.js as an API answer. @param {{ error: string, message: string }} r */
+  const usersError = (r) => new ApiError(r.error === 'not_found' ? 404 : r.error === 'exists' || r.error === 'last_admin' ? 409 : 400, r.error, r.message);
+  /**
+   * A disabled or deleted account's API tokens stop working.
+   * @param {import('express').Request} req @param {import('express').Response} res @param {string} owner @param {string} by @param {string} reason
+   */
+  const revokeTokensOf = async (req, res, owner, by, reason) => {
+    /** @type {import('./tokens.js').TokenRecord[]} */
+    const done = [];
+    for (const t of tokens ? await tokens.list(owner) : []) {
+      if (!Tokens.active(t)) continue;
+      await /** @type {Tokens} */ (tokens).revoke(t.id, '', by);
+      done.push(t);
+      await ev(req, res, 'admin.token_revoked', { reason, details: { token: tokenRef(t), owner: t.owner } });
+    }
+    return done;
+  };
+
+  api.get('/v1/admin/users', limit('read'), async (req, res) => {
+    if (!usersOn || !users) throw disabled();
+    await adminActor(req, res);
+    res.json({ minPasswordLength: users.c.minLength, users: (await users.list()).map(Users.view) });
+  });
+
+  api.post('/v1/admin/users', limit('create'), async (req, res) => {
+    if (!usersOn || !users) throw disabled();
+    await adminActor(req, res);
+    auditReady();
+    const r = await users.create(req.body || {});
+    if ('error' in r) throw usersError(r);
+    await ev(req, res, 'admin.user_created', { details: { user: r.user.user, new: Users.view(r.user) }, comment: commentOf(req, req.body) }, true);
+    res.status(201).json({ user: Users.view(r.user) });
+  });
+
+  api.post('/v1/admin/users/:user', limit('create'), async (req, res) => {
+    if (!usersOn || !users) throw disabled();
+    const admin = await adminActor(req, res);
+    auditReady();
+    const b = req.body || {};
+    const target = await localUserOf(req);
+    if (target.user === admin.user && (b.disabled === true || b.role === 'user')) throw new ApiError(409, 'self', 'You cannot disable or demote yourself');
+    const r = await users.update(target.user, b);
+    if ('error' in r) throw usersError(r);
+    const toggled = r.old.disabled !== r.new.disabled;
+    const type = toggled ? (r.new.disabled ? 'admin.user_disabled' : 'admin.user_enabled') : 'admin.user_changed';
+    await ev(req, res, type, { details: { user: r.new.user, old: Users.view(r.old), new: Users.view(r.new) }, comment: commentOf(req, req.body) }, true);
+    // Disabled: its tokens go; otherwise they act with the new groups.
+    const revoked = r.new.disabled && toggled ? await revokeTokensOf(req, res, r.new.user, admin.user, 'user_disabled') : [];
+    if (!r.new.disabled) await tokens?.refresh(users.identity(r.new)).catch(() => {});
+    res.json({ user: Users.view(r.new), revoked: revoked.map(tokenRef) });
+  });
+
+  api.post('/v1/admin/users/:user/password', limit('create'), async (req, res) => {
+    if (!usersOn || !users) throw disabled();
+    await adminActor(req, res);
+    auditReady();
+    const target = await localUserOf(req);
+    const r = await users.setPassword(target.user, req.body?.password);
+    if ('error' in r) throw usersError(r);
+    await ev(req, res, 'admin.user_password_reset', { details: { user: target.user }, comment: commentOf(req, req.body) }, true);
+    res.json({ user: Users.view(r.user) });
+  });
+
+  api.post('/v1/admin/users/:user/delete', limit('create'), async (req, res) => {
+    if (!usersOn || !users) throw disabled();
+    const admin = await adminActor(req, res);
+    auditReady();
+    const target = await localUserOf(req);
+    if (target.user === admin.user) throw new ApiError(409, 'self', 'You cannot delete yourself');
+    const r = await users.remove(target.user);
+    if ('error' in r) throw usersError(r);
+    const revoked = await revokeTokensOf(req, res, target.user, admin.user, 'user_deleted');
+    await ev(req, res, 'admin.user_deleted', { details: { user: target.user, old: Users.view(target), revoked: revoked.map(tokenRef) }, comment: commentOf(req, req.body) }, true);
+    res.json({ deleted: target.user, revoked: revoked.map(tokenRef) });
+  });
+
   // ------------------------------------------------------------ technical users
   /** @param {import('express').Request} req */
   const svcOf = async (req) => {
@@ -1558,7 +1649,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   /** @param {import('express').Response} res */
   const lang = (res) => /** @type {string} */ (res.locals.lang);
 
-  const COMMON = ['theme', 'created', 'error', 'reveal', 'receipt', 'gone', 'views', 'rule', 'home', 'a11y', 'auth', 'tokens', 'admin', 'policy', 'secrets', 'svc'];
+  const COMMON = ['theme', 'created', 'error', 'reveal', 'receipt', 'gone', 'views', 'rule', 'home', 'a11y', 'auth', 'tokens', 'admin', 'policy', 'secrets', 'svc', 'users'];
 
   /**
    * "Sign in" or the signed-in user with "Sign out" in the header.
@@ -2084,6 +2175,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     const st = await adminStatus();
     const tabs = /** @type {[string, boolean][]} */ ([
       ['audit', auth.c.admin.auditView],
+      ['users', usersOn],
       ['secrets', st.auditRedis],
       ['tokens', st.tokens],
       ['services', st.services],
@@ -2107,6 +2199,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         tokens: tokens ? '1' : '0',
         policies: tokens?.c.adminPolicy ? '1' : '0',
         burn: auth.c.admin.burn ? '1' : '0',
+        passwordHint: users ? theme.strings[lang(res)]['local.passwordHint'].replace('{n}', String(users.c.minLength)) : '',
       }),
     );
   });
