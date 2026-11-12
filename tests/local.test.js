@@ -205,6 +205,15 @@ test('admin API: users, last admin, self, disabled and new passwords end session
   assert.equal((await call(`/api/v1/admin/users/${ADMIN}`, { cookie: admin, body: { disabled: true } })).data.error, 'self');
   assert.equal(/** @type {any} */ (await users.update(ADMIN, { role: 'user' })).error, 'last_admin');
   assert.equal(/** @type {any} */ (await users.remove(ADMIN)).error, 'last_admin');
+  // Two admins demoting each other at the same moment: one of them stays admin.
+  await users.create({ user: 'erin@example.com', password: 'erins-password-123', role: 'admin' });
+  const both = await Promise.all([users.update(ADMIN, { role: 'user' }), users.update('erin@example.com', { disabled: true })]);
+  assert.deepEqual(both.map((r) => ('error' in r ? r.error : 'ok')).sort(), ['last_admin', 'ok']);
+  assert.equal((await users.list()).filter((u) => u.role === 'admin' && !u.disabled).length, 1);
+  // Back to one admin (the bootstrap one) for the rest of the test.
+  if ((await users.get(ADMIN))?.role !== 'admin') await users.update(ADMIN, { role: 'admin' });
+  await users.update('erin@example.com', { disabled: false });
+  assert.ok(!('error' in (await users.remove('erin@example.com'))));
   // Role counts from the next request on: Carol becomes admin.
   assert.equal((await call('/api/v1/admin/users/carol@example.com', { cookie: admin, body: { role: 'admin' } })).status, 200);
   assert.equal((await call('/api/v1/admin/users', { cookie: carol })).status, 200);

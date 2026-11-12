@@ -25,6 +25,37 @@ const P = 3;
 const KEYLEN = 32;
 const MAX_PASSWORD = 1024;
 
+// Changes or deletes an account in one step with the last-admin check, so two
+// admins demoting each other at once cannot leave no active admin.
+// KEYS: luser:<address>, luser:all. ARGV: the key prefix of accounts, the
+// address, "delete" or "update", the new role and off ("" = unchanged), then
+// field/value pairs to set.
+const CHANGE = `
+if redis.call('EXISTS', KEYS[1]) == 0 then return 'not_found' end
+local cur = redis.call('HMGET', KEYS[1], 'role', 'off')
+local role, off = cur[1], cur[2]
+if ARGV[4] ~= '' then role = ARGV[4] end
+if ARGV[5] ~= '' then off = ARGV[5] end
+local stays = ARGV[3] ~= 'delete' and role == 'admin' and off ~= '1'
+if cur[1] == 'admin' and cur[2] ~= '1' and not stays then
+  local other = false
+  for _, u in ipairs(redis.call('SMEMBERS', KEYS[2])) do
+    if u ~= ARGV[2] then
+      local o = redis.call('HMGET', ARGV[1] .. u, 'role', 'off')
+      if o[1] == 'admin' and o[2] ~= '1' then other = true break end
+    end
+  end
+  if not other then return 'last_admin' end
+end
+if ARGV[3] == 'delete' then
+  redis.call('DEL', KEYS[1])
+  redis.call('SREM', KEYS[2], ARGV[2])
+elseif #ARGV > 5 then
+  redis.call('HSET', KEYS[1], unpack(ARGV, 6))
+end
+return 'ok'
+`;
+
 /** @param {string} pw @param {Buffer} salt @param {number} n @param {number} r @param {number} p @returns {Promise<Buffer>} */
 function derive(pw, salt, n, r, p) {
   return new Promise((resolve, reject) =>
@@ -176,15 +207,21 @@ export class Users {
     return { user: Users.record(h) };
   }
 
-  /** Active admins other than this one. @param {string} except */
-  async otherAdmins(except) {
-    return (await this.list()).filter((u) => u.user !== except && u.role === 'admin' && !u.disabled).length;
+  /**
+   * Runs CHANGE for an account. @param {string} user @param {'update' | 'delete'} mode
+   * @param {{ role?: string, off?: string }} next @param {Record<string, string>} [h]
+   * @returns {Promise<'ok' | 'not_found' | 'last_admin'>}
+   */
+  async change(user, mode, next, h = {}) {
+    return this.redis.eval(CHANGE, {
+      keys: [this.key(user), `${this.p}luser:all`],
+      arguments: [`${this.p}luser:`, user, mode, next.role || '', next.off || '', ...Object.entries(h).flat()],
+    });
   }
 
   /**
-   * Changes name, role, groups or disabled. The last active admin stays an active admin.
-   * shortcut: the last-admin check and the write are not one transaction; two admins
-   * demoting each other in the same millisecond could both win. Use WATCH/MULTI if that matters.
+   * Changes name, role, groups or disabled. The last active admin stays an
+   * active admin (checked in the same Lua script that writes).
    * @param {string} user @param {any} b
    * @returns {Promise<{ error: string, message: string } | { old: LocalUser, new: LocalUser }>}
    */
@@ -193,10 +230,6 @@ export class Users {
     if (!old) return { error: 'not_found', message: 'No such user' };
     const f = Users.fields(b || {});
     if ('error' in f) return f;
-    const stillAdmin = (f.role ?? old.role) === 'admin' && !(f.disabled ?? old.disabled);
-    if (old.role === 'admin' && !old.disabled && !stillAdmin && !(await this.otherAdmins(old.user))) {
-      return { error: 'last_admin', message: 'The last active admin cannot be demoted or disabled' };
-    }
     /** @type {Record<string, string>} */
     const h = { updated: String(Date.now()) };
     if (f.name !== undefined) h.name = f.name || old.user;
@@ -205,7 +238,9 @@ export class Users {
     if (f.disabled !== undefined) h.off = f.disabled ? '1' : '0';
     // Disabled: its sessions end now.
     if (f.disabled && !old.disabled) h.sv = randomBytes(8).toString('base64url');
-    await this.redis.hSet(this.key(old.user), h);
+    const r = await this.change(old.user, 'update', { role: h.role, off: h.off }, h);
+    if (r === 'not_found') return { error: 'not_found', message: 'No such user' };
+    if (r === 'last_admin') return { error: 'last_admin', message: 'The last active admin cannot be demoted or disabled' };
     return { old, new: /** @type {LocalUser} */ (await this.get(old.user)) };
   }
 
@@ -230,8 +265,9 @@ export class Users {
   async remove(user) {
     const old = await this.get(user);
     if (!old) return { error: 'not_found', message: 'No such user' };
-    if (old.role === 'admin' && !old.disabled && !(await this.otherAdmins(old.user))) return { error: 'last_admin', message: 'The last active admin cannot be deleted' };
-    await this.redis.multi().del(this.key(old.user)).sRem(`${this.p}luser:all`, old.user).exec();
+    const r = await this.change(old.user, 'delete', {});
+    if (r === 'not_found') return { error: 'not_found', message: 'No such user' };
+    if (r === 'last_admin') return { error: 'last_admin', message: 'The last active admin cannot be deleted' };
     return { user: old };
   }
 
