@@ -23,7 +23,7 @@
     "redis": "^6.3.1"
   },
   "devDependencies": {
-    "@scalar/api-reference": "^1.77.0",
+    "@scalar/api-reference": "^1.78.0",
     "@types/express": "^5.0.3",
     "@types/node": "^26.6.6",
     "axe-core": "^4.14.0",
