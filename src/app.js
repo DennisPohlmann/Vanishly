@@ -1340,8 +1340,9 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   api.get('/v1/admin/users', limit('read'), async (req, res) => {
     if (!usersOn || !users) throw disabled();
-    await adminActor(req, res);
-    res.json({ minPasswordLength: users.c.minLength, users: (await users.list()).map(Users.view) });
+    const admin = await adminActor(req, res);
+    // me: the caller's own account, which they cannot disable, demote or delete.
+    res.json({ me: admin.user, minPasswordLength: users.c.minLength, users: (await users.list()).map(Users.view) });
   });
 
   api.post('/v1/admin/users', limit('create'), async (req, res) => {

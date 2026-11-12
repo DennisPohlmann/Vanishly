@@ -184,6 +184,7 @@ test('admin API: users, last admin, self, disabled and new passwords end session
   const list = await call('/api/v1/admin/users', { cookie: admin });
   assert.equal(list.status, 200);
   assert.deepEqual(list.data.users.map((/** @type {any} */ u) => [u.user, u.role]), [[ADMIN, 'admin']]);
+  assert.equal(list.data.me, ADMIN);
   assert.ok(!JSON.stringify(list.data).includes('scrypt'), 'no hashes in the API');
   // Create: checked fields.
   assert.equal((await call('/api/v1/admin/users', { cookie: admin, body: { user: 'carol', password: 'carols-password-1' } })).data.error, 'invalid_user');

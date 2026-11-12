@@ -1256,6 +1256,7 @@ function initUsers() {
   const err = $('users-error');
   const ok = $('users-ok');
   /** @type {string} */ let editing = '';
+  /** @type {string} */ let me = '';
   /** @param {string} text */
   const done = (text) => {
     showError(err, '');
@@ -1271,6 +1272,11 @@ function initUsers() {
     }
     return r;
   };
+  /** Your own role and state cannot change here. @param {boolean} own */
+  const lockOwn = (own) => {
+    $('users-role').disabled = own;
+    $('users-enabled').disabled = own;
+  };
   /** @param {string} user */
   const path = (user) => `/api/v1/admin/users/${encodeURIComponent(user)}`;
   const resetForm = () => {
@@ -1280,6 +1286,7 @@ function initUsers() {
     $('users-form-title').textContent = t('users.new');
     $('users-password-label').textContent = t('users.password');
     $('users-cancel').hidden = true;
+    lockOwn(false);
   };
   /** @param {any} u */
   const edit = (u) => {
@@ -1294,11 +1301,13 @@ function initUsers() {
     $('users-form-title').textContent = t('users.edit', { name: u.user });
     $('users-password-label').textContent = t('users.passwordEdit');
     $('users-cancel').hidden = false;
+    lockOwn(u.user === me);
     $('users-name').focus();
   };
   const load = async () => {
     const { status, data } = await api('/api/v1/admin/users');
     if (status !== 200) return showError(err, errorText(status));
+    me = data.me;
     $('users-rows').replaceChildren(
       ...data.users.map((/** @type {any} */ u) => {
         const tr = document.createElement('tr');
@@ -1319,13 +1328,14 @@ function initUsers() {
           act.append(x, ' ');
         };
         btn(t('policy.edit'), '', () => edit(u));
-        btn(t(u.disabled ? 'svc.enable' : 'svc.disable'), '', async () => {
+        // No "Disable" and "Remove" for yourself: the server refuses both.
+        if (u.user !== me) btn(t(u.disabled ? 'svc.enable' : 'svc.disable'), '', async () => {
           if (!u.disabled && !confirm(t('users.disableConfirm', { name: u.user }))) return;
           const r = await post(path(u.user), { disabled: !u.disabled });
           if (r.status === 200) done(t(u.disabled ? 'users.enabledDone' : 'users.disabled', { name: u.user, n: r.data.revoked.length }));
           await load();
         });
-        btn(t('policy.delete'), 'btn-danger', async () => {
+        if (u.user !== me) btn(t('policy.delete'), 'btn-danger', async () => {
           if (!confirm(t('users.deleteConfirm', { name: u.user }))) return;
           const r = await post(`${path(u.user)}/delete`, {});
           if (r.status === 200) done(t('users.deleted', { name: u.user, n: r.data.revoked.length }));
@@ -1344,9 +1354,8 @@ function initUsers() {
     e.preventDefault();
     const fields = {
       name: $('users-name').value.trim(),
-      role: $('users-role').value,
       groups: $('users-groups').value.split(',').map((/** @type {string} */ g) => g.trim()).filter(Boolean),
-      disabled: !$('users-enabled').checked,
+      ...(editing && editing === me ? {} : { role: $('users-role').value, disabled: !$('users-enabled').checked }),
     };
     const password = $('users-password').value;
     $('users-save').disabled = true;

@@ -3784,6 +3784,10 @@
                       "items": {
                         "$ref": "#/components/schemas/LocalUser"
                       }
+                    },
+                    "me": {
+                      "type": "string",
+                      "description": "the caller's own address (cannot be disabled, demoted or deleted by themselves)"
                     }
                   }
                 }
