@@ -72,7 +72,9 @@ services:
 
 An example with sign-in through Keycloak and demo users is in
 [docker-compose/keycloak](../docker-compose/keycloak/README.md), one with
-Microsoft Entra ID in [docker-compose/entra](../docker-compose/entra/README.md).
+Microsoft Entra ID in [docker-compose/entra](../docker-compose/entra/README.md),
+one with Vanishly's own user accounts (no identity provider, Redis with
+persistence) in [docker-compose/local](../docker-compose/local/README.md).
 
 The app listens on `127.0.0.1:3000`.
 

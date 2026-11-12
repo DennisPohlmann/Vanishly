@@ -47,13 +47,13 @@ test('the env files of the Compose examples: the defaults, and only settings of 
   assert.deepEqual(loadConfig(standalone), loadConfig({ REDIS_URL: 'redis://redis:6379', DEFAULT_LANG: 'en' }));
   // All settings in every .env.example (NAME= or #NAME=): a new, renamed or removed one fails here.
   // KEYCLOAK_PORT is no setting: only Compose reads it, for Keycloak's port.
-  for (const path of ['.env.example', 'docker-compose/standalone/.env.example', 'docker-compose/keycloak/.env.example', 'docker-compose/entra/.env.example']) {
+  for (const path of ['.env.example', 'docker-compose/standalone/.env.example', 'docker-compose/keycloak/.env.example', 'docker-compose/entra/.env.example', 'docker-compose/local/.env.example']) {
     const text = readFileSync(path, 'utf8');
     for (const name of Object.keys(envFile(path))) assert.ok(SETTINGS.includes(name) || name === 'KEYCLOAK_PORT', `${path}: ${name} is no setting`);
     for (const name of SETTINGS) assert.match(text, new RegExp(`^#?${name}=`, 'm'), `${path}: ${name} is missing`);
   }
   // The Compose files set no settings: their env files must be enough to start.
-  for (const file of ['standalone', 'keycloak', 'entra']) {
+  for (const file of ['standalone', 'keycloak', 'entra', 'local']) {
     assert.ok(!/^ +environment:/m.test(readFileSync(`docker-compose/${file}/docker-compose.yml`, 'utf8').split(/^ {2}vanishly:/m)[1].split(/^ {2}\w+:/m)[0]), file);
   }
   const c = loadConfig(envFile('docker-compose/keycloak/.env.example'));
@@ -369,4 +369,12 @@ test('LOCAL_* settings without AUTH_PROVIDER=local stop the start', () => {
     assert.throws(() => loadConfig({ [k]: '12' }), new RegExp(`${k} needs AUTH_PROVIDER`), k);
     assert.throws(() => loadConfig({ ...kc, [k]: '12' }), new RegExp(`${k} does not apply to AUTH_PROVIDER=keycloak`), k);
   }
+});
+
+test('the local Compose example starts once the first admin is in', () => {
+  const env = envFile('docker-compose/local/.env.example');
+  assert.throws(() => loadConfig(env), /AUTH_SECRET/);
+  const c = loadConfig({ ...env, AUTH_SECRET: 'x'.repeat(40), LOCAL_ADMIN_PASSWORD: 'change-me-long-pw' });
+  assert.equal(c.auth?.provider, 'local');
+  assert.equal(c.auth?.local?.adminUser, 'admin@example.com');
 });
