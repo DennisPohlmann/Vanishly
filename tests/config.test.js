@@ -366,7 +366,7 @@ test('AUTH_PROVIDER=local: every setting of the OpenID Connect providers stops t
 test('LOCAL_* settings without AUTH_PROVIDER=local stop the start', () => {
   const kc = envFile('docker-compose/keycloak/.env.example');
   for (const k of SETTINGS.filter((s) => s.startsWith('LOCAL_'))) {
-    assert.throws(() => loadConfig({ [k]: '12' }), new RegExp(`${k} needs AUTH_PROVIDER`), k);
+    assert.throws(() => loadConfig({ [k]: '12' }), new RegExp(`${k} needs AUTH_PROVIDER=local$`), k);
     assert.throws(() => loadConfig({ ...kc, [k]: '12' }), new RegExp(`${k} does not apply to AUTH_PROVIDER=keycloak`), k);
   }
 });

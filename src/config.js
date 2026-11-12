@@ -429,7 +429,7 @@ function authConfig(env, baseUrl) {
   if (provider !== 'none' && !PROVIDERS.includes(provider)) throw new Error(`AUTH_PROVIDER: none, ${PROVIDERS.join(', ')}`);
   if (provider === 'none') {
     const set = AUTH_SETTINGS.find((k) => env[k]);
-    if (set) throw new Error(`${set} needs AUTH_PROVIDER (${PROVIDERS.join(', ')})`);
+    if (set) throw new Error(`${set} needs AUTH_PROVIDER${set.startsWith('LOCAL_') ? '=local' : ` (${PROVIDERS.join(', ')})`}`);
     return null;
   }
   const entra = provider === 'entra';
