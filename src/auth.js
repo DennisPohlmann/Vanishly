@@ -20,11 +20,12 @@ import { createDirectory } from './directory/index.js';
 /** @typedef {NonNullable<import('./config.js').Config['auth']>} AuthConfig */
 /**
  * @typedef {{ name: string, user: string, mail?: string, ids: string[], app?: boolean,
- *   token?: { id: string, name: string, scopes: string[] }, service?: string }} User
+ *   token?: { id: string, name: string, scopes: string[] }, service?: string, admin?: boolean, sv?: string }} User
  * user: the sign-in address (the key); mail: the address shown instead (ENTRA_SHOW_ADDRESS=mail);
  * ids: the recipient hashes this user matches (addresses and groups);
  * token: set when the request came with an API token (src/tokens.js); service: the
- * technical user it belongs to (then user is "svc:<name>")
+ * technical user it belongs to (then user is "svc:<name>"); admin: a local account
+ * with the role admin; sv: the session version of a local account (src/users.js)
  */
 
 const EMAIL = /^[^\s@<>"',;]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
