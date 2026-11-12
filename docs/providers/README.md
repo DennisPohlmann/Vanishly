@@ -18,6 +18,7 @@ off by default; without a directory the sender types e-mail addresses.
 | JumpCloud | `jumpcloud` | `groups` (group attribute) | no | yes, user group id | API key | tests with stand-ins | [jumpcloud.md](jumpcloud.md) |
 | Amazon Cognito | `cognito` | `cognito:groups` | yes | yes, group name | IAM (keys or role) | tests with stand-ins | [cognito.md](cognito.md) |
 | Any other OpenID provider | `oidc` | `groups` (`OIDC_GROUPS_CLAIM`) | no | no | none | tested with mock-oauth2-server | [oidc.md](oidc.md) |
+| Vanishly's own accounts (no provider) | `local` | the groups an admin gives each user | no | no | – | tests (`tests/local.test.js`) | [local.md](local.md) |
 
 Every provider can offer fixed groups (`RECIPIENT_GROUPS=Name=<value>,...`;
 Google only with `DIRECTORY_API=true`). "Tests with stand-ins" means the

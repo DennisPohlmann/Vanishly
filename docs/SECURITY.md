@@ -93,6 +93,15 @@ second lock next to the link, enforced by the server:
 - `AUTH_ALLOWED_DOMAINS` limits sign-in by domain. With Google it is
   required and the Workspace domain (`hd`) must match too: without it any
   Google account could sign in and create secrets.
+- `AUTH_PROVIDER=local` (own accounts, [providers/local.md](providers/local.md#security)):
+  passwords as scrypt hashes (N=2^15, r=8, p=3, random salt, constant-time
+  compare); unknown addresses cost the same hash and get the same answer.
+  The sign-in and password forms are accepted only from this origin
+  (`Sec-Fetch-Site`, `Origin`); every sign-in gets a new session id; failed
+  attempts are counted per account (`LOCAL_LOGIN_ATTEMPTS`) and per IP. A
+  session carries the account's session version: a new password, disabling
+  or deleting ends it at once; role and groups are read on every request.
+  The last active admin cannot be removed, and nobody removes themselves.
 
 ## Passphrase
 
@@ -122,6 +131,7 @@ is not enough.
 | rate limit counters, keyed by a truncated HMAC-SHA256 of the IP with `RATE_LIMIT_KEY` (never stored in Redis); a plain hash of an IPv4 address could be reversed by trying all addresses | |
 | with sign-in: recipients and responsible people as keyed hashes (HMAC with `AUTH_SECRET`) | the addresses or groups a secret is for |
 | with sign-in: sessions (name, user name, recipient hashes) under a hash of the cookie | access or refresh tokens of the provider |
+| with `AUTH_PROVIDER=local`: the accounts (address, name, role, groups, scrypt hash), without expiry, so Redis needs persistence | passwords |
 
 The Compose file runs Redis **without persistence** (`--save ""
 --appendonly no`) and on a `tmpfs`, so nothing of a secret is ever written

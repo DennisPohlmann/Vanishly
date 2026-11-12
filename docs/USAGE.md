@@ -10,10 +10,11 @@
 | `/api/docs` | API documentation (Scalar API reference) |
 | `/api/openapi.json` | OpenAPI 3.1 document |
 | `/healthz` | `ok` (200) when Redis answers and accepts writes, otherwise 503 |
-| `/auth/login`, `/auth/logout`, `/auth/logged-out` | Sign in and out; `/auth/logged-out` is where the provider returns after a sign-out (only with `AUTH_PROVIDER`) |
+| `/auth/login`, `/auth/logout`, `/auth/logged-out` | Sign in and out; `/auth/logged-out` is where the provider returns after a sign-out (only with `AUTH_PROVIDER`). With `AUTH_PROVIDER=local` `/auth/login` is a form for e-mail address and password |
+| `/settings/password` | "Change password" (user menu, `AUTH_PROVIDER=local`): the current password and the new one twice; your other sessions end |
 | `/settings/tokens` | "API tokens" (user menu, `API_TOKENS=true`): make a personal API token (name, lifetime, allowed addresses, and what it may do: "only create", "only retrieve", "both", plus status and burn, as far as allowed; shown once), list your tokens with expiry, last use and state, revoke them; shows "2 of 3 active tokens" (`API_TOKEN_MAX_PER_USER`) and, at the limit, a notice instead of the form |
 | `/secrets` | "My secrets" (user menu, sign-in with `AUDIT_LOG_REDIS=true`, `MY_SECRETS`): the secrets you created and those for you or one of your groups: for whom, comment, expiry, state and who opened them, filter by state and time; never content or keys |
-| `/admin` | "Administration" (user menu, admins only, `ADMIN_USERS` / `ADMIN_GROUPS`), tabs: audit log (filter, export, hash chain check), secrets (metadata of every secret: who for whom, comment, state, who opened it), API tokens (all, revoke), technical users (API-only accounts and their tokens: issue, rotate, revoke), token permissions per user and group; warns when Redis has no persistence ([CONFIG.md](CONFIG.md#admin-interface)) |
+| `/admin` | "Administration" (user menu, admins only, `ADMIN_USERS` / `ADMIN_GROUPS`, with `AUTH_PROVIDER=local` also the role admin), tabs: audit log (filter, export, hash chain check), secrets (metadata of every secret: who for whom, comment, state, who opened it), API tokens (all, revoke), technical users (API-only accounts and their tokens: issue, rotate, revoke), token permissions per user and group, users (`AUTH_PROVIDER=local`: create, change role and groups, disable, reset the password, delete; [local.md](providers/local.md#users)); warns when Redis has no persistence ([CONFIG.md](CONFIG.md#admin-interface)) |
 
 The header has the language switch and the light/dark switch (remembered in
 the browser) and, with sign-in, "Sign in", or the full name with the

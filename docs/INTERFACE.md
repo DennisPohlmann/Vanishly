@@ -47,7 +47,10 @@ caller's own or a new UUID) and each action is an audit event
 `503 audit_unavailable` when the log cannot be written.
 
 Pages of the sign-in (not part of the API): `GET /auth/login?return=/s/<id>`,
-`GET /auth/callback` (the provider's redirect), `POST /auth/logout`.
+`GET /auth/callback` (the provider's redirect), `POST /auth/logout`. With
+`AUTH_PROVIDER=local`: `GET /auth/login` shows the form, `POST /auth/login`
+(form fields `user`, `password`, `return`), `GET`/`POST /settings/password`
+(`current`, `password`, `repeat`); both posts only from this origin.
 
 ### Examples
 
@@ -130,6 +133,9 @@ All keys start with `REDIS_PREFIX` (default `vanishly:`).
 | `tokpol:all` | set | the hashes of all token permissions | kept |
 | `svc:<name>` | hash | a technical user: `name`, `desc`, `resp` (responsible address), `ips` (default networks), `on`, `max`, `created`, `by`, `updated` | kept |
 | `svc:all` | set | the names of all technical users | kept |
+| `luser:<address>` | hash | a local account (`AUTH_PROVIDER=local`): `user`, `name`, `pw` (`scrypt$N$r$p$salt$hash`, never the password), `role` (`admin`/`user`), `groups` (one per line), `off`, `created`, `updated`, `sv` (session version: a new password or disabling changes it and ends the sessions) | kept |
+| `luser:all` | set | the addresses of all local accounts | kept |
+| `rl:login:<hash>` | string | failed sign-ins of a local account in this window (HMAC of the address, `LOCAL_LOGIN_ATTEMPTS`) | the window |
 | `tok:u:<hash>`, `tok:all` | set | token ids of a user (HMAC of the address) and of all users | as long as the tokens |
 | `audit` | stream | `AUDIT_LOG_REDIS`: field `e`, the audit event as written | kept (`AUDIT_LOG_REDIS_MAXLEN` trims) |
 | `audit:head:<instance>` | string | `{"seq":n,"hash":"..."}`: the chain head of an instance, to continue after a restart | kept |
@@ -157,7 +163,9 @@ UTC with milliseconds.
 | `secret.reveal_denied` | `login_required`, `not_recipient`, `bad_passphrase` (`attempts_left`), `not_found` | denied |
 | `secret.burned` | `reason`: `manual` (status page), `admin` (an admin, `details.admin`; `ADMIN_BURN`) or `passphrase_attempts` | success |
 | `secret.burn_denied`, `receipt.viewed`, `receipt.denied` | the status page | success / denied |
-| `auth.login`, `auth.logout`, `auth.failed` | sign-in | success / denied |
+| `auth.login`, `auth.logout`, `auth.failed` | sign-in; with `AUTH_PROVIDER=local` `auth.failed` has `reason` `bad_credentials`, `disabled`, `locked` or `wrong_password` (and `details.user` only when the account exists) | success / denied |
+| `auth.password_changed` | a local account changed its own password | success |
+| `admin.user_created`, `admin.user_changed` (old, new), `admin.user_disabled`, `admin.user_enabled`, `admin.user_password_reset`, `admin.user_deleted` | local accounts (`AUTH_PROVIDER=local`); the first admin as `admin.user_created` by `system` with `reason` `bootstrap`. Never a password | success |
 | `api.token_created`, `api.token_revoked`, `api.token_create_denied` | the API token page (`details.token` id and name, `expires`, `networks`, `scopes`); denied with `reason` `not_enabled` (API_TOKEN_USERS/GROUPS) or `limit_reached` (`details.active`, `details.max`) | success / denied |
 | `api.token_used` | every call with a token, with `http.response.status_code` and the error `reason` | success / denied / error |
 | `api.token_denied`, `api.token_expired`, `api.ip_denied` | refused token (`reason`: unknown, revoked, malformed; expired; other address, with the allowed networks) | denied |
@@ -252,6 +260,8 @@ technical user and token, the comment and the run id.
 | `GET /admin/secrets?creator=&recipient=&status=&from=&to=&limit=` | secrets overview from the audit stream (metadata only; `AUDIT_LOG_REDIS`) |
 | `POST /admin/secrets/{ref}/burn` | burn a secret by its `ref` from the overview (`ADMIN_BURN`, `ENABLE_BURN`): `200 {state: "burned"}`, `409 gone` (already opened, expired or burned), `404` unknown |
 | `GET /admin/tokens`, `POST /admin/tokens/{id}/revoke` | all tokens |
+| `GET /admin/users`, `POST /admin/users` | `AUTH_PROVIDER=local`: the accounts (no hashes); create `{user, password, name, role, groups, disabled}` |
+| `POST /admin/users/{user}`, `POST /admin/users/{user}/password`, `POST /admin/users/{user}/delete` | change `{name, role, groups, disabled}` (disabling ends the sessions and revokes the tokens), reset the password `{password}`, delete; `409 last_admin` for the last active admin, `409 self` for your own account |
 | `GET /admin/service-accounts`, `POST /admin/service-accounts` | technical users; create `{name, description, responsible, ips, enabled, max}` |
 | `POST /admin/service-accounts/{name}`, `POST /admin/service-accounts/{name}/delete` | change (also `enabled: false`: revokes its tokens), delete |
 | `GET/POST /admin/service-accounts/{name}/tokens` | its tokens; issue `{name, scopes, expires, ips}` (scopes `create`, `read`, `status`, `admin`) |
