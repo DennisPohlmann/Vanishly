@@ -62,6 +62,7 @@
   "error.title": "Algo correu mal",
   "error.notfound": "Página não encontrada.",
   "error.ratelimit": "Demasiados pedidos. Tente novamente dentro de alguns minutos.",
+  "error.ipDenied": "Isto não está disponível a partir da sua rede.",
   "error.generic": "O pedido falhou. Tente novamente.",
   "error.tooLong": "O segredo é demasiado longo.",
   "error.empty": "Introduza primeiro um segredo.",

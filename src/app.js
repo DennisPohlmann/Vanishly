@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
 import { Audit, normalize, parseTraceparent, sanitizeText, sizeBucket, verifyText } from './audit.js';
-import { ADMIN_SCOPE, Tokens, SCOPES } from './tokens.js';
+import { ADMIN_SCOPE, ipAllowed, Tokens, SCOPES } from './tokens.js';
 import { decryptSecret, encryptSecret, PBKDF2_ITERATIONS, unlockKey, verifierFor } from '../public/js/vanishly-crypto.js';
 import { validId } from './store.js';
 import { limiter } from './ratelimit.js';
@@ -284,8 +284,40 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     res.status(ok ? 200 : 503).type('text/plain').send(ok ? 'ok' : 'unavailable');
   });
 
+  // ---------------------------------------------------------------- IP access
+  // CREATE_/READ_/ADMIN_ALLOWED_IPS and _DENIED_IPS: which client IPs may
+  // create, read, or use the admin area. Empty lists = everybody.
+  /** @param {import('express').Request} req @param {'create' | 'read' | 'admin'} kind */
+  const ipOk = (req, kind) => {
+    const a = config.ipAccess[kind];
+    if (a.deny.length && ipAllowed(req.ip || '', a.deny)) return false;
+    return !a.allow.length || ipAllowed(req.ip || '', a.allow);
+  };
+  // Express matches paths case-insensitively and with a trailing slash: so does this.
+  /** @param {import('express').Request} req */
+  const ipPath = (req) => req.path.toLowerCase().replace(/\/+$/, '') || '/';
+  /** @param {string} p path below /api @returns {'create' | 'read' | 'admin' | ''} */
+  const apiIpKind = (p) => {
+    if (/^\/v1\/admin(\/|$)/.test(p)) return 'admin';
+    if (/^\/v1\/(secrets\/[^/]+(\/reveal)?|open)$/.test(p)) return 'read';
+    if (/^\/v1\/(secrets|share|groups|people)$/.test(p) || p.startsWith('/v1/receipts/')) return 'create';
+    return '';
+  };
+  /** @param {string} p @returns {'create' | 'read' | 'admin' | ''} */
+  const pageIpKind = (p) => {
+    if (p === '/') return 'create';
+    if (p.startsWith('/s/')) return 'read';
+    if (p.startsWith('/r/')) return 'create';
+    if (p === '/admin' || p.startsWith('/admin/')) return 'admin';
+    return '';
+  };
+
   // ---------------------------------------------------------------- API
   const api = express.Router();
+  api.use((req, _res, next) => {
+    const kind = apiIpKind(ipPath(req));
+    next(kind && !ipOk(req, kind) ? new ApiError(403, 'ip_denied', 'Not allowed from this network') : undefined);
+  });
   // A switched-off endpoint (ENABLE_*): 404, but told apart from a wrong path.
   const disabled = () => new ApiError(404, 'endpoint_disabled', 'This endpoint is disabled on this server');
   // MY_SECRETS: "My secrets" (page, menu entry, API) only with sign-in and the audit stream in Redis.
@@ -1636,6 +1668,11 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     }),
   );
   app.use('/api', api);
+  app.use((req, res, next) => {
+    const kind = pageIpKind(ipPath(req));
+    if (kind && !ipOk(req, kind)) return errorPage(req, res, 403, theme.strings[lang(res)]['error.ipDenied']);
+    next();
+  });
 
   const openapi = JSON.stringify(servedSpec(JSON.parse(readFileSync(join(ROOT, 'openapi', 'openapi.json'), 'utf8')), endpointsOn, version, config.features.apiIndex), null, 2);
   const docsHtml = readFileSync(join(ROOT, 'views', 'api-docs.html'), 'utf8');

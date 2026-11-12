@@ -783,6 +783,51 @@ test('RATE_LIMIT_KEY: one warning at the start without it, none with it, the key
   assert.ok(!out.includes(key));
 });
 
+test('IP access: CREATE_, READ_ and ADMIN_ALLOWED_IPS / _DENIED_IPS; deny wins; a refused read uses no view', opts, async () => {
+  const config = loadConfig({
+    REDIS_URL: redisUrl, ACCESS_LOG: 'false', TRUST_PROXY: 'true', RATE_LIMIT_CREATE: '1000', RATE_LIMIT_READ: '1000',
+    CREATE_ALLOWED_IPS: '198.51.100.0/24, 2001:db8::/32', CREATE_DENIED_IPS: '198.51.100.66',
+    READ_DENIED_IPS: '203.0.113.0/24', ADMIN_ALLOWED_IPS: '192.0.2.1',
+  });
+  const app = createApp({ config, store, theme: loadTheme(config, 'test'), version: 'test' });
+  const srv = app.listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
+  const b = `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`;
+  /** @param {string} ip @param {string} path @param {any} [body] */
+  const as = (ip, path, body) =>
+    fetch(b + path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip }, body: body && JSON.stringify(body) });
+  try {
+    const { payload } = await encryptSecret('ip test');
+    // Create: only the allowed networks, the denied address never.
+    for (const ip of ['203.0.113.5', '198.51.100.66']) {
+      const r = await as(ip, '/api/v1/secrets', { ...payload, ttl: 600 });
+      assert.equal(r.status, 403, ip);
+      assert.equal((await r.json()).error, 'ip_denied');
+      assert.equal((await as(ip, '/')).status, 403);
+      assert.equal((await as(ip, '/API/V1/share/', { text: 'x' })).status, 403);
+    }
+    const c = await as('2001:db8::7', '/api/v1/secrets', { ...payload, ttl: 600 });
+    assert.equal(c.status, 201);
+    const { id, receiptId } = await c.json();
+    assert.equal((await as('198.51.100.9', '/')).status, 200);
+    assert.equal((await as('203.0.113.5', `/api/v1/receipts/${receiptId}`)).status, 403);
+    // Read: everybody but the denied network; a refusal uses no view.
+    assert.equal((await as('203.0.113.5', `/s/${id}`)).status, 403);
+    const denied = await as('203.0.113.5', `/api/v1/secrets/${id}/reveal`, {});
+    assert.equal(denied.status, 403);
+    assert.equal((await denied.json()).error, 'ip_denied');
+    assert.equal((await as('192.0.2.50', `/api/v1/secrets/${id}`)).status, 200);
+    const ok = await as('192.0.2.50', `/api/v1/secrets/${id}/reveal`, {});
+    assert.equal(ok.status, 200);
+    // Admin: only 192.0.2.1 gets past the IP check (then the usual sign-in rules).
+    assert.equal((await as('192.0.2.50', '/admin')).status, 403);
+    assert.equal((await (await as('192.0.2.50', '/api/v1/admin/status')).json()).error, 'ip_denied');
+    assert.notEqual((await as('192.0.2.1', '/api/v1/admin/status')).status, 403);
+  } finally {
+    srv.close();
+  }
+});
+
 test('rate limits: 429 with Retry-After, per client IP, shared Redis counter, 0 = off', opts, async () => {
   /** @param {Record<string, string>} env */
   const serve = async (env) => {

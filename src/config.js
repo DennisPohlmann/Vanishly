@@ -1,6 +1,7 @@
 // Vanishly - settings from the environment (see .env.example and docs/CONFIG.md).
 
 import { readFileSync } from 'node:fs';
+import { isIP } from 'node:net';
 
 /**
  * @param {string | undefined} v
@@ -41,6 +42,32 @@ function trustProxy(v) {
     }
   }
   return v;
+}
+
+/**
+ * "203.0.113.0/24, 2001:db8::/32, 198.51.100.7" to normalized networks;
+ * throws on anything else.
+ * @param {unknown} v string or list
+ * @param {number} [max]
+ */
+export function parseNetworks(v, max = 20) {
+  const parts = Array.isArray(v) ? v : String(v ?? '').split(/[\s,;]+/);
+  /** @type {string[]} */
+  const out = [];
+  for (const raw of parts) {
+    if (typeof raw !== 'string') throw new Error('a network must be a string');
+    const p = raw.trim();
+    if (!p) continue;
+    const m = /^([0-9a-fA-F.:]+)(?:\/(\d{1,3}))?$/.exec(p);
+    const fam = m ? isIP(m[1]) : 0;
+    if (!m || !fam) throw new Error(`"${p.slice(0, 60)}" is no IP address or network (CIDR)`);
+    const bits = m[2] === undefined ? (fam === 4 ? 32 : 128) : Number(m[2]);
+    if (bits > (fam === 4 ? 32 : 128) || (fam === 4 ? bits < 8 : bits < 16)) throw new Error(`"${p}": prefix length out of range`);
+    const n = `${m[1].toLowerCase()}/${bits}`;
+    if (!out.includes(n)) out.push(n);
+  }
+  if (out.length > max) throw new Error(`at most ${max} networks`);
+  return out;
 }
 
 const UNITS = /** @type {Record<string, number>} */ ({ s: 1, m: 60, h: 3600, d: 86400, w: 604800 });
@@ -158,6 +185,7 @@ export const SETTINGS = [
   'CONFIRM_CHECKBOX', 'CONFIRM_TEXT', 'CONFIRM_TEXT_EN', 'CONFIRM_TEXT_DE',
   'GENERATOR_LENGTH', 'GENERATOR_COMPLEXITY', 'RECEIPT_KEEP',
   'RATE_LIMIT_CREATE', 'RATE_LIMIT_READ', 'RATE_LIMIT_WINDOW', 'RATE_LIMIT_KEY', 'RATE_LIMIT_KEY_FILE',
+  'CREATE_ALLOWED_IPS', 'CREATE_DENIED_IPS', 'READ_ALLOWED_IPS', 'READ_DENIED_IPS', 'ADMIN_ALLOWED_IPS', 'ADMIN_DENIED_IPS',
   'API_DOCS', 'ACCESS_LOG',
   'ENABLE_API', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SHARE_API', 'ENABLE_OPEN_API',
   'ENABLE_SECRET_META_API', 'ENABLE_CONFIG_API', 'ENABLE_ME_API',
@@ -994,6 +1022,13 @@ export function loadConfig(env = process.env) {
       if (v && !/^\S{32,}$/.test(v)) throw new Error('at least 32 characters, no whitespace (e.g. openssl rand -base64 48)');
       return v;
     }),
+    // Who may create, read and use the admin area, by client IP (req.ip, TRUST_PROXY); empty = everybody.
+    // An allow list lets only its networks in; the deny list always wins.
+    ipAccess: {
+      create: { allow: named('CREATE_ALLOWED_IPS', () => parseNetworks(env.CREATE_ALLOWED_IPS, 100)), deny: named('CREATE_DENIED_IPS', () => parseNetworks(env.CREATE_DENIED_IPS, 100)) },
+      read: { allow: named('READ_ALLOWED_IPS', () => parseNetworks(env.READ_ALLOWED_IPS, 100)), deny: named('READ_DENIED_IPS', () => parseNetworks(env.READ_DENIED_IPS, 100)) },
+      admin: { allow: named('ADMIN_ALLOWED_IPS', () => parseNetworks(env.ADMIN_ALLOWED_IPS, 100)), deny: named('ADMIN_DENIED_IPS', () => parseNetworks(env.ADMIN_DENIED_IPS, 100)) },
+    },
     languages,
     defaultLang,
     // ENABLE_API=false: no public API; only this server's own pages may call it.

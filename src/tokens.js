@@ -21,7 +21,9 @@
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { BlockList, isIP } from 'node:net';
-import { expiryAt, parseScopes, SCOPES } from './config.js';
+import { expiryAt, parseNetworks, parseScopes, SCOPES } from './config.js';
+
+export { parseNetworks };
 
 export { SCOPES };
 // Admin functions over the API: only for technical users' tokens, given by an admin (API_ADMIN_TOKENS).
@@ -29,31 +31,6 @@ export const ADMIN_SCOPE = 'admin';
 const SVC_NAME = /^[a-z0-9][a-z0-9_.-]{1,63}$/;
 const TOKEN = /^vnly_([0-9a-f]{16})_([A-Za-z0-9_-]{43})$/;
 const KEEP = 30 * 86400 * 1000;
-
-/**
- * "203.0.113.0/24, 2001:db8::/32, 198.51.100.7" to normalized networks;
- * throws on anything else.
- * @param {unknown} v string or list
- */
-export function parseNetworks(v) {
-  const parts = Array.isArray(v) ? v : String(v ?? '').split(/[\s,;]+/);
-  /** @type {string[]} */
-  const out = [];
-  for (const raw of parts) {
-    if (typeof raw !== 'string') throw new Error('a network must be a string');
-    const p = raw.trim();
-    if (!p) continue;
-    const m = /^([0-9a-fA-F.:]+)(?:\/(\d{1,3}))?$/.exec(p);
-    const fam = m ? isIP(m[1]) : 0;
-    if (!m || !fam) throw new Error(`"${p.slice(0, 60)}" is no IP address or network (CIDR)`);
-    const bits = m[2] === undefined ? (fam === 4 ? 32 : 128) : Number(m[2]);
-    if (bits > (fam === 4 ? 32 : 128) || (fam === 4 ? bits < 8 : bits < 16)) throw new Error(`"${p}": prefix length out of range`);
-    const n = `${m[1].toLowerCase()}/${bits}`;
-    if (!out.includes(n)) out.push(n);
-  }
-  if (out.length > 20) throw new Error('at most 20 networks');
-  return out;
-}
 
 /** "::ffff:203.0.113.5" counts as 203.0.113.5. @param {string} ip */
 export function plainIp(ip) {

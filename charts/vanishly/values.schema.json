@@ -466,6 +466,54 @@
             }
           ]
         },
+        "CREATE_ALLOWED_IPS": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f.:/,; ]*$"
+            }
+          ]
+        },
+        "CREATE_DENIED_IPS": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f.:/,; ]*$"
+            }
+          ]
+        },
+        "READ_ALLOWED_IPS": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f.:/,; ]*$"
+            }
+          ]
+        },
+        "READ_DENIED_IPS": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f.:/,; ]*$"
+            }
+          ]
+        },
+        "ADMIN_ALLOWED_IPS": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f.:/,; ]*$"
+            }
+          ]
+        },
+        "ADMIN_DENIED_IPS": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f.:/,; ]*$"
+            }
+          ]
+        },
         "ENABLE_API": {
           "anyOf": [
             {

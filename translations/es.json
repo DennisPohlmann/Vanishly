@@ -62,6 +62,7 @@
   "error.title": "Algo ha salido mal",
   "error.notfound": "Página no encontrada.",
   "error.ratelimit": "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos.",
+  "error.ipDenied": "Esto no está disponible desde tu red.",
   "error.generic": "La solicitud ha fallado. Inténtalo de nuevo.",
   "error.tooLong": "El secreto es demasiado largo.",
   "error.empty": "Introduce primero un secreto.",

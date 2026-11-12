@@ -59,6 +59,9 @@ The container then does not come up (`docker compose logs vanishly`).
 | `RATE_LIMIT_READ` | `120` | Reads, reveals, receipts and burns per client IP and window; with sign-in also `/auth/login` and `/auth/callback` (own counter). With sign-in, all requests of one client IP together (not static files, `/healthz`) may reach 10 × the larger of `RATE_LIMIT_READ` and `RATE_LIMIT_CREATE` per window. `0` = off |
 | `RATE_LIMIT_WINDOW` | `600` | Window of the rate limits (seconds) |
 | `RATE_LIMIT_KEY` (`_FILE`) | (random per process) | At least 32 characters, no whitespace (`openssl rand -base64 48`): keys the IP hashes of the rate limits. Use the same value on all replicas so they share the limits. Unset: a random key per process, so limits are per process and reset on restart, with a warning at start (fine for one replica). Changing it starts the counters over. The Helm chart generates one |
+| `CREATE_ALLOWED_IPS`, `CREATE_DENIED_IPS` | (none: everybody) | Client IPs that may / may not create: the form, `POST /api/v1/secrets` and `/share`, people and group search, status page and burn ([details](#ip-access)) |
+| `READ_ALLOWED_IPS`, `READ_DENIED_IPS` | (none: everybody) | Client IPs that may / may not open secrets: `/s/<id>`, `GET /api/v1/secrets/{id}`, reveal, `/api/v1/open` ([details](#ip-access)) |
+| `ADMIN_ALLOWED_IPS`, `ADMIN_DENIED_IPS` | (none: everybody) | Client IPs that may / may not use the admin area: `/admin` and `/api/v1/admin/*` ([details](#ip-access)) |
 | `ACCESS_LOG` | `true` | One line per request to stdout (method, path with ids replaced by `:id`, status, time) |
 
 ### Switches (`ENABLE_*`)
@@ -318,6 +321,36 @@ The server enforces them as far as it can see the data:
   `REQUIRE_PASSPHRASE`. The passphrase length and complexity cannot be checked: the
   passphrase never leaves the browser, which is the point of the end-to-end
   encryption.
+
+## IP access
+
+Off by default; set only in the environment (`.env`, Helm `config`), never
+in the UI. Each list holds IP addresses or networks (IPv4/IPv6 CIDR such as
+`203.0.113.0/24, 2001:db8::/32`), comma-separated, at most 100; an invalid
+entry stops the start (exit code 78).
+
+- `*_ALLOWED_IPS` set: only these networks may do it. Empty: everybody.
+- `*_DENIED_IPS`: these never may, also when they are in the allowed list.
+- The client IP is the one the rate limits see: behind a reverse proxy set
+  `TRUST_PROXY`, or every visitor has the proxy's address.
+- Refused: pages answer 403 "This is not available from your network.",
+  the API `403 ip_denied` (in the audit log as `api.request_denied`). A
+  refused read uses no view.
+- Sign-in (`/auth/*`), "My secrets", API token pages and static files are
+  never restricted.
+
+Example: only the office creates, a partner network may not read, the
+admin area only from the admin VPN:
+
+```sh
+CREATE_ALLOWED_IPS=198.51.100.0/24
+READ_DENIED_IPS=203.0.113.0/24
+ADMIN_ALLOWED_IPS=192.0.2.0/28
+```
+
+**Lockout:** a wrong `ADMIN_ALLOWED_IPS` (or your own address in
+`ADMIN_DENIED_IPS`) locks you out of `/admin`. Fix the setting and restart;
+nothing else is changed.
 
 ## API access
 

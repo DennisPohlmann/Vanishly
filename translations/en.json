@@ -62,6 +62,7 @@
   "error.title": "Something went wrong",
   "error.notfound": "Page not found.",
   "error.ratelimit": "Too many requests. Try again in a few minutes.",
+  "error.ipDenied": "This is not available from your network.",
   "error.generic": "The request failed. Try again.",
   "error.tooLong": "The secret is too long.",
   "error.empty": "Enter a secret first.",

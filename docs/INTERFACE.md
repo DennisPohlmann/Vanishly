@@ -43,7 +43,9 @@ caller's own or a new UUID) and each action is an audit event
 ([Audit log](#audit-log)). With `API_TOKENS` scripts authenticate with
 `Authorization: Bearer vnly_...`; with `API_TOKEN_REQUIRED=true` only so
 (`401 token_required`). Refusals: `401 invalid_token` / `token_expired`,
-`403 ip_not_allowed` / `insufficient_scope`; with `AUDIT_LOG_FAIL=closed`
+`403 ip_not_allowed` / `insufficient_scope`; `403 ip_denied` when the
+client IP may not create, read or use the admin area
+([`*_ALLOWED_IPS` / `*_DENIED_IPS`](CONFIG.md#ip-access)); with `AUDIT_LOG_FAIL=closed`
 `503 audit_unavailable` when the log cannot be written.
 
 Pages of the sign-in (not part of the API): `GET /auth/login?return=/s/<id>`,

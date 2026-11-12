@@ -62,6 +62,7 @@
   "error.title": "Etwas ist schiefgegangen",
   "error.notfound": "Seite nicht gefunden.",
   "error.ratelimit": "Zu viele Anfragen. Versuche es in ein paar Minuten noch einmal.",
+  "error.ipDenied": "Von deinem Netzwerk aus ist das nicht möglich.",
   "error.generic": "Die Anfrage ist fehlgeschlagen. Versuche es noch einmal.",
   "error.tooLong": "Das Geheimnis ist zu lang.",
   "error.empty": "Gib zuerst ein Geheimnis ein.",

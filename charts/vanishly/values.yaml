@@ -151,6 +151,17 @@ config:
   # RATE_LIMIT_KEY is a credential: see rateLimitKey below; set your own through secretConfig or existingSecret, not here.
   # File with RATE_LIMIT_KEY instead (none).
   RATE_LIMIT_KEY_FILE: ""
+  # == IP access (empty = everybody): IP addresses or CIDR networks, comma-separated, at most 100 per list.
+  # An ALLOWED list lets only its networks in; DENIED always wins (403). Client IP as with TRUST_PROXY.
+  # Create (form, POST secrets/share, people and group search, status page).
+  CREATE_ALLOWED_IPS: ""
+  CREATE_DENIED_IPS: ""
+  # Read (/s/<id>, opening and revealing).
+  READ_ALLOWED_IPS: ""
+  READ_DENIED_IPS: ""
+  # Admin area (/admin, /api/v1/admin/*); a wrong network locks you out of it.
+  ADMIN_ALLOWED_IPS: ""
+  ADMIN_DENIED_IPS: ""
   # == API (true = on)
   ENABLE_API: ""
   ENABLE_API_DOCS: ""

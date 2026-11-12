@@ -62,6 +62,7 @@
   "error.title": "Coś poszło nie tak",
   "error.notfound": "Nie znaleziono strony.",
   "error.ratelimit": "Zbyt wiele żądań. Spróbuj ponownie za kilka minut.",
+  "error.ipDenied": "To nie jest dostępne z Twojej sieci.",
   "error.generic": "Żądanie nie powiodło się. Spróbuj ponownie.",
   "error.tooLong": "Sekret jest za długi.",
   "error.empty": "Najpierw wpisz sekret.",

@@ -205,6 +205,10 @@ in the browser. The web pages never use them.
   sign-in the sign-in pages have their own counter, and every request the
   sign-in check looks at (not static files, `/healthz`) counts against a
   ceiling of 10 × the larger limit.
+- Optional IP access lists (`CREATE_`, `READ_`, `ADMIN_ALLOWED_IPS` /
+  `_DENIED_IPS`, [CONFIG.md](CONFIG.md#ip-access)), only in the
+  environment: checked on `req.ip` before anything else, so a refused read
+  uses no view. They rely on the client IP being right (`TRUST_PROXY`).
 - Ids have 128 random bits, so guessing a link is not practical, and every
   guess counts against the read limit.
 - Optional rules: `REQUIRE_PASSPHRASE`, `MIN_PASSPHRASE_LENGTH`,

@@ -32,6 +32,9 @@ Vanishly runs as a small Node.js container next to Redis.
   responsible people or groups who look after it (`RESPONSIBLE`). Off by
   default; a Keycloak example with demo users and a test login server for
   trying it are included ([docker-compose/](docker-compose/)).
+- **IP access lists (optional):** which networks may create, read or use
+  the admin area (`CREATE_`, `READ_`, `ADMIN_ALLOWED_IPS` / `_DENIED_IPS`),
+  set only in the environment; off by default.
 - **Click to reveal:** opening the link shows nothing yet, so chat and mail
   link previews cannot burn a secret.
 - **Password generator** (in the browser, `crypto.getRandomValues`), with

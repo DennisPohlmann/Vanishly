@@ -62,6 +62,7 @@
   "error.title": "Er is iets misgegaan",
   "error.notfound": "Pagina niet gevonden.",
   "error.ratelimit": "Te veel verzoeken. Probeer het over een paar minuten opnieuw.",
+  "error.ipDenied": "Dit is niet beschikbaar vanaf je netwerk.",
   "error.generic": "Het verzoek is mislukt. Probeer het opnieuw.",
   "error.tooLong": "Het geheim is te lang.",
   "error.empty": "Voer eerst een geheim in.",

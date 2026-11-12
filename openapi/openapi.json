@@ -260,7 +260,7 @@
             }
           },
           "403": {
-            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -451,7 +451,7 @@
             }
           },
           "403": {
-            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -602,7 +602,7 @@
             }
           },
           "403": {
-            "description": "Signed in, but not a recipient (`not_recipient`); no view used; `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "description": "Signed in, but not a recipient (`not_recipient`); no view used; `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope); `ip_denied`: this client IP may not read (READ_ALLOWED_IPS / READ_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -685,7 +685,7 @@
             }
           },
           "403": {
-            "description": "Wrong passphrase; or `not_recipient`: signed in, but not a recipient (no view used); `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "description": "Wrong passphrase; or `not_recipient`: signed in, but not a recipient (no view used); `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope); `ip_denied`: this client IP may not read (READ_ALLOWED_IPS / READ_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -889,7 +889,7 @@
             }
           },
           "403": {
-            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret; `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret; `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1026,7 +1026,7 @@
             }
           },
           "403": {
-            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret; `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "description": "STATUS_ACCESS=signed-in: `login_required` (401) without a sign-in, `not_allowed` (403) for anyone but the creator, the responsible people and (to view) who opened the secret; `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1133,7 +1133,7 @@
             }
           },
           "403": {
-            "description": "Wrong passphrase; `attemptsLeft` says how many tries remain, no view is used; or `not_recipient`: signed in, but not a recipient (no view used); `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "description": "Wrong passphrase; `attemptsLeft` says how many tries remain, no view is used; or `not_recipient`: signed in, but not a recipient (no view used); `ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope); `ip_denied`: this client IP may not read (READ_ALLOWED_IPS / READ_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1597,7 +1597,7 @@
             }
           },
           "403": {
-            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1747,7 +1747,7 @@
             }
           },
           "403": {
-            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope)",
+            "description": "`ip_not_allowed` (the API token is bound to other networks), `insufficient_scope` (the token lacks the scope); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2017,7 +2017,7 @@
             }
           },
           "403": {
-            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS",
+            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2086,7 +2086,7 @@
             }
           },
           "403": {
-            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS",
+            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2304,7 +2304,7 @@
             }
           },
           "403": {
-            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS",
+            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2364,7 +2364,7 @@
             }
           },
           "403": {
-            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS",
+            "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2462,7 +2462,7 @@
             }
           },
           "403": {
-            "description": "`not_admin`",
+            "description": "`not_admin`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2600,7 +2600,7 @@
             }
           },
           "403": {
-            "description": "`not_admin`",
+            "description": "`not_admin`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2671,7 +2671,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2808,7 +2808,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2893,7 +2893,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3044,7 +3044,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3114,7 +3114,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3226,7 +3226,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3328,7 +3328,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3420,7 +3420,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3515,7 +3515,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3692,7 +3692,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3805,7 +3805,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3959,7 +3959,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4135,7 +4135,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4267,7 +4267,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4387,7 +4387,7 @@
             }
           },
           "403": {
-            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`",
+            "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {

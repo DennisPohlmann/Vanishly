@@ -62,6 +62,7 @@
   "error.title": "Une erreur s'est produite",
   "error.notfound": "Page introuvable.",
   "error.ratelimit": "Trop de requêtes. Réessayez dans quelques minutes.",
+  "error.ipDenied": "Ce n’est pas disponible depuis votre réseau.",
   "error.generic": "La requête a échoué. Réessayez.",
   "error.tooLong": "Le secret est trop long.",
   "error.empty": "Saisissez d'abord un secret.",

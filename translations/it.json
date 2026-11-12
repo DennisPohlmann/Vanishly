@@ -62,6 +62,7 @@
   "error.title": "Qualcosa è andato storto",
   "error.notfound": "Pagina non trovata.",
   "error.ratelimit": "Troppe richieste. Riprova tra qualche minuto.",
+  "error.ipDenied": "Non è disponibile dalla tua rete.",
   "error.generic": "La richiesta non è riuscita. Riprova.",
   "error.tooLong": "Il segreto è troppo lungo.",
   "error.empty": "Inserisci prima un segreto.",
