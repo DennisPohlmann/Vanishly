@@ -1,0 +1,11 @@
+<section class="card" id="login-card">
+  <h1>{{ heading }}</h1>
+  <p class="lead">{{ text }}</p>
+  {{{ notice }}}
+  <form method="post" action="/auth/login">
+    <input type="hidden" name="return" value="{{ returnTo }}">
+    <div class="field"><label for="login-user">{{ t:local.user }}</label><input type="email" id="login-user" name="user" maxlength="254" autocomplete="username" spellcheck="false" required value="{{ user }}"></div>
+    <div class="field"><label for="login-password">{{ t:local.password }}</label><input type="password" id="login-password" name="password" maxlength="1024" autocomplete="current-password" required></div>
+    <button type="submit" class="btn btn-primary btn-block">{{ t:auth.button }}</button>
+  </form>
+</section>

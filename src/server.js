@@ -34,6 +34,19 @@ try {
 const app = createApp({ config, store, theme, version });
 /** @type {import('./audit.js').Audit | null} */
 const audit = app.locals.audit;
+/** @type {import('./users.js').Users | null} */
+const users = app.locals.users;
+// AUTH_PROVIDER=local: the first admin while there are no users; without one, no start.
+/** @type {import('./users.js').LocalUser | null} */ let firstAdmin = null;
+if (users) {
+  try {
+    firstAdmin = await users.bootstrap();
+    if (firstAdmin) console.log('Vanishly: no local users yet: created the admin from LOCAL_ADMIN_USERNAME');
+  } catch (err) {
+    console.error(`Vanishly: ${/** @type {Error} */ (err).message}`);
+    process.exit(78); // EX_CONFIG
+  }
+}
 if (audit) {
   // The first event of every start: which settings shape the log. A log that
   // cannot be written stops the start (AUDIT_LOG_FAIL=closed).
@@ -58,6 +71,7 @@ if (audit) {
     console.error(`Vanishly: the audit log cannot be written: ${/** @type {Error} */ (err).message}`);
     if (a.failClosed) process.exit(73); // EX_CANTCREAT
   }
+  if (firstAdmin) await audit.log({ type: 'admin.user_created', actor: { type: 'system' }, reason: 'bootstrap', details: { user: firstAdmin.user, role: 'admin' } }).catch(() => {});
 }
 
 const server = app.listen(config.port, config.host, () => {

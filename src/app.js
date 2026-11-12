@@ -129,6 +129,9 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   const tokens = auth?.c.tokens ? new Tokens(auth.c.tokens, store, auth.c, (k, v) => auth.hash(k, v)) : null;
   app.locals.audit = audit;
   app.locals.tokens = tokens;
+  // AUTH_PROVIDER=local: the accounts (src/server.js creates the first admin).
+  const users = auth?.users || null;
+  app.locals.users = users;
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
   app.set('etag', false);
@@ -306,12 +309,12 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     [Boolean(tokens), 'GET', '/v1/tokens'],
     [Boolean(tokens), 'POST', '/v1/tokens'],
     [Boolean(tokens), 'POST', '/v1/tokens/{id}/revoke'],
-    [Boolean(tokens && (auth?.c.admin.users.length || auth?.c.admin.groups.length)), 'GET', '/v1/admin/tokens'],
-    [Boolean(tokens && (auth?.c.admin.users.length || auth?.c.admin.groups.length)), 'POST', '/v1/admin/tokens/{id}/revoke'],
+    [Boolean(tokens && auth?.c.admin.any), 'GET', '/v1/admin/tokens'],
+    [Boolean(tokens && auth?.c.admin.any), 'POST', '/v1/admin/tokens/{id}/revoke'],
     [Boolean(auth?.c.admin.auditView), 'GET', '/v1/admin/audit'],
     [Boolean(tokens?.c.adminPolicy), 'GET', '/v1/admin/token-policies'],
-    [Boolean(auth?.c.admin.ui && (auth.c.admin.users.length || auth.c.admin.groups.length)), 'GET', '/v1/admin/status'],
-    [Boolean(auth?.c.admin.ui && audit?.c.redis && (auth.c.admin.users.length || auth.c.admin.groups.length)), 'GET', '/v1/admin/secrets'],
+    [Boolean(auth?.c.admin.ui && auth.c.admin.any), 'GET', '/v1/admin/status'],
+    [Boolean(auth?.c.admin.ui && audit?.c.redis && auth.c.admin.any), 'GET', '/v1/admin/secrets'],
     [Boolean(auth?.c.admin.burn && audit?.c.redis), 'POST', '/v1/admin/secrets/{ref}/burn'],
     [Boolean(tokens?.c.services), 'GET', '/v1/admin/service-accounts'],
     [Boolean(tokens?.c.services), 'POST', '/v1/admin/service-accounts'],
@@ -1416,14 +1419,14 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   });
 
   api.get('/v1/admin/tokens', limit('read'), async (req, res) => {
-    if (!tokens || !auth?.c.admin.users.length && !auth?.c.admin.groups.length) throw disabled();
+    if (!tokens || !auth?.c.admin.any) throw disabled();
     await adminActor(req, res);
     await ev(req, res, 'admin.tokens_listed');
     res.json({ tokens: (await tokens.list('')).map((t) => Tokens.view(t)) });
   });
 
   api.post('/v1/admin/tokens/:id/revoke', limit('create'), async (req, res) => {
-    if (!tokens || !auth?.c.admin.users.length && !auth?.c.admin.groups.length) throw disabled();
+    if (!tokens || !auth?.c.admin.any) throw disabled();
     const u = await adminActor(req, res);
     const t = await tokens.revoke(String(req.params.id), '', u.user);
     if (!t) throw new ApiError(404, 'not_found', 'No such token');
@@ -1587,6 +1590,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       // API_TOKENS: the user's own tokens; admins: the audit log and all tokens.
       (tokens?.mayCreate(u) ? `<a class="nav-menu-item" href="/settings/tokens">${escapeHtml(t['nav.tokens'])}</a>` : '') +
       (auth.c.admin.ui && auth.isAdmin(u) ? `<a class="nav-menu-item" href="/admin">${escapeHtml(t['nav.admin'])}</a>` : '') +
+      (users && !u.token ? `<a class="nav-menu-item" href="/settings/password">${escapeHtml(t['nav.password'])}</a>` : '') +
       `<form class="nav-logout" method="post" action="/auth/logout"><button type="submit" class="nav-menu-item">${escapeHtml(t['nav.signOut'])}</button></form>` +
       `<form class="nav-switch" method="post" action="/auth/logout" data-login><input type="hidden" name="return" value="${escapeHtml(back)}">` +
       `<button type="submit" class="nav-menu-item">${escapeHtml(t['reveal.switchAccount'])}</button></form>` +
@@ -1632,6 +1636,30 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       onLimit: (req, res) => errorPage(req, res, 429, theme.strings[lang(res)]['error.ratelimit']),
     });
 
+    if (users) localRoutes(authLimit);
+    else oidcRoutes(authLimit);
+
+    // "Sign out", or "another account" on a secret that is not for this one.
+    app.post('/auth/logout', express.urlencoded({ extended: false, limit: '1kb' }), async (req, res) => {
+      const site = req.get('sec-fetch-site');
+      if (site && site !== 'same-origin') return errorPage(req, res, 403, theme.strings[lang(res)]['error.generic']);
+      if (userOf(res)) await ev(req, res, 'auth.logout');
+      const idToken = await auth.logout(req, res);
+      const back = typeof req.body?.return === 'string' && RETURN.test(req.body.return) ? req.body.return : '';
+      // AUTH_LOGOUT=provider: end the provider's session too, or it signs the same account in again.
+      try {
+        const out = users ? '' : await auth.endSessionUrl(idToken, back);
+        if (out) return res.redirect(303, out);
+      } catch (err) {
+        console.error(`auth: sign-out at the provider not possible: ${/** @type {Error} */ (err).message}`);
+      }
+      res.redirect(303, back ? `/auth/login?fresh=1&return=${encodeURIComponent(back)}` : '/');
+    });
+  }
+
+  /** OpenID Connect: to the provider and back. @param {import('express').RequestHandler} authLimit */
+  function oidcRoutes(authLimit) {
+    if (!auth) return;
     app.get('/auth/login', authLimit, async (req, res) => {
       const back = typeof req.query.return === 'string' ? req.query.return : '/';
       try {
@@ -1670,22 +1698,6 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       }
     });
 
-    // "Sign out", or "another account" on a secret that is not for this one.
-    app.post('/auth/logout', express.urlencoded({ extended: false, limit: '1kb' }), async (req, res) => {
-      const site = req.get('sec-fetch-site');
-      if (site && site !== 'same-origin') return errorPage(req, res, 403, theme.strings[lang(res)]['error.generic']);
-      if (userOf(res)) await ev(req, res, 'auth.logout');
-      const idToken = await auth.logout(req, res);
-      const back = typeof req.body?.return === 'string' && RETURN.test(req.body.return) ? req.body.return : '';
-      // AUTH_LOGOUT=provider: end the provider's session too, or it signs the same account in again.
-      try {
-        const out = await auth.endSessionUrl(idToken, back);
-        if (out) return res.redirect(303, out);
-      } catch (err) {
-        console.error(`auth: sign-out at the provider not possible: ${/** @type {Error} */ (err).message}`);
-      }
-      res.redirect(303, back ? `/auth/login?fresh=1&return=${encodeURIComponent(back)}` : '/');
-    });
 
     // Back from the provider's logout; "another account" goes on to the sign-in.
     app.get('/auth/logged-out', (req, res) => {
@@ -1696,6 +1708,132 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         back = '';
       }
       res.redirect(303, RETURN.test(back) && back !== '/' ? `/auth/login?fresh=1&return=${encodeURIComponent(back)}` : '/');
+    });
+  }
+
+  /**
+   * AUTH_PROVIDER=local: the sign-in form and "Change password". Both are
+   * plain form posts, accepted only from this site (Sec-Fetch-Site, Origin);
+   * failed passwords count per account (LOCAL_LOGIN_ATTEMPTS per
+   * RATE_LIMIT_WINDOW) besides the per-IP limit of /auth/*.
+   * @param {import('express').RequestHandler} authLimit
+   */
+  function localRoutes(authLimit) {
+    if (!auth || !users) return;
+    const form = express.urlencoded({ extended: false, limit: '4kb' });
+    /** @param {import('express').Request} req */
+    const fromHere = (req) => auth.sameOrigin(req);
+    /** @param {string} text @param {'error' | 'ok'} [kind] */
+    const notice = (text, kind = 'error') => (text ? `<p class="notice notice-${kind}" role="${kind === 'error' ? 'alert' : 'status'}">${escapeHtml(text)}</p>` : '');
+    /** @param {unknown} v */
+    const field = (v) => (typeof v === 'string' ? v : '');
+    /** The counter of failed passwords of an account (an HMAC, as for IPs). @param {string} user */
+    const lockKey = (user) => `u:${user}`;
+    /** @param {import('express').Request} req @param {import('express').Response} res @param {number} status @param {{ back?: string, user?: string, error?: string }} [o] */
+    const loginForm = (req, res, status, o = {}) => {
+      const t = theme.strings[lang(res)];
+      res.status(status).type('html').send(
+        page('local-login', req, res, { page: 'login', title: t['auth.button'], heading: t['auth.button'], text: t['local.loginText'], returnTo: o.back || '/', user: o.user || '', notice: notice(o.error || '') }),
+      );
+    };
+
+    app.get('/auth/login', authLimit, (req, res) => {
+      const back = typeof req.query.return === 'string' && RETURN.test(req.query.return) ? req.query.return : '/';
+      if (userOf(res) && req.query.fresh !== '1') return res.redirect(303, back);
+      loginForm(req, res, 200, { back });
+    });
+
+    app.post('/auth/login', authLimit, form, async (req, res) => {
+      const t = theme.strings[lang(res)];
+      if (!fromHere(req)) return errorPage(req, res, 403, t['error.generic']);
+      const back = RETURN.test(field(req.body?.return)) ? field(req.body.return) : '/';
+      const user = field(req.body?.user).trim().toLowerCase().slice(0, 254);
+      const lock = await store.rateLimit('login', lockKey(user), users.c.attempts, config.rateWindow);
+      if (!lock.ok) {
+        res.set('Retry-After', String(lock.retryAfter));
+        await ev(req, res, 'auth.failed', { outcome: 'denied', reason: 'locked' });
+        return loginForm(req, res, 429, { back, user, error: t['local.locked'] });
+      }
+      const r = await users.login(user, req.body?.password);
+      if (!r.ok) {
+        // The address only when the account exists: a password typed into the wrong field stays out of the log.
+        await ev(req, res, 'auth.failed', { outcome: 'denied', reason: r.reason, ...(r.user ? { details: { user: r.user.user } } : {}) });
+        return loginForm(req, res, 401, { back, user, error: t['local.failed'] });
+      }
+      await store.resetHits('login', store.ipKey(lockKey(user)));
+      const who = users.identity(r.user);
+      // A new session for every sign-in; one this browser had ends.
+      const old = auth.sid(req);
+      if (old) await auth.dropSession(old);
+      const sid = await auth.createSession(who);
+      try {
+        await ev(req, res, 'auth.login', { actor: { type: 'user', user: who.user, name: who.name } }, true);
+      } catch {
+        // AUDIT_LOG_FAIL=closed: no sign-in the audit log does not know of.
+        await auth.dropSession(sid);
+        return errorPage(req, res, 503, t['auth.unavailable']);
+      }
+      await tokens?.refresh(who).catch(() => {});
+      auth.setCookie(res, sid);
+      res.redirect(303, back);
+    });
+
+    /** @param {import('express').Request} req @param {import('express').Response} res @param {number} status @param {string} [error] @param {string} [ok] */
+    const passwordForm = (req, res, status, error = '', ok = '') => {
+      const t = theme.strings[lang(res)];
+      res.status(status).type('html').send(
+        page('password', req, res, {
+          page: 'password',
+          title: t['local.passwordTitle'],
+          user: userOf(res)?.user || '',
+          minLength: users.c.minLength,
+          hint: t['local.passwordHint'].replace('{n}', String(users.c.minLength)),
+          notice: notice(error) + notice(ok, 'ok'),
+        }),
+      );
+    };
+    /** The signed-in local account (no API token), else null. @param {import('express').Response} res */
+    const own = (res) => {
+      const u = userOf(res);
+      return u && !u.token && !u.app ? u : null;
+    };
+
+    app.get('/settings/password', (req, res) => {
+      if (!own(res)) return res.redirect(303, '/auth/login?return=%2Fsettings%2Fpassword');
+      passwordForm(req, res, 200);
+    });
+
+    app.post('/settings/password', authLimit, form, async (req, res) => {
+      const t = theme.strings[lang(res)];
+      if (!fromHere(req)) return errorPage(req, res, 403, t['error.generic']);
+      const u = own(res);
+      if (!u) return res.redirect(303, '/auth/login?return=%2Fsettings%2Fpassword');
+      const pw = field(req.body?.password);
+      if (pw !== field(req.body?.repeat)) return passwordForm(req, res, 400, t['local.mismatch']);
+      if (users.passwordProblem(pw)) return passwordForm(req, res, 400, t['local.passwordHint'].replace('{n}', String(users.c.minLength)));
+      // The current password counts like a sign-in, so a left-open session cannot guess it.
+      const lock = await store.rateLimit('login', lockKey(u.user), users.c.attempts, config.rateWindow);
+      if (!lock.ok) {
+        res.set('Retry-After', String(lock.retryAfter));
+        return passwordForm(req, res, 429, t['local.locked']);
+      }
+      const r = await users.login(u.user, req.body?.current);
+      if (!r.ok) {
+        await ev(req, res, 'auth.failed', { outcome: 'denied', reason: 'wrong_password', details: { user: u.user } });
+        return passwordForm(req, res, 400, t['local.wrongCurrent']);
+      }
+      auditReady();
+      const s = await users.setPassword(u.user, pw);
+      if ('error' in s) return passwordForm(req, res, 400, t['local.passwordHint'].replace('{n}', String(users.c.minLength)));
+      await store.resetHits('login', store.ipKey(lockKey(u.user)));
+      await ev(req, res, 'auth.password_changed', { details: { user: u.user } });
+      // The new password ended all sessions (src/users.js): this one gets a new one.
+      const old = auth.sid(req);
+      if (old) await auth.dropSession(old);
+      const who = users.identity(s.user);
+      auth.setCookie(res, await auth.createSession(who));
+      res.locals.user = who;
+      passwordForm(req, res, 200, '', t['local.passwordChanged']);
     });
   }
 
@@ -1934,7 +2072,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   // Admins: the audit log (filter, export, chain check) and all API tokens.
   app.get('/admin', async (req, res, next) => {
-    if (!auth?.c.admin.ui || (!auth.c.admin.users.length && !auth.c.admin.groups.length)) return next();
+    if (!auth?.c.admin.ui || !auth.c.admin.any) return next();
     const t = theme.strings[lang(res)];
     const u = userOf(res);
     if (!u) return void res.type('html').send(page('login', req, res, { page: 'login', title: t['admin.title'], heading: t['admin.title'], text: t['admin.loginText'], returnTo: '/admin' }));

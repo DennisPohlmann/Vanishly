@@ -1,10 +1,11 @@
 // Vanishly - optional sign-in (AUTH_PROVIDER=entra, oidc or a preset such as
 // keycloak, okta, google): OpenID Connect login, sessions, API bearer tokens
 // and the recipient check. People and group search: src/directory/.
+// AUTH_PROVIDER=local: Vanishly's own accounts (src/users.js), same sessions.
 //
 // Keys (below REDIS_PREFIX):
 //   sess:<sha256 of the cookie>  hash  name user mail ids created, it (the ID token, only
-//                                      with AUTH_LOGOUT=provider); expires with the session
+//                                      with AUTH_LOGOUT=provider), sv (local accounts); expires with the session
 //   oidc:<state>                 hash  PKCE verifier, nonce, return path; 10 minutes
 // Recipients are stored as HMAC-SHA256(AUTH_SECRET, "u:<address>" | "g:<group>"),
 // so Redis holds neither the addresses nor the groups a secret is for. A
@@ -16,6 +17,7 @@ import * as client from 'openid-client';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { groupValue } from './config.js';
 import { createDirectory } from './directory/index.js';
+import { Users } from './users.js';
 
 /** @typedef {NonNullable<import('./config.js').Config['auth']>} AuthConfig */
 /**
@@ -32,7 +34,7 @@ const EMAIL = /^[^\s@<>"',;]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 const STATE_TTL = 600;
 // Paths a login may return to: the home page, a secret, a receipt, the
 // API token page, the admin page.
-const RETURN = /^\/((s|r)\/[A-Za-z0-9_-]{22}|settings\/tokens|admin|secrets)?$/;
+const RETURN = /^\/((s|r)\/[A-Za-z0-9_-]{22}|settings\/(tokens|password)|admin|secrets)?$/;
 
 /** @param {string} v */
 function sha256(v) {
@@ -74,6 +76,8 @@ export class Auth {
     this.mailCache = new Map();
     /** @type {Map<string, { people: { name: string, user: string, mail: string }[], until: number }>} people search, 1 minute */
     this.peopleCache = new Map();
+    /** AUTH_PROVIDER=local: the accounts. */
+    this.users = cfg.local ? new Users(cfg, store, (k, v) => this.hash(k, v)) : null;
   }
 
   /** The provider's settings, fetched once (again after a failure). */
@@ -116,6 +120,7 @@ export class Auth {
    * @param {string} csp
    */
   csp(csp) {
+    if (this.users) return csp;
     if (!this.formOrigins) {
       this.formOrigins = new URL(this.c.issuer).origin;
       this.oidc()
@@ -271,7 +276,7 @@ export class Auth {
   isAdmin(user) {
     if (!user?.user || user.app || user.token) return false;
     const { users, groups } = this.c.admin;
-    return users.includes(user.user) || groups.some((g) => user.ids.includes(this.hash('g', g)));
+    return Boolean(user.admin) || users.includes(user.user) || groups.some((g) => user.ids.includes(this.hash('g', g)));
   }
 
   // ------------------------------------------------------------ directory
@@ -414,7 +419,7 @@ export class Auth {
     const key = `${this.p}sess:${sha256(sid)}`;
     await this.redis
       .multi()
-      .hSet(key, { name: who.name, user: who.user, ...(who.mail ? { mail: who.mail } : {}), ids: who.ids.join(' '), created: String(Date.now()), ...(idToken ? { it: idToken } : {}) })
+      .hSet(key, { name: who.name, user: who.user, ...(who.mail ? { mail: who.mail } : {}), ids: who.ids.join(' '), created: String(Date.now()), ...(idToken ? { it: idToken } : {}), ...(who.sv ? { sv: who.sv } : {}) })
       .expire(key, this.c.sessionTtl)
       .exec();
     return sid;
@@ -489,14 +494,29 @@ export class Auth {
     if (bearer) return this.c.apiAudience ? this.bearer(bearer) : null;
     const sid = this.sid(req);
     if (!sid) return null;
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      const site = req.get('sec-fetch-site');
-      const origin = req.get('origin');
-      if ((site && site !== 'same-origin') || (origin && origin !== new URL(this.c.redirectUri).origin)) return null;
-    }
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !this.sameOrigin(req)) return null;
     const h = await this.redis.hGetAll(`${this.p}sess:${sha256(sid)}`);
     if (!h?.ids) return null;
+    if (this.users) {
+      // Local accounts: name, role and groups as they are now; disabled, deleted
+      // or a new password (another sv) end the session.
+      const u = await this.users.get(h.user);
+      return u && !u.disabled && u.sv === h.sv ? this.users.identity(u) : null;
+    }
     return { name: h.name, user: h.user, ...(h.mail ? { mail: h.mail } : {}), ids: h.ids.split(' ').filter(Boolean) };
+  }
+
+  /**
+   * A request from this site (CSRF): Sec-Fetch-Site where the browser sends
+   * it, else Origin. With Referrer-Policy: no-referrer a form post has
+   * "Origin: null", so Sec-Fetch-Site decides when there is one.
+   * @param {import('express').Request} req
+   */
+  sameOrigin(req) {
+    const site = req.get('sec-fetch-site');
+    if (site) return site === 'same-origin';
+    const origin = req.get('origin');
+    return !origin || origin === new URL(this.c.redirectUri).origin;
   }
 
   /**
