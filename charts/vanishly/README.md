@@ -309,7 +309,7 @@ provider: [docs/providers](https://github.com/DennisPohlmann/Vanishly/blob/main/
 | redis.nodeSelector | object | `{}` | Node selector. |
 | redis.persistence.accessModes | list | `["ReadWriteOnce"]` | Access modes of the claim. |
 | redis.persistence.appendfsync | string | `"everysec"` | appendfsync: always, everysec or no. |
-| redis.persistence.enabled | bool | `false` | Keep the data over restarts: append-only file on a PersistentVolumeClaim. Off: memory only. Needed for the admin interface (audit log in Redis, API tokens, technical users, token permissions). Note: the (encrypted) secrets are then written to disk too. |
+| redis.persistence.enabled | bool | `false` | Keep the data over restarts: append-only file on a PersistentVolumeClaim. Off: memory only. Needed for the admin interface (audit log in Redis, API tokens, technical users, token permissions) and required with config.AUTH_PROVIDER=local (the user accounts; the chart refuses it off). Note: the (encrypted) secrets are then written to disk too. |
 | redis.persistence.existingClaim | string | `""` | Use an existing claim instead of creating one. |
 | redis.persistence.size | string | `"1Gi"` | Size of the volume. |
 | redis.persistence.storageClass | string | `""` | Storage class ("" = the cluster default). |

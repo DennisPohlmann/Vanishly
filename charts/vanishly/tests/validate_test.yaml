@@ -8,6 +8,24 @@ capabilities:
   majorVersion: 1
   minorVersion: 33
 tests:
+  - it: AUTH_PROVIDER=local needs Redis persistence (the accounts live there)
+    set:
+      config:
+        AUTH_PROVIDER: local
+    asserts:
+      - failedTemplate:
+          errorPattern: "AUTH_PROVIDER=local keeps the user accounts in Redis: set redis.persistence.enabled=true"
+
+  - it: AUTH_PROVIDER=local with Redis persistence renders
+    set:
+      config:
+        AUTH_PROVIDER: local
+      redis:
+        persistence:
+          enabled: true
+    asserts:
+      - notFailedTemplate: {}
+
   - it: needs an external Redis when the bundled one is off
     set:
       redis:

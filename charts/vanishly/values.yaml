@@ -749,7 +749,8 @@ redis:
   dataSizeLimit: 64Mi
   persistence:
     # -- Keep the data over restarts: append-only file on a PersistentVolumeClaim. Off: memory only.
-    # Needed for the admin interface (audit log in Redis, API tokens, technical users, token permissions).
+    # Needed for the admin interface (audit log in Redis, API tokens, technical users, token permissions)
+    # and required with config.AUTH_PROVIDER=local (the user accounts; the chart refuses it off).
     # Note: the (encrypted) secrets are then written to disk too.
     enabled: false
     # -- Size of the volume.

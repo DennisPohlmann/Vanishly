@@ -41,7 +41,9 @@ and `RECIPIENTS_DIRECTORY_ONLY` (no directory), and `RECIPIENT_GROUPS=*`
 
 **Redis must keep its data** (append-only file or snapshots on a volume):
 the users have no expiry. `/admin` warns when Redis has no persistence.
-`docker-compose/local` sets this up.
+`docker-compose/local` sets this up; the Helm chart refuses
+`config.AUTH_PROVIDER=local` with its bundled Redis unless
+`redis.persistence.enabled=true`.
 
 ## Users
 
