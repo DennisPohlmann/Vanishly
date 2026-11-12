@@ -712,7 +712,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^$|^(none|entra|oidc|keycloak|okta|auth0|google|ping|jumpcloud|cognito)$"
+              "pattern": "^$|^(none|entra|oidc|keycloak|okta|auth0|google|ping|jumpcloud|cognito|local)$"
             }
           ]
         },
@@ -874,6 +874,47 @@
             {
               "type": "string",
               "pattern": "^$|^\\s*[^\\s@]{1,64}@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+\\s*$"
+            }
+          ]
+        },
+        "LOCAL_ADMIN_USERNAME": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^\\s*[^\\s@]{1,64}@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+\\s*$"
+            }
+          ]
+        },
+        "LOCAL_ADMIN_PASSWORD_FILE": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "LOCAL_PASSWORD_MIN_LENGTH": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 128
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^[0-9]+$"
+            }
+          ]
+        },
+        "LOCAL_LOGIN_ATTEMPTS": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^[0-9]+$"
             }
           ]
         },

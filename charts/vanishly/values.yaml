@@ -176,7 +176,7 @@ config:
   ENABLE_THEME_TOGGLE: ""
   ENABLE_GITHUB_LINK: ""
   # == Sign-in and recipients (docs/CONFIG.md); needs BASE_URL
-  # none, entra, keycloak, okta, auth0, google, ping, jumpcloud, cognito or oidc (none: no login, leave the rest empty).
+  # none, entra, keycloak, okta, auth0, google, ping, jumpcloud, cognito, oidc or local (Vanishly's own accounts; none: no login, leave the rest empty).
   AUTH_PROVIDER: ""
   # Entra ID: directory (tenant) id, a GUID.
   ENTRA_TENANT_ID: ""
@@ -221,6 +221,16 @@ config:
   DIRECTORY_GOOGLE_CREDENTIALS_FILE: ""
   # google: admin address the service account acts for.
   DIRECTORY_GOOGLE_ADMIN: ""
+  # == Local accounts (AUTH_PROVIDER=local only; docs/providers/local.md). Redis must keep its data (redis.persistence).
+  # The first admin's e-mail address, created only while there are no users yet.
+  LOCAL_ADMIN_USERNAME: ""
+  # LOCAL_ADMIN_PASSWORD is a credential: set it through secretConfig or existingSecret, not here.
+  # File with the first admin's password instead.
+  LOCAL_ADMIN_PASSWORD_FILE: ""
+  # Minimum password length, 8-128 (12).
+  LOCAL_PASSWORD_MIN_LENGTH: ""
+  # Failed sign-ins per account and RATE_LIMIT_WINDOW before a lock, 1-100 (5).
+  LOCAL_LOGIN_ATTEMPTS: ""
   # AUTH_SECRET (at least 32 random characters) is a credential: set it through secretConfig or existingSecret, not here.
   # File with AUTH_SECRET instead.
   AUTH_SECRET_FILE: ""

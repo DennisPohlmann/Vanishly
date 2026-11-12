@@ -325,3 +325,48 @@ test('external Redis: REDIS_URL_FILE and REDIS_TLS_CA_FILE', () => {
   assert.throws(() => loadConfig({ REDIS_URL: 'rediss://r:6380', REDIS_TLS_CA_FILE: join(dir, 'nope.pem') }), /REDIS_TLS_CA_FILE: cannot read/);
   assert.throws(() => loadConfig({ REDIS_URL: 'rediss://r:6380', REDIS_TLS_CA_FILE: urlFile }), /no PEM certificate/);
 });
+
+// AUTH_PROVIDER=local: Vanishly's own accounts.
+const LOCAL = { BASE_URL: 'https://ots.example.com', AUTH_PROVIDER: 'local', AUTH_SECRET: 'x'.repeat(40), LOCAL_ADMIN_USERNAME: 'Admin@Example.com', LOCAL_ADMIN_PASSWORD: 'change-me-long-pw' };
+
+test('AUTH_PROVIDER=local: a valid setup, the first admin, password rules', () => {
+  const c = loadConfig(LOCAL);
+  assert.equal(c.auth?.provider, 'local');
+  assert.deepEqual(c.auth?.local, { adminUser: 'admin@example.com', adminPassword: 'change-me-long-pw', minLength: 12, attempts: 5 });
+  assert.equal(c.auth?.admin.any, true, 'admins come from the accounts');
+  assert.equal(c.auth?.logout, 'local');
+  assert.equal(c.auth?.clientSecret, '');
+  // Without the first admin the settings are fine; the start checks the store (src/users.js).
+  assert.equal(loadConfig({ ...LOCAL, LOCAL_ADMIN_USERNAME: '', LOCAL_ADMIN_PASSWORD: '' }).auth?.local?.adminUser, '');
+  assert.throws(() => loadConfig({ ...LOCAL, LOCAL_ADMIN_PASSWORD: '' }), /LOCAL_ADMIN_USERNAME and LOCAL_ADMIN_PASSWORD .* go together/);
+  assert.throws(() => loadConfig({ ...LOCAL, LOCAL_ADMIN_USERNAME: '' }), /go together/);
+  assert.throws(() => loadConfig({ ...LOCAL, LOCAL_ADMIN_USERNAME: 'admin' }), /LOCAL_ADMIN_USERNAME: an e-mail address/);
+  assert.throws(() => loadConfig({ ...LOCAL, LOCAL_ADMIN_PASSWORD: 'short' }), /LOCAL_ADMIN_PASSWORD: 12 to 1024/);
+  assert.throws(() => loadConfig({ ...LOCAL, LOCAL_PASSWORD_MIN_LENGTH: '20' }), /LOCAL_ADMIN_PASSWORD: 20 to 1024/);
+  assert.throws(() => loadConfig({ ...LOCAL, LOCAL_PASSWORD_MIN_LENGTH: '7' }), /LOCAL_PASSWORD_MIN_LENGTH/);
+  assert.throws(() => loadConfig({ ...LOCAL, LOCAL_LOGIN_ATTEMPTS: '0' }), /LOCAL_LOGIN_ATTEMPTS/);
+  const file = join(mkdtempSync(join(tmpdir(), 'vanishly-')), 'pw');
+  writeFileSync(file, 'change-me-from-a-file\n');
+  assert.equal(loadConfig({ ...LOCAL, LOCAL_ADMIN_PASSWORD: '', LOCAL_ADMIN_PASSWORD_FILE: file }).auth?.local?.adminPassword, 'change-me-from-a-file');
+  assert.throws(() => loadConfig({ ...LOCAL, LOCAL_ADMIN_PASSWORD_FILE: file }), /both set/);
+  // Required as with every provider.
+  assert.throws(() => loadConfig({ ...LOCAL, AUTH_SECRET: '' }), /AUTH_SECRET: at least 32/);
+  assert.throws(() => loadConfig({ ...LOCAL, BASE_URL: '' }), /BASE_URL is required with AUTH_PROVIDER=local/);
+  // Groups of the accounts: listed groups and ADMIN_GROUPS work without a claim; no group search.
+  assert.deepEqual(loadConfig({ ...LOCAL, RECIPIENT_GROUPS: 'IT=it', ADMIN_GROUPS: 'ops' }).auth?.groups.list, [{ name: 'IT', id: 'it' }]);
+  assert.throws(() => loadConfig({ ...LOCAL, RECIPIENT_GROUPS: '*' }), /RECIPIENT_GROUPS=\* is not available with AUTH_PROVIDER=local/);
+});
+
+test('AUTH_PROVIDER=local: every setting of the OpenID Connect providers stops the start, naming both', () => {
+  const oidcOnly = [...SETTINGS.filter((k) => /^(ENTRA|OIDC|DIRECTORY)_/.test(k)), 'AUTH_ALLOWED_DOMAINS', 'AUTH_LOGOUT', 'AUTH_AUTO_LOGIN', 'AUTH_API_AUDIENCE', 'RECIPIENT_USER_GROUP', 'RECIPIENTS_DIRECTORY_ONLY'];
+  assert.ok(oidcOnly.length > 25);
+  for (const k of oidcOnly) assert.throws(() => loadConfig({ ...LOCAL, [k]: 'x' }), new RegExp(`^Error: ${k} does not apply to AUTH_PROVIDER=local`), k);
+});
+
+test('LOCAL_* settings without AUTH_PROVIDER=local stop the start', () => {
+  const kc = envFile('docker-compose/keycloak/.env.example');
+  for (const k of SETTINGS.filter((s) => s.startsWith('LOCAL_'))) {
+    assert.throws(() => loadConfig({ [k]: '12' }), new RegExp(`${k} needs AUTH_PROVIDER`), k);
+    assert.throws(() => loadConfig({ ...kc, [k]: '12' }), new RegExp(`${k} does not apply to AUTH_PROVIDER=keycloak`), k);
+  }
+});

@@ -176,7 +176,8 @@ export const SETTINGS = [
   'ENTRA_AUTHORITY', 'ENTRA_GRAPH', 'ENTRA_GRAPH_URL', 'ENTRA_SHOW_ADDRESS', 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET',
   'OIDC_CLIENT_SECRET_FILE', 'OIDC_SCOPES', 'OIDC_GROUPS_CLAIM', 'AUTH_ALLOWED_DOMAINS', 'DIRECTORY_API', 'DIRECTORY_URL',
   'DIRECTORY_CLIENT_ID', 'DIRECTORY_CLIENT_SECRET', 'DIRECTORY_CLIENT_SECRET_FILE', 'DIRECTORY_API_TOKEN',
-  'DIRECTORY_API_TOKEN_FILE', 'DIRECTORY_GOOGLE_CREDENTIALS_FILE', 'DIRECTORY_GOOGLE_ADMIN', 'AUTH_SECRET', 'AUTH_SECRET_FILE', 'AUTH_SESSION_TTL', 'AUTH_LOGOUT', 'AUTH_AUTO_LOGIN', 'AUTH_CREATE', 'AUTH_API_AUDIENCE', 'RECIPIENTS', 'RECIPIENTS_MAX', 'RECIPIENT_GROUPS',
+  'DIRECTORY_API_TOKEN_FILE', 'DIRECTORY_GOOGLE_CREDENTIALS_FILE', 'DIRECTORY_GOOGLE_ADMIN',
+  'LOCAL_ADMIN_USERNAME', 'LOCAL_ADMIN_PASSWORD', 'LOCAL_ADMIN_PASSWORD_FILE', 'LOCAL_PASSWORD_MIN_LENGTH', 'LOCAL_LOGIN_ATTEMPTS', 'AUTH_SECRET', 'AUTH_SECRET_FILE', 'AUTH_SESSION_TTL', 'AUTH_LOGOUT', 'AUTH_AUTO_LOGIN', 'AUTH_CREATE', 'AUTH_API_AUDIENCE', 'RECIPIENTS', 'RECIPIENTS_MAX', 'RECIPIENT_GROUPS',
   'RECIPIENT_USER_GROUP', 'RECIPIENT_DOMAINS', 'RECIPIENTS_DIRECTORY_ONLY', 'RECEIPT_SHOW_VIEWER',
   'ADMIN_USERS', 'ADMIN_GROUPS', 'AUDIT_ADMIN_VIEW', 'ADMIN_BURN',
   'API_TOKENS', 'API_TOKEN_REQUIRED', 'API_TOKEN_USERS', 'API_TOKEN_GROUPS', 'API_TOKEN_IP_BINDING',
@@ -294,7 +295,10 @@ const PRESETS = {
     groupSearch: true,
   },
 };
-export const PROVIDERS = ['entra', ...Object.keys(PRESETS)];
+// local: Vanishly's own user accounts (src/users.js), no OpenID Connect.
+export const PROVIDERS = ['entra', ...Object.keys(PRESETS), 'local'];
+// What only the OpenID Connect providers use: refused with AUTH_PROVIDER=local.
+const OIDC_ONLY = ['AUTH_ALLOWED_DOMAINS', 'AUTH_LOGOUT', 'AUTH_AUTO_LOGIN', 'AUTH_API_AUDIENCE', 'RECIPIENT_USER_GROUP', 'RECIPIENTS_DIRECTORY_ONLY'];
 
 /**
  * A group value as it is compared and hashed (the same in config, token and form).
@@ -429,15 +433,18 @@ function authConfig(env, baseUrl) {
     return null;
   }
   const entra = provider === 'entra';
-  const preset = entra ? null : PRESETS[provider];
-  const other = AUTH_SETTINGS.find((k) => env[k] && (entra ? /^(OIDC|DIRECTORY)_/.test(k) : k.startsWith('ENTRA_')));
+  const local = provider === 'local';
+  const preset = entra || local ? null : PRESETS[provider];
+  const other = AUTH_SETTINGS.find(
+    (k) => env[k] && (local ? /^(ENTRA|OIDC|DIRECTORY)_/.test(k) || OIDC_ONLY.includes(k) : k.startsWith('LOCAL_') || (entra ? /^(OIDC|DIRECTORY)_/.test(k) : k.startsWith('ENTRA_'))),
+  );
   if (other) throw new Error(`${other} does not apply to AUTH_PROVIDER=${provider}${entra && other.startsWith('DIRECTORY_') ? ' (Entra uses ENTRA_GRAPH)' : ''}`);
   /** @param {string} name */
   const need = (name) => {
     if (!env[name]) throw new Error(`${name} is required with AUTH_PROVIDER=${provider}`);
     return env[name] || '';
   };
-  if (!baseUrl) throw new Error(`BASE_URL is required with AUTH_PROVIDER=${provider} (it gives the redirect URI)`);
+  if (!baseUrl) throw new Error(`BASE_URL is required with AUTH_PROVIDER=${provider} (${local ? 'the origin the sign-in form must come from' : 'it gives the redirect URI'})`);
   // https only; plain http just for a test server on this machine.
   /** @param {string} name @param {string} def @param {boolean} [path] */
   const url = (name, def, path = false) => {
@@ -449,9 +456,13 @@ function authConfig(env, baseUrl) {
   };
   const prefix = entra ? 'ENTRA' : 'OIDC';
   let tenant = '';
-  let issuer;
+  let issuer = '';
   let authority = '';
-  if (entra) {
+  let clientId = '';
+  let clientSecret = '';
+  if (local) {
+    // No provider: src/users.js checks the passwords.
+  } else if (entra) {
     tenant = need('ENTRA_TENANT_ID').toLowerCase();
     if (!GUID.test(tenant)) throw new Error('ENTRA_TENANT_ID: the directory (tenant) id, a GUID');
     authority = url('ENTRA_AUTHORITY', 'https://login.microsoftonline.com');
@@ -464,11 +475,13 @@ function authConfig(env, baseUrl) {
     // Auth0 and JumpCloud name their issuer with a trailing slash; the token must match it exactly.
     if (preset?.slash) issuer += '/';
   }
-  const clientId = need(`${prefix}_CLIENT_ID`);
-  if (entra && !GUID.test(clientId)) throw new Error('ENTRA_CLIENT_ID: the application (client) id, a GUID');
-  if (!/^[\w.:@/-]{1,200}$/.test(clientId)) throw new Error(`${prefix}_CLIENT_ID: letters, digits and _ . : @ / -`);
-  const clientSecret = named(`${prefix}_CLIENT_SECRET`, () => secretValue(env, `${prefix}_CLIENT_SECRET`));
-  if (!clientSecret) throw new Error(`${prefix}_CLIENT_SECRET (or ${prefix}_CLIENT_SECRET_FILE) is required with AUTH_PROVIDER=${provider}`);
+  if (!local) {
+    clientId = need(`${prefix}_CLIENT_ID`);
+    if (entra && !GUID.test(clientId)) throw new Error('ENTRA_CLIENT_ID: the application (client) id, a GUID');
+    if (!/^[\w.:@/-]{1,200}$/.test(clientId)) throw new Error(`${prefix}_CLIENT_ID: letters, digits and _ . : @ / -`);
+    clientSecret = named(`${prefix}_CLIENT_SECRET`, () => secretValue(env, `${prefix}_CLIENT_SECRET`));
+    if (!clientSecret) throw new Error(`${prefix}_CLIENT_SECRET (or ${prefix}_CLIENT_SECRET_FILE) is required with AUTH_PROVIDER=${provider}`);
+  }
   const secret = named('AUTH_SECRET', () => secretValue(env, 'AUTH_SECRET'));
   if (secret.length < 32) throw new Error('AUTH_SECRET: at least 32 characters (e.g. openssl rand -base64 48)');
   if (secret === clientSecret) throw new Error(`AUTH_SECRET must differ from ${prefix}_CLIENT_SECRET`);
@@ -503,7 +516,7 @@ function authConfig(env, baseUrl) {
           : `RECIPIENT_GROUPS=* is not available with AUTH_PROVIDER=${provider}; list the groups as Name=<value>`,
     );
   }
-  if ((groups.any || groups.list.length) && !groupsClaim && !directory) {
+  if ((groups.any || groups.list.length) && !groupsClaim && !directory && !local) {
     throw new Error(
       provider === 'google'
         ? 'RECIPIENT_GROUPS with AUTH_PROVIDER=google needs DIRECTORY_API=true (Google puts no groups into the token)'
@@ -530,7 +543,7 @@ function authConfig(env, baseUrl) {
   }
   // Sign out also at the provider (RP-initiated logout), so the next sign-in
   // asks again. Not for Entra by default: that ends the Microsoft 365 session too.
-  const logout = env.AUTH_LOGOUT || (entra ? 'local' : 'provider');
+  const logout = env.AUTH_LOGOUT || (entra || local ? 'local' : 'provider');
   if (!/^(provider|local)$/.test(logout)) throw new Error('AUTH_LOGOUT: provider or local');
   // Only addresses of users in the directory (Entra: UPN or mail, checked in Graph).
   const directoryOnly = named('RECIPIENTS_DIRECTORY_ONLY', () => flag(env.RECIPIENTS_DIRECTORY_ONLY, false));
@@ -564,12 +577,13 @@ function authConfig(env, baseUrl) {
     named(name, () => {
       const list = (env[name] || '').split(',').map((g) => g.trim()).filter(Boolean);
       for (const g of list) if (g.length > 200 || /[\x00-\x1f]/.test(g) || (entra && !GUID.test(g))) throw new Error(`"${g}" is no ${entra ? 'group object id (GUID)' : 'group'}`);
-      if (list.length && !groupsClaim && !directory) throw new Error(`groups need OIDC_GROUPS_CLAIM (or the directory) with AUTH_PROVIDER=${provider}`);
+      if (list.length && !groupsClaim && !directory && !local) throw new Error(`groups need OIDC_GROUPS_CLAIM (or the directory) with AUTH_PROVIDER=${provider}`);
       return list.map((g) => groupValue(g, lower, groupPaths));
     });
   // Admins: may read the audit log and see and revoke every API token.
   // ADMIN_UI: the admin pages (/admin) and the admin API at all.
-  const admin = { users: addresses('ADMIN_USERS'), groups: groupList('ADMIN_GROUPS'), auditView: sw('AUDIT_ADMIN_VIEW', true), ui: sw('ADMIN_UI', true), burn: sw('ADMIN_BURN', true) };
+  // With AUTH_PROVIDER=local also the users with the role "admin".
+  const admin = { users: addresses('ADMIN_USERS'), groups: groupList('ADMIN_GROUPS'), auditView: sw('AUDIT_ADMIN_VIEW', true), ui: sw('ADMIN_UI', true), burn: sw('ADMIN_BURN', true), any: false };
   // API_TOKENS: personal API tokens (src/tokens.js).
   const tokensOn = sw('API_TOKENS', false);
   if (!tokensOn) {
@@ -579,7 +593,8 @@ function authConfig(env, baseUrl) {
     if (svc) throw new Error(`${svc} needs API_TOKENS=true`);
   }
   const tokens = tokensOn ? tokenConfig(env, { num, sw, addresses, groupList, normGroup: (g) => groupValue(g, lower, groupPaths), entra }) : null;
-  const anyAdmin = admin.users.length > 0 || admin.groups.length > 0;
+  const anyAdmin = local || admin.users.length > 0 || admin.groups.length > 0;
+  admin.any = anyAdmin;
   // On by default where possible: only an explicit "true" without its prerequisites is an error.
   if (tokens?.adminPolicy && (!anyAdmin || !admin.ui)) {
     if (env.API_TOKEN_ADMIN_POLICY) throw new Error('API_TOKEN_ADMIN_POLICY needs ADMIN_USERS or ADMIN_GROUPS (who sets the policies) and ADMIN_UI=true');
@@ -629,9 +644,26 @@ function authConfig(env, baseUrl) {
     // MY_SECRETS: "My secrets" in the user menu (needs AUDIT_LOG_REDIS, checked below).
     mySecrets: sw('MY_SECRETS', true),
     tokens,
+    local: local ? localConfig(env, num) : null,
     // Groups the identity must keep besides RECIPIENT_GROUPS (admins, token makers).
     extraGroups: [...new Set([...admin.groups, ...(tokens?.groups || []), ...(tokens?.scopesByGroup.map((g) => g.group) || [])])],
   };
+}
+
+/**
+ * AUTH_PROVIDER=local: the first admin (only used while there are no users)
+ * and the password and login rules.
+ * @param {NodeJS.ProcessEnv} env
+ * @param {(n: string, d: number, min: number, max: number) => number} num
+ */
+function localConfig(env, num) {
+  const minLength = num('LOCAL_PASSWORD_MIN_LENGTH', 12, 8, 128);
+  const adminUser = (env.LOCAL_ADMIN_USERNAME || '').trim().toLowerCase();
+  if (adminUser && !/^[^\s@<>"',;]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(adminUser)) throw new Error('LOCAL_ADMIN_USERNAME: an e-mail address (local users sign in with their address)');
+  const adminPassword = named('LOCAL_ADMIN_PASSWORD', () => secretValue(env, 'LOCAL_ADMIN_PASSWORD'));
+  if (Boolean(adminUser) !== Boolean(adminPassword)) throw new Error('LOCAL_ADMIN_USERNAME and LOCAL_ADMIN_PASSWORD (or LOCAL_ADMIN_PASSWORD_FILE) go together');
+  if (adminPassword && (adminPassword.length < minLength || adminPassword.length > 1024)) throw new Error(`LOCAL_ADMIN_PASSWORD: ${minLength} to 1024 characters (LOCAL_PASSWORD_MIN_LENGTH)`);
+  return { adminUser, adminPassword, minLength, attempts: num('LOCAL_LOGIN_ATTEMPTS', 5, 1, 100) };
 }
 
 /**
@@ -1032,7 +1064,7 @@ export function loadConfig(env = process.env) {
   if (auth && !config.features.burn) auth.admin.burn = false;
   if (auth && env.MY_SECRETS && flag(env.MY_SECRETS, true) && !config.audit?.redis) throw new Error('MY_SECRETS needs AUDIT_LOG=true with AUDIT_LOG_REDIS=true (the overview reads the audit stream)');
   if (auth) auth.mySecrets = Boolean(auth.mySecrets && config.audit?.redis);
-  if (auth) auth.admin.auditView = Boolean(auth.admin.auditView && auth.admin.ui && config.audit && (config.audit.file || config.audit.redis) && (auth.admin.users.length || auth.admin.groups.length));
+  if (auth) auth.admin.auditView = Boolean(auth.admin.auditView && auth.admin.ui && config.audit && (config.audit.file || config.audit.redis) && auth.admin.any);
   if (!config.api) {
     config.apiDocs = false;
     config.features.shareApi = false;

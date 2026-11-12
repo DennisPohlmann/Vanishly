@@ -129,7 +129,7 @@ For the web form only, without any scripts, also set
 `ENABLE_CREATE_API=false` and `ENABLE_REVEAL_API=false`, or `ENABLE_API=false`
 for the whole API.
 
-### Sign-in and recipients (`AUTH_*`, `ENTRA_*`, `OIDC_*`, `DIRECTORY_*`, `RECIPIENT*`)
+### Sign-in and recipients (`AUTH_*`, `ENTRA_*`, `OIDC_*`, `DIRECTORY_*`, `LOCAL_*`, `RECIPIENT*`)
 
 Off by default (`AUTH_PROVIDER=none`): no login anywhere, and setting any
 of the others then stops the start. With a provider, senders sign in and
@@ -141,7 +141,10 @@ only that provider has) and what each supports:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AUTH_PROVIDER` | `none` | `none`, `entra` (Microsoft Entra ID), a preset (`keycloak`, `okta`, `auth0`, `google`, `ping`, `jumpcloud`, `cognito`) or `oidc` (any other OpenID Connect provider). The presets use the `OIDC_*` settings and know the provider's issuer format, groups claim and directory ([providers](providers/README.md)). Needs `BASE_URL`: the redirect URI is `<BASE_URL>/auth/callback` |
+| `AUTH_PROVIDER` | `none` | `none`, `entra` (Microsoft Entra ID), a preset (`keycloak`, `okta`, `auth0`, `google`, `ping`, `jumpcloud`, `cognito`) or `oidc` (any other OpenID Connect provider), or `local` (Vanishly's own user accounts in Redis, no provider; [local.md](providers/local.md)). The presets use the `OIDC_*` settings and know the provider's issuer format, groups claim and directory ([providers](providers/README.md)). Needs `BASE_URL`: the redirect URI is `<BASE_URL>/auth/callback` (with `local`: the origin the sign-in form must come from) |
+| `LOCAL_ADMIN_USERNAME`, `LOCAL_ADMIN_PASSWORD` (`_FILE`) | | `local` only: the first admin (an e-mail address and its password), created at the start only while Redis holds no users; afterwards ignored, so a changed password stays. Without users and without them the start fails. Both or neither |
+| `LOCAL_PASSWORD_MIN_LENGTH` | `12` | `local` only: minimum password length, 8 to 128 (at most 1024 characters); also checked for `LOCAL_ADMIN_PASSWORD` |
+| `LOCAL_LOGIN_ATTEMPTS` | `5` | `local` only: sign-ins (and checks of the current password) per account and `RATE_LIMIT_WINDOW`; over it the account is locked until the window ends, a success clears the count. Comes on top of the per-IP limit of `/auth/*` |
 | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` (`_FILE`), `ENTRA_AUTHORITY`, `ENTRA_GRAPH`, `ENTRA_GRAPH_URL`, `ENTRA_SHOW_ADDRESS` | | `entra` only: tenant, app registration, national clouds, Microsoft Graph for the group and people search, the address shown for a person (UPN or mail address) ([entra.md](providers/entra.md#settings)) |
 | `OIDC_ISSUER` | (required for `oidc` and the presets) | Issuer URL, e.g. `https://sso.example.com/realms/main`; its `/.well-known/openid-configuration` must be reachable. Auth0 and JumpCloud keep their trailing `/` |
 | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | (required for `oidc` and the presets) | The confidential client; `OIDC_CLIENT_SECRET_FILE` instead of the secret |
@@ -158,6 +161,20 @@ only that provider has) and what each supports:
 | `AUTH_AUTO_LOGIN` | `false` | `true`: a visitor who is not signed in is signed in automatically when the provider still knows them (silent sign-in, `prompt=none`, once per browser tab); otherwise the page stays as it is. A sign-out in that tab is not undone |
 | `AUTH_CREATE` | `signed-in` | Who may create secrets: `signed-in` or `anyone` (restricting a secret always needs a sign-in) |
 | `RECIPIENTS` | `optional` | `off` (no recipients field), `optional`, or `required` (every secret must name someone) |
+
+**`AUTH_PROVIDER=local` and the other settings.** These stop the start
+with `<NAME> does not apply to AUTH_PROVIDER=local`: every `ENTRA_*`,
+`OIDC_*` and `DIRECTORY_*`, `AUTH_ALLOWED_DOMAINS`, `AUTH_LOGOUT` (the
+sign-out is always local), `AUTH_AUTO_LOGIN` (no provider session),
+`AUTH_API_AUDIENCE` (no provider tokens; use `API_TOKENS`),
+`RECIPIENT_USER_GROUP` and `RECIPIENTS_DIRECTORY_ONLY` (no directory);
+`RECIPIENT_GROUPS=*` stops it too (no group search; list the groups). Required as
+with every provider: `BASE_URL`, `AUTH_SECRET`, and Redis with
+persistence (the accounts have no expiry; `/admin` warns without it).
+Groups come from the accounts, so `RECIPIENT_GROUPS=Name=<group>`,
+`ADMIN_GROUPS` and `API_TOKEN_GROUPS` need no groups claim. The other way
+round, a `LOCAL_*` setting with any other `AUTH_PROVIDER` (or `none`) stops
+the start.
 | `RECIPIENTS_MAX` | `10` | Most recipients (addresses and groups) per secret, 1 to 50 |
 | `RECIPIENT_GROUPS` | (none) | Groups a sender may search for and pick in the form: `Name=<id>,...` (Entra: the group's object id; otherwise the value in the groups claim), or `*` for a search over all groups in the directory (Entra with `ENTRA_GRAPH=true`; `keycloak`, `okta`, `google`, `cognito` with `DIRECTORY_API=true`) |
 | `RECIPIENT_USER_GROUP` | (none) | People search in the form: the group whose members the form suggests while typing a name (Entra: object id; Keycloak: path or id; Okta, PingOne, JumpCloud: group id; Auth0: role id; Google: group address; Cognito: group name). Needs `ENTRA_GRAPH=true` or `DIRECTORY_API=true` ([details](#people-search)) |
