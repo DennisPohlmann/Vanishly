@@ -53,7 +53,9 @@ see `/api/docs`): create (e-mail address, display name, role `user` or
 enable, reset the password, delete.
 
 - The last active admin cannot be demoted, disabled or deleted; nobody can
-  delete, disable or demote themselves.
+  delete, disable or demote themselves (the tab shows no "Disable" or
+  "Remove" on your own row and locks your role and state; the API answers
+  `409 self`).
 - Disabling, deleting or a new password ends the user's sessions at once;
   disabling and deleting also revokes their API tokens.
 - Role and groups count from the next request on.

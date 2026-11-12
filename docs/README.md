@@ -12,7 +12,7 @@
 | Templates | [templates/README.md](../templates/README.md) | own designs: logo, CSS, pictures, views |
 | Translations | [CONFIG.md](CONFIG.md#languages) | languages, browser detection, own translations (`TRANSLATIONS_DIR`, [translations/](../translations/en.json)) |
 | Helm | [charts/vanishly/README.md](../charts/vanishly/README.md) | the chart: install from ghcr.io, all values, Redis, own templates |
-| Compose examples | [docker-compose/standalone](../docker-compose/standalone/docker-compose.yml), [docker-compose/keycloak](../docker-compose/keycloak/README.md) | Vanishly with Redis; a local demo with Keycloak sign-in, groups and people search |
+| Compose examples | [docker-compose/standalone](../docker-compose/standalone/docker-compose.yml), [docker-compose/keycloak](../docker-compose/keycloak/README.md), [docker-compose/entra](../docker-compose/entra/README.md), [docker-compose/local](../docker-compose/local/README.md) | Vanishly with Redis; a local demo with Keycloak sign-in, groups and people search; sign-in through Microsoft Entra ID; Vanishly's own user accounts (`AUTH_PROVIDER=local`) |
 | Sign-in providers | [providers/README.md](providers/README.md) | what each provider supports, and one page each: [none](providers/none.md), [Entra ID](providers/entra.md), [Keycloak](providers/keycloak.md), [Okta](providers/okta.md), [Auth0](providers/auth0.md), [Google](providers/google.md), [PingOne](providers/ping.md), [JumpCloud](providers/jumpcloud.md), [Cognito](providers/cognito.md), [other OIDC](providers/oidc.md), [local accounts](providers/local.md) |
 | Screenshots | [screenshots/](screenshots/) | the pages in the built-in templates |
 

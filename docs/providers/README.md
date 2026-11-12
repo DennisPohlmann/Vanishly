@@ -102,6 +102,8 @@ documentation. Please report anything that differs in your tenant.
   the signed-in status page.
 - [oidc.md](oidc.md#try-it-locally): a test login server where you sign
   in as anybody.
+- [docker-compose/local](../../docker-compose/local/README.md): Vanishly's
+  own user accounts, no identity provider.
 
 ## Troubleshooting
 

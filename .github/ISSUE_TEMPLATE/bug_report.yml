@@ -48,7 +48,7 @@ body:
     id: auth
     attributes:
       label: Sign-in provider (AUTH_PROVIDER)
-      placeholder: none, entra, keycloak, oidc, ...
+      placeholder: none, entra, keycloak, oidc, local, ...
   - type: input
     id: browser
     attributes:

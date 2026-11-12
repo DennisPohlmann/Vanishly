@@ -236,6 +236,15 @@ is replaced by the example, so back it up first, or unpack without `etc/`:
 Open secrets survive an app update; a restart of Redis without persistence
 drops them (see [CONFIG.md](CONFIG.md#redis)).
 
+Settings that contradict each other stop the start (exit code 78, the
+message names both) instead of being ignored. After an update check
+`docker compose logs vanishly` for these, which older versions accepted:
+`AUTH_API_AUDIENCE` with `API_TOKEN_REQUIRED=true` (set one of them),
+`ADMIN_BURN=true` without `ENABLE_BURN`, `ADMIN_UI`, admins or
+`AUDIT_LOG_REDIS=true` (remove it or add what it needs), and
+`RECEIPT_SHOW_VIEWER=true` with `ENABLE_RECEIPTS=false` (remove it or turn
+receipts on).
+
 ## 8. Troubleshooting
 
 | Symptom | Cause and fix |
@@ -273,9 +282,11 @@ redirect URI `<BASE_URL>/auth/callback`.
    [Keycloak](providers/keycloak.md), [Okta](providers/okta.md),
    [Auth0](providers/auth0.md), [Google Workspace](providers/google.md),
    [PingOne](providers/ping.md), [JumpCloud](providers/jumpcloud.md),
-   [Cognito](providers/cognito.md) or [any other OpenID Connect
-   provider](providers/oidc.md). The [overview](providers/README.md) shows
-   what each one supports.
+   [Cognito](providers/cognito.md), [any other OpenID Connect
+   provider](providers/oidc.md), or no provider at all with Vanishly's
+   [own user accounts](providers/local.md) (`AUTH_PROVIDER=local`, no
+   redirect URI; Redis needs [persistence](#12-redis-with-persistence-admin-interface)).
+   The [overview](providers/README.md) shows what each one supports.
 2. Put the settings from that page into `.env` (Compose), the Helm values
    (`config`, secrets in `secretConfig` or `existingSecret`) or
    `/etc/vanishly/vanishly.env` (systemd) and restart. A wrong or missing
@@ -284,8 +295,9 @@ redirect URI `<BASE_URL>/auth/callback`.
    people, the status page ([CONFIG.md](CONFIG.md#sign-in-and-recipients)).
 
 To try it on your own machine: [docker-compose/keycloak](../docker-compose/keycloak/README.md)
-(Keycloak with demo users alice, bob and carol) or the
-[test login server](providers/oidc.md#try-it-locally).
+(Keycloak with demo users alice, bob and carol), the
+[test login server](providers/oidc.md#try-it-locally) or
+[docker-compose/local](../docker-compose/local/README.md) (own user accounts).
 
 ## 11. Audit log shipping
 

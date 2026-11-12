@@ -260,7 +260,7 @@ technical user and token, the comment and the run id.
 | `GET /admin/secrets?creator=&recipient=&status=&from=&to=&limit=` | secrets overview from the audit stream (metadata only; `AUDIT_LOG_REDIS`) |
 | `POST /admin/secrets/{ref}/burn` | burn a secret by its `ref` from the overview (`ADMIN_BURN`, `ENABLE_BURN`): `200 {state: "burned"}`, `409 gone` (already opened, expired or burned), `404` unknown |
 | `GET /admin/tokens`, `POST /admin/tokens/{id}/revoke` | all tokens |
-| `GET /admin/users`, `POST /admin/users` | `AUTH_PROVIDER=local`: the accounts (no hashes); create `{user, password, name, role, groups, disabled}` |
+| `GET /admin/users`, `POST /admin/users` | `AUTH_PROVIDER=local`: the accounts (no hashes), `me` (the caller's own address), `minPasswordLength`; create `{user, password, name, role, groups, disabled}` |
 | `POST /admin/users/{user}`, `POST /admin/users/{user}/password`, `POST /admin/users/{user}/delete` | change `{name, role, groups, disabled}` (disabling ends the sessions and revokes the tokens), reset the password `{password}`, delete; `409 last_admin` for the last active admin, `409 self` for your own account |
 | `GET /admin/service-accounts`, `POST /admin/service-accounts` | technical users; create `{name, description, responsible, ips, enabled, max}` |
 | `POST /admin/service-accounts/{name}`, `POST /admin/service-accounts/{name}/delete` | change (also `enabled: false`: revokes its tokens), delete |
