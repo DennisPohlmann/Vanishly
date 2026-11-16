@@ -11,6 +11,7 @@ import { validId } from './store.js';
 import { limiter } from './ratelimit.js';
 import { Auth, RETURN } from './auth.js';
 import { Users } from './users.js';
+import { mcpRouter } from './mcp.js';
 import { missingClasses } from '../public/js/rules.js';
 import { escapeHtml, ROOT } from './theme.js';
 
@@ -232,7 +233,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         skip: assetPath,
         onLimit: (req, res, _next, retryAfter) => {
           res.set('Retry-After', String(retryAfter));
-          if (req.path.startsWith('/api/')) return void res.status(429).json({ error: 'rate_limited', message: 'Too many requests' });
+          if (req.path.startsWith('/api/') || req.path === '/mcp') return void res.status(429).json({ error: 'rate_limited', message: 'Too many requests' });
           errorPage(req, res, 429, theme.strings[lang(res)]['error.ratelimit']);
         },
       }),
@@ -469,7 +470,8 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         if (u?.token) {
           // Every call with a token, with its answer: "api.token_used".
           res.on('finish', () => {
-            const st = res.statusCode;
+            // MCP (src/mcp.js) answers 200 around the API call; apiStatus is the call's own.
+            const st = res.locals.apiStatus ?? res.statusCode;
             ev(req, res, 'api.token_used', {
               outcome: st < 400 ? 'success' : st >= 500 ? 'error' : 'denied',
               reason: res.locals.errorCode,
@@ -1674,7 +1676,16 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     next();
   });
 
-  const openapi = JSON.stringify(servedSpec(JSON.parse(readFileSync(join(ROOT, 'openapi', 'openapi.json'), 'utf8')), endpointsOn, version, config.features.apiIndex), null, 2);
+  const spec = JSON.parse(readFileSync(join(ROOT, 'openapi', 'openapi.json'), 'utf8'));
+  // ENABLE_MCP: the MCP server; its tools run the API endpoints above.
+  if (config.mcp) {
+    app.use('/mcp', mcpRouter({ api, spec, features: config.features, version, origin, bodyLimit: Math.max(64 * 1024, config.maxSecretChars * 8) }));
+  } else {
+    // switched off: a JSON 404 for MCP clients, told apart from a wrong path
+    app.all('/mcp', (_req, res) => void res.status(404).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'The MCP server is disabled on this server' } }));
+  }
+
+  const openapi = JSON.stringify(servedSpec(spec, endpointsOn, version, config.features.apiIndex), null, 2);
   const docsHtml = readFileSync(join(ROOT, 'views', 'api-docs.html'), 'utf8');
   // vendor/scalar.js: built by `npm run vendor` (also in the image and the
   // tar.gz), without the external web fonts of the npm package.

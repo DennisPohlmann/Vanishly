@@ -164,6 +164,7 @@ config:
   ADMIN_DENIED_IPS: ""
   # == API (true = on)
   ENABLE_API: ""
+  ENABLE_MCP: ""
   ENABLE_API_DOCS: ""
   ENABLE_API_LINK: ""
   ENABLE_SHARE_API: ""

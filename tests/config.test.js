@@ -153,6 +153,11 @@ test('feature switches', () => {
   assert.throws(() => loadConfig({ ENABLE_PASSPHRASE: 'false', REQUIRE_PASSPHRASE: 'true' }), /REQUIRE_PASSPHRASE/);
   const c = loadConfig({ ENABLE_API: 'false' });
   assert.deepEqual([c.api, c.apiDocs, c.features.shareApi, c.features.apiLink], [false, false, false, false]);
+  // ENABLE_MCP: on by default, follows ENABLE_API when unset, off on its own.
+  assert.equal(loadConfig({}).mcp, true);
+  assert.equal(c.mcp, false);
+  assert.deepEqual([loadConfig({ ENABLE_MCP: 'false' }).mcp, loadConfig({ ENABLE_MCP: 'false' }).api], [false, true]);
+  assert.throws(() => loadConfig({ ENABLE_API: 'false', ENABLE_MCP: 'true' }), /ENABLE_MCP=true needs ENABLE_API=true/);
 });
 
 test('every wrong setting stops the start', () => {

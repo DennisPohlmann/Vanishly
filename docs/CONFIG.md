@@ -70,7 +70,8 @@ Everything is on by default; `false` (or `0`, `no`, `off`) switches it off.
 
 | Variable | Off means |
 |---|---|
-| `ENABLE_API` | No public API: every API endpoint and `/api/openapi.json` answer 404, except the calls of this server's own pages; also switches off `ENABLE_API_DOCS`, `ENABLE_SHARE_API`, `ENABLE_OPEN_API` and the footer link ([details](#api-access)) |
+| `ENABLE_API` | No public API: every API endpoint and `/api/openapi.json` answer 404, except the calls of this server's own pages; also switches off `ENABLE_API_DOCS`, `ENABLE_SHARE_API`, `ENABLE_OPEN_API`, `ENABLE_MCP` and the footer link ([details](#api-access)) |
+| `ENABLE_MCP` | No MCP server: `/mcp` answers 404, the API stays. Unset it follows `ENABLE_API`; `ENABLE_MCP=true` with `ENABLE_API=false` stops the start ([details](#mcp-server)) |
 | `ENABLE_API_DOCS` | No API reference page at `/api/docs` (`API_DOCS` is the older name) |
 | `ENABLE_API_LINK` | No "API" link in the footer; the API itself stays |
 | `ENABLE_SHARE_API` | `POST /api/v1/share` (server-side encryption for scripts) answers 404 |
@@ -116,6 +117,7 @@ switched off, still answered for this server's own pages (the browser's
 | `GET /api/v1/me` | `ENABLE_ME_API` (only with sign-in) | 404 |
 | `GET /api/v1/groups` | `RECIPIENT_GROUPS` (only then) | 404 |
 | `GET /api/v1/people` | `RECIPIENT_USER_GROUP` (only then) | 404 |
+| `POST /mcp` (MCP server) | `ENABLE_MCP`, `ENABLE_API` | 404 |
 
 **Create and reveal only.** To offer nothing but creating a secret and
 revealing it, in the form and for scripts:
@@ -367,6 +369,38 @@ create secrets with it. To limit who may create secrets, use the built-in
 front of `/` and `/api/v1/secrets` in the reverse proxy (or keep the site in
 your VPN) and leave `/s/`, `/api/v1/secrets/{id}` and the static files open
 for the recipients.
+
+## MCP server
+
+AI clients that speak the [Model Context Protocol](https://modelcontextprotocol.io)
+(Claude, VS Code/Copilot, Cursor, ...) use Vanishly at `<BASE_URL>/mcp`
+(Streamable HTTP, one JSON answer per request, no sessions). On by default,
+`ENABLE_MCP=false` switches it off; it follows `ENABLE_API`.
+
+| Tool | Runs | Needs |
+|---|---|---|
+| `create_secret` | `POST /api/v1/share`: the secret is encrypted on the server, the answer has `shareUrl` (for the recipient) and `receiptUrl` | `ENABLE_SHARE_API` |
+| `get_secret_status` | `GET /api/v1/receipts/{id}`, by receipt id or link | `ENABLE_RECEIPTS`, `ENABLE_RECEIPT_API` |
+| `burn_secret` | `POST /api/v1/receipts/{id}/burn` | also `ENABLE_BURN` |
+
+There is no tool to open a secret. Each tool is the API call itself: the
+same limits, switches, rate limits and audit events (route `/api/v1/...`);
+a refusal comes back as a tool error with the API's `error` code.
+
+- **Without sign-in** (`AUTH_PROVIDER=none`) MCP can do what the open API
+  can: anyone who reaches `/mcp` can create secrets and, with a receipt,
+  see or burn them.
+- **With sign-in** the client sends `Authorization: Bearer vnly_...` (an
+  [API token](#api-tokens)) and acts as its owner, with the token's scopes
+  (`create`, `status`); `API_TOKEN_REQUIRED` applies as on the API.
+- A browser `Origin` other than this server is refused (403).
+- The plaintext of `create_secret` passes through the AI client and its
+  provider. Keep that in mind for what you let an assistant share.
+
+```json
+{ "mcpServers": { "vanishly": { "type": "http", "url": "https://ots.example.com/mcp",
+  "headers": { "Authorization": "Bearer vnly_..." } } } }
+```
 
 ## Sign-in and recipients
 

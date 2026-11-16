@@ -187,7 +187,7 @@ export const SETTINGS = [
   'RATE_LIMIT_CREATE', 'RATE_LIMIT_READ', 'RATE_LIMIT_WINDOW', 'RATE_LIMIT_KEY', 'RATE_LIMIT_KEY_FILE',
   'CREATE_ALLOWED_IPS', 'CREATE_DENIED_IPS', 'READ_ALLOWED_IPS', 'READ_DENIED_IPS', 'ADMIN_ALLOWED_IPS', 'ADMIN_DENIED_IPS',
   'API_DOCS', 'ACCESS_LOG',
-  'ENABLE_API', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SHARE_API', 'ENABLE_OPEN_API',
+  'ENABLE_API', 'ENABLE_MCP', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SHARE_API', 'ENABLE_OPEN_API',
   'ENABLE_SECRET_META_API', 'ENABLE_CONFIG_API', 'ENABLE_ME_API',
   'ENABLE_CREATE_API', 'ENABLE_REVEAL_API', 'ENABLE_RECEIPT_API', 'ENABLE_API_INDEX',
   'RESPONSIBLE', 'STATUS_ACCESS',
@@ -1033,6 +1033,8 @@ export function loadConfig(env = process.env) {
     defaultLang,
     // ENABLE_API=false: no public API; only this server's own pages may call it.
     api: sw('ENABLE_API', true),
+    // ENABLE_MCP: the MCP server at /mcp (src/mcp.js); unset it follows ENABLE_API.
+    mcp: env.ENABLE_MCP ? sw('ENABLE_MCP', true) : sw('ENABLE_API', true),
     apiDocs: env.ENABLE_API_DOCS ? sw('ENABLE_API_DOCS', true) : sw('API_DOCS', true),
     // Features an operator can switch off (ENABLE_*=false); all on by default.
     features: {
@@ -1110,6 +1112,7 @@ export function loadConfig(env = process.env) {
   if (auth && env.MY_SECRETS && flag(env.MY_SECRETS, true) && !config.audit?.redis) throw new Error('MY_SECRETS needs AUDIT_LOG=true with AUDIT_LOG_REDIS=true (the overview reads the audit stream)');
   if (auth) auth.mySecrets = Boolean(auth.mySecrets && config.audit?.redis);
   if (auth) auth.admin.auditView = Boolean(auth.admin.auditView && auth.admin.ui && config.audit && (config.audit.file || config.audit.redis) && auth.admin.any);
+  if (config.mcp && !config.api) throw new Error('ENABLE_MCP=true needs ENABLE_API=true (the MCP tools call the API)');
   if (!config.api) {
     config.apiDocs = false;
     config.features.shareApi = false;
