@@ -19,15 +19,15 @@
     "express": "^5.1.0",
     "express-rate-limit": "8.7.4",
     "jose": "^6.2.17",
-    "openid-client": "^6.8.9",
+    "openid-client": "^6.9.0",
     "redis": "^6.3.1"
   },
   "devDependencies": {
-    "@scalar/api-reference": "^1.78.0",
+    "@scalar/api-reference": "^1.79.0",
     "@types/express": "^5.0.3",
     "@types/node": "^26.6.6",
-    "axe-core": "^4.14.0",
-    "playwright": "^1.65.0",
+    "axe-core": "^4.14.1",
+    "playwright": "^1.65.1",
     "typescript": "^7.0.2"
   },
   "engines": {
