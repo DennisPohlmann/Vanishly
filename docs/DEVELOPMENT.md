@@ -22,12 +22,19 @@ Project layout:
 | `src/audit.js` | optional audit log: formats (ECS, OTel, plain), hash chain, sinks and exporters, admin query |
 | `src/audit-verify.js` | `npm run audit:verify`: checks the hash chain of an audit log file |
 | `src/tokens.js` | personal API tokens: HMAC storage, expiry, IP networks, scopes |
+| `src/users.js` | local user accounts (`AUTH_PROVIDER=local`): scrypt password hashes in Redis |
+| `src/directory/` | directory backends of the sign-in providers: group and people search |
+| `src/ratelimit.js` | rate limits in Redis, IP keyed with `RATE_LIMIT_KEY` |
+| `src/mcp.js` | MCP server at `/mcp` (`ENABLE_MCP`) |
+| `src/oauth.js` | sign-in of MCP clients through the browser (`MCP_OAUTH`) |
 | `public/js/vanishly-crypto.js` | crypto format v1 (browser and server) |
 | `public/js/app.js` | browser logic of the pages |
+| `public/js/rules.js` | passphrase rules, shared by browser and server |
+| `public/js/theme-mode.js`, `public/js/api-docs.js` | light/dark mode before paint; the API reference start |
 | `public/css/base.css` | layout and components (uses the template variables) |
 | `views/` | default HTML views |
-| `translations/` | texts, one JSON file per language (en, de); more via `TRANSLATIONS_DIR` |
-| `templates/` | built-in templates (`default`, `example-brand`) |
+| `translations/` | texts, one JSON file per language (en, de, es, fr, it, nl, pl, pt); more via `TRANSLATIONS_DIR` |
+| `templates/` | built-in templates (`default`, `aurora`, `example-brand`) |
 | `openapi/openapi.json` | API contract |
 | `tests/` | `node:test` tests |
 | `charts/vanishly/` | Helm chart (values, schema, unit tests in `tests/`, ct values in `ci/`) |

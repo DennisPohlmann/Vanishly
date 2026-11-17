@@ -44,6 +44,11 @@ Vanishly runs as a small Node.js container next to Redis.
   `POST /api/v1/open` (open a link with its passphrase) for scripts and
   `curl`. Every endpoint can be switched off on its own (e.g. create and
   reveal only); the docs then show only what is on.
+- **MCP server for AI clients** (`/mcp`, `ENABLE_MCP`): Claude, VS Code and
+  other MCP clients create secrets and check or burn them through the API.
+  With sign-in and `API_TOKENS=true` the client signs in through the browser
+  and gets a personal API token (`MCP_OAUTH`); there is no tool to open a
+  secret.
 - **Audit log (optional, `AUDIT_LOG`):** who created, opened, burned what,
   when, for whom, with comment and run id; one JSON event per line in
   Elastic Common Schema, OpenTelemetry or a plain format, to a file, stdout,
@@ -159,6 +164,7 @@ The Compose files live in [`docker-compose/`](docker-compose/) (until 1.2.1
 | [`docker-compose/keycloak/`](docker-compose/keycloak/README.md) | Example with Keycloak and demo users: sign-in, recipients, responsible groups, people search |
 | [`docker-compose/entra/`](docker-compose/entra/README.md) | Sign-in through Microsoft Entra ID: app registration, Graph permissions, groups and admins |
 | [`docker-compose/local/`](docker-compose/local/README.md) | Vanishly's own user accounts (`AUTH_PROVIDER=local`): no identity provider, users managed on `/admin` |
+| [`okta/`](docker-compose/okta/README.md), [`auth0/`](docker-compose/auth0/README.md), [`google/`](docker-compose/google/README.md), [`ping/`](docker-compose/ping/README.md), [`jumpcloud/`](docker-compose/jumpcloud/README.md), [`cognito/`](docker-compose/cognito/README.md), [`oidc/`](docker-compose/oidc/README.md) | Sign-in through Okta, Auth0, Google Workspace, PingOne, JumpCloud, Amazon Cognito or any other OpenID Connect provider |
 
 `docker-compose.yml` pulls the published image, so it needs nothing else
 from the repository but its `.env`. To build from a checkout instead, in
@@ -191,13 +197,13 @@ curl -s -X POST http://127.0.0.1:3000/api/v1/share \
 |------|---------|
 | [docs/README.md](docs/README.md) | index of all documentation |
 | [docs/INSTALLATION.md](docs/INSTALLATION.md) | docker compose, container, tar.gz with systemd, Kubernetes (Helm), reverse proxy, update, troubleshooting, removal |
-| [docs/CONFIG.md](docs/CONFIG.md) | all environment variables, Redis, rate limits, languages |
+| [docs/CONFIG.md](docs/CONFIG.md) | all environment variables, Redis, rate limits, API access, MCP server, languages |
 | [docs/USAGE.md](docs/USAGE.md) | pages, how sharing works, receipts, health and monitoring |
 | [docs/SECURITY.md](docs/SECURITY.md) | how a secret is protected: encryption in the browser, what Redis stores, passphrase, behaviour on Redis errors, limits |
 | [docs/providers/](docs/providers/README.md) | sign-in providers: what each supports, one page per provider (none, Entra ID, Keycloak, Okta, Auth0, Google, PingOne, JumpCloud, Cognito, other OIDC, local accounts) |
-| [docker-compose/](docker-compose/keycloak/README.md) | Compose examples: `standalone` (Vanishly with Redis), `keycloak` (local sign-in demo), `entra` (Microsoft Entra ID), `local` (own user accounts) |
+| [docker-compose/](docker-compose/keycloak/README.md) | Compose examples: `standalone` (Vanishly with Redis), `keycloak` (local sign-in demo), `entra` (Microsoft Entra ID), `local` (own user accounts), and one per other provider (`okta`, `auth0`, `google`, `ping`, `jumpcloud`, `cognito`, `oidc`) |
 | [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) | accessibility statement: WCAG 2.2 AA target, how it is checked, known limits, feedback |
-| [docs/INTERFACE.md](docs/INTERFACE.md) | REST API (OpenAPI), crypto format, Redis keys |
+| [docs/INTERFACE.md](docs/INTERFACE.md) | REST API (OpenAPI), MCP and its OAuth endpoints, crypto format, Redis keys, audit events |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | local development, tests, CI and releases |
 | [templates/README.md](templates/README.md) | own templates: logo, CSS, pictures, views |
 | [charts/vanishly/README.md](charts/vanishly/README.md) | Helm chart: install from ghcr.io, all values, Redis, own templates, overrides |

@@ -113,15 +113,18 @@ Security Policy blocks external fonts, images and scripts.
 
 A template can replace `layout.html`, `home.html`, `secret.html`,
 `receipt.html`, `error.html`, `login.html` (the sign-in prompt), `tokens.html`
-(API tokens, `API_TOKENS`) or `admin.html` (audit log for admins) of the
-app's `views/` folder. Start from the
+(API tokens, `API_TOKENS`), `admin.html` (administration), `mysecrets.html`
+("My secrets", `MY_SECRETS`), `local-login.html` and `password.html` (sign-in
+form and "Change password", `AUTH_PROVIDER=local`) or `oauth.html` (the
+consent page of MCP clients, `MCP_OAUTH`) of the app's `views/` folder. Start from the
 original. Placeholders:
 
 - `{{ name }}`: a value, HTML-escaped
 - `{{{ name }}}`: HTML built by Vanishly (`content`, `ttlSelect`, `footerLinks`, `logoHtml`, `langSwitch` (the language link or menu), `i18n`,
   and with sign-in `authNav` in the layout and `recipientsBlock` in the home view,
   which also carries the comment field of `AUDIT_COMMENT`; `expirySelect` and
-  `scopeBoxes` in `tokens.html`)
+  `scopeBoxes` in `tokens.html`, `scopeList` in `oauth.html`, `notice` in `local-login.html` and
+  `password.html`)
 - `{{ t:key }}`: a text from `translations/*.json` or `strings`
 
 Keep the element ids the page script uses (`create-form`, `secret`,

@@ -101,6 +101,23 @@ const res = await fetch('https://ots.example.com/api/v1/secrets', {
 const link = `https://ots.example.com${res.secretPath}#${key}`;
 ```
 
+## MCP and OAuth endpoints
+
+Outside `/api` and not in the OpenAPI document; what they do and how to
+set them up: [CONFIG.md](CONFIG.md#mcp-server). The `/.well-known/oauth-*`
+and `/oauth/*` endpoints exist only with `MCP_OAUTH`; `/oauth/*` has its
+own rate limit (`RATE_LIMIT_READ`, bucket `oauth`).
+
+| Method and path | Purpose |
+|---|---|
+| `POST /mcp` | MCP server (`ENABLE_MCP`): one JSON-RPC message per request, answered as JSON (Streamable HTTP without sessions); tools `create_secret`, `get_secret_status`, `burn_secret`. Switched off: `404` with a JSON-RPC error. With `MCP_OAUTH` and no valid token: `401` with `WWW-Authenticate: Bearer resource_metadata="<BASE_URL>/.well-known/oauth-protected-resource/mcp"` |
+| `GET /.well-known/oauth-protected-resource`, `.../oauth-protected-resource/mcp` | protected resource metadata (RFC 9728): `resource` `<BASE_URL>/mcp`, this server as authorization server, the scopes |
+| `GET /.well-known/oauth-authorization-server` | authorization server metadata (RFC 8414): the endpoints below, `code` with PKCE `S256`, public clients only (`none`) |
+| `POST /oauth/register` | dynamic client registration (RFC 7591): `redirect_uris` (1 to 5 loopback URIs), `client_name` → `201` with a signed `client_id` (nothing is stored) |
+| `GET /oauth/authorize` | starts the sign-in: `client_id`, `redirect_uri`, `response_type=code`, `code_challenge` + `code_challenge_method=S256`, `state`, `scope`, optional `resource`; sends the browser to `/oauth/<id>` |
+| `GET/POST /oauth/<id>` | sign-in if needed, the consent page "Allow access"; allow or deny, then back to the client's `redirect_uri` with `code` (or `error`), `state` and `iss` |
+| `POST /oauth/token` | `grant_type=authorization_code`, `code`, `client_id`, `redirect_uri`, `code_verifier` (form-encoded) → `{access_token, token_type: "Bearer", expires_in, scope}`; the access token is a personal API token (`vnly_...`), no refresh token |
+
 ## Crypto format v1
 
 | Part | Definition |
