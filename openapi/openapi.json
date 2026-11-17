@@ -3,7 +3,7 @@
   "info": {
     "title": "Vanishly API",
     "version": "0.0.0",
-    "description": "Share secrets with links that work only once (or a few times) and then burn.\n\n**End-to-end encryption.** Secrets are encrypted on the client (AES-256-GCM, format v1, see `public/js/vanishly-crypto.js` and docs/INTERFACE.md). The server stores only the ciphertext. The key travels in the URL fragment (`#...`), which browsers never send to the server.\n\nUse `POST /v1/secrets` with a client-encrypted payload. For scripts without crypto, `POST /v1/share` encrypts on the server, returns the full links with the key and forgets the key.\n\n**Authentication.** By default none: whoever knows a secret or receipt id may use it, so ids are 128-bit random values. With sign-in on (`AUTH_PROVIDER=entra`, `oidc`, a preset or `local` for Vanishly's own accounts, see `auth` in `GET /v1/config`) creating may need a signed-in user (`AUTH_CREATE`), and a secret with `recipients` / `recipientGroups` opens only for one of them: `GET /v1/secrets/{id}`, `/reveal` and `/v1/open` answer `401 login_required` without a sign-in and `403 not_recipient` for anybody else, without using a view. Browsers use the session cookie of `/auth/login`; scripts send an access token of the provider as `Authorization: Bearer` when the server sets `AUTH_API_AUDIENCE`.\n\n**Switches.** An operator can turn parts off (see `features` in `GET /v1/config`). Switched-off endpoints answer 404: `/v1/share` (`ENABLE_SHARE_API`), the receipt endpoints (`ENABLE_RECEIPTS`), burn (`ENABLE_BURN`). With `ENABLE_API=false` the whole API answers 404 except for the server's own pages.\n\n**Audit and API tokens.** With AUDIT_LOG every call gets a run id (`X-Run-Id` / `X-Request-Id` from the caller, else a UUID; returned in both headers) and the W3C `traceparent` is honoured. Personal API tokens (`Authorization: Bearer vnly_...`, API_TOKENS) act as their owner, only from their IP networks; `X-Audit-Comment` and `X-On-Behalf-Of` go into the audit log. With API_TOKEN_REQUIRED=true scripts need such a token.\n\n**Rate limits.** Per client IP and window (`RATE_LIMIT_*`): over the limit an endpoint answers `429 rate_limited` with `Retry-After` (seconds). With sign-in on, all calls of one IP together are also capped at 10 × the larger of `RATE_LIMIT_READ` and `RATE_LIMIT_CREATE`.",
+    "description": "Share secrets with links that work only once (or a few times) and then burn.\n\n**End-to-end encryption.** Secrets are encrypted on the client (AES-256-GCM, format v1, see `public/js/vanishly-crypto.js` and docs/INTERFACE.md). The server stores only the ciphertext. The key travels in the URL fragment (`#...`), which browsers never send to the server.\n\nUse `POST /v1/secrets` with a client-encrypted payload. For scripts without crypto, `POST /v1/share` encrypts on the server, returns the full links with the key and forgets the key.\n\n**Authentication.** By default none: whoever knows a secret or receipt id may use it, so ids are 128-bit random values. With sign-in on (`AUTH_PROVIDER=entra`, `oidc`, a preset or `local` for Vanishly's own accounts, see `auth` in `GET /v1/config`) creating may need a signed-in user (`AUTH_CREATE`), and a secret with `recipients` / `recipientGroups` opens only for one of them: `GET /v1/secrets/{id}`, `/reveal` and `/v1/open` answer `401 login_required` without a sign-in and `403 not_recipient` for anybody else, without using a view. Browsers use the session cookie of `/auth/login`; scripts send an access token of the provider as `Authorization: Bearer` when the server sets `AUTH_API_AUDIENCE`.\n\n**Switches.** An operator can turn parts off (see `features` in `GET /v1/config`). Switched-off endpoints answer 404: `/v1/share` (`ENABLE_SHARE_API`), the receipt endpoints (`ENABLE_RECEIPTS`), burn (`ENABLE_BURN`). With `ENABLE_API=false` the whole API answers 404 except for the server's own pages.\n\n**Audit and API tokens.** With AUDIT_LOG every call gets a run id (`X-Run-Id` / `X-Request-Id` from the caller, else a UUID; returned in both headers) and the W3C `traceparent` is honoured. Personal API tokens (`Authorization: Bearer vnly_...`, API_TOKENS) act as their owner, only from their IP networks; `X-Audit-Comment` and `X-On-Behalf-Of` go into the audit log. With API_TOKEN_REQUIRED=true scripts need such a token.\n\n**Rate limits.** Per client IP and window (`RATE_LIMIT_*`): over the limit an endpoint answers `429 rate_limited` with `Retry-After` (seconds). With sign-in on, all calls of one IP together are also capped at 10 × the larger of `RATE_LIMIT_READ` and `RATE_LIMIT_CREATE`.\n\n**Errors and versioning.** Every error is `{\"error\": \"<code>\", \"message\": \"...\"}`. A known path with another method answers `405 method_not_allowed` with an `Allow` header; an unknown path `404 not_found`. This is version `v1`: within it changes are only additive (new endpoints, optional fields, answer fields, error codes), so ignore fields you do not know; a breaking change comes only as `/v2` (see docs/INTERFACE.md, Versioning).",
     "license": {
       "name": "GPL-3.0-or-later",
       "identifier": "GPL-3.0-or-later"
@@ -1462,6 +1462,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1811,6 +1832,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -1901,6 +1943,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -1967,6 +2030,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2018,6 +2102,27 @@
           },
           "403": {
             "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2097,6 +2202,27 @@
           },
           "404": {
             "description": "`not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2322,6 +2448,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2365,6 +2512,27 @@
           },
           "403": {
             "description": "`not_admin`: not in ADMIN_USERS / ADMIN_GROUPS; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2463,6 +2631,27 @@
           },
           "403": {
             "description": "`not_admin`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2618,6 +2807,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2672,6 +2882,27 @@
           },
           "403": {
             "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2819,6 +3050,27 @@
           },
           "400": {
             "description": "`invalid_status`, `invalid_time`, `invalid_limit`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -3052,6 +3304,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -3135,6 +3408,27 @@
           },
           "409": {
             "description": "`exists`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -3244,6 +3538,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -3346,6 +3661,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3431,6 +3767,27 @@
           },
           "404": {
             "description": "`not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -3546,6 +3903,27 @@
           },
           "409": {
             "description": "`disabled`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -3720,6 +4098,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -3806,6 +4205,27 @@
           },
           "403": {
             "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -3960,6 +4380,27 @@
           },
           "403": {
             "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -4143,6 +4584,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4275,6 +4737,27 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4388,6 +4871,27 @@
           },
           "403": {
             "description": "`not_admin` (session), `insufficient_scope` (a token without `admin`, or a personal token), `ip_not_allowed`; `ip_denied`: this client IP may not use the admin area (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: rate limit hit (RATE_LIMIT_CREATE per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

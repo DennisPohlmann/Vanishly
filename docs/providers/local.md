@@ -78,6 +78,9 @@ enable, reset the password, delete.
   exists), `auth.password_changed`, `admin.user_created`,
   `admin.user_changed`, `admin.user_disabled`, `admin.user_enabled`,
   `admin.user_password_reset`, `admin.user_deleted`. Passwords never.
+- **No multi-factor authentication:** local accounts sign in with a
+  password only. Where a second factor is required, use an OIDC provider
+  that enforces MFA ([providers](README.md)) instead of `local`.
 
 ## Keys in Redis
 

@@ -73,6 +73,11 @@ rules (IP networks behind a proxy and IPv6, expiry units and caps,
 scopes, revocation, `API_TOKEN_REQUIRED`), comments, the admin view and
 CSV export, fail-closed, and that everything off changes nothing.
 
+`tests/api.test.js` also checks the API against its contract: the answers
+of the main endpoints against their schemas in `openapi/openapi.json`
+(with `ajv`), `429` on every rate-limited operation, and `405` with
+`Allow` for a wrong method.
+
 Without Redis the API tests are skipped (and say so); CI always runs them
 against a Redis service. The sign-in tests (`tests/auth.test.js`, and the
 sign-in flow in `tests/a11y.e2e.js`) run against `tests/oidc-mock.js`, a

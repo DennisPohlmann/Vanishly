@@ -1653,6 +1653,14 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   };
   api.get(['/', '/v1', '/v1/'], index);
 
+  // A switched-on endpoint called with another method: 405 with Allow (RFC 9110), not 404.
+  const routes = endpointsOn.map(([m, p]) => /** @type {[string, RegExp]} */ ([m, new RegExp(`^${p.replace(/\{[^}/]+\}/g, '[^/]+')}/?$`, 'i')]));
+  api.use((req, res, next) => {
+    const allow = [...new Set(routes.filter(([, re]) => re.test(req.path)).map(([m]) => m))];
+    if (!allow.length) return next();
+    res.set('Allow', allow.join(', '));
+    next(new ApiError(405, 'method_not_allowed', `Use ${allow.join(' or ')} for this endpoint`));
+  });
   api.use((_req, _res, next) => next(new ApiError(404, 'not_found', 'No such endpoint')));
   api.use(
     /** @type {import('express').ErrorRequestHandler} */ ((err, req, res, _next) => {

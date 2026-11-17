@@ -13,7 +13,8 @@ without a session or bearer token, `403 not_recipient` for anybody else,
 on `GET /v1/secrets/{id}`, `/reveal` and `/v1/open`; neither uses a view
 ([CONFIG.md](CONFIG.md#sign-in-and-recipients)). Switched
 off parts (`ENABLE_*`, see [CONFIG.md](CONFIG.md#switches-enable_)) answer
-`404` with `"error": "endpoint_disabled"` (a wrong path: `not_found`); `GET /api/v1/config` lists them under `features`. Errors look like
+`404` with `"error": "endpoint_disabled"` (a wrong path: `not_found`; a known path with another method: `405
+method_not_allowed` with an `Allow` header); `GET /api/v1/config` lists them under `features`. Errors look like
 `{"error": "not_found", "message": "..."}`. With `CONFIRM_CHECKBOX=true`
 a create (`/v1/secrets`, `/v1/share`) needs `"confirmed": true` (the JSON
 value, not a string); otherwise `400 confirmation_required`, whose `message`
@@ -100,6 +101,22 @@ const res = await fetch('https://ots.example.com/api/v1/secrets', {
 }).then((r) => r.json());
 const link = `https://ots.example.com${res.secretPath}#${key}`;
 ```
+
+### Versioning
+
+The API has one version, `v1` (the `/api/v1` prefix, `"api": "v1"` in the
+index). Within `v1` changes are only additive: new endpoints, new optional
+request fields, new answer fields and new error codes. Clients ignore
+fields they do not know and must not depend on the order of fields.
+A breaking change (an endpoint or field removed or renamed, a type or
+meaning changed, an optional field made required) comes only with a new
+prefix, `/api/v2`; `v1` is then still served for at least one more major
+release. An operation that is going away is marked `deprecated` in the
+OpenAPI document and answers with a `Deprecation` header (RFC 9745), and
+with `Sunset` (RFC 8594) once the date is set; the release notes
+(`CHANGELOG.md`, GitHub releases) say so. The endpoints available on one
+server also depend on its switches (`ENABLE_*`); `/api/v1` and
+`/api/openapi.json` list exactly those.
 
 ## MCP and OAuth endpoints
 

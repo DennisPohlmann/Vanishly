@@ -865,3 +865,75 @@ test('rate limits: 429 with Retry-After, per client IP, shared Redis counter, 0 
     for (const s of [one, two, off]) s.srv.close();
   }
 });
+
+test('wrong method on a known endpoint: 405 with Allow, unknown paths stay 404', opts, async () => {
+  for (const [method, path, allow] of [
+    ['DELETE', '/api/v1/secrets', 'POST'],
+    ['GET', '/api/v1/share', 'POST'],
+    ['PUT', `/api/v1/secrets/${'a'.repeat(22)}`, 'GET'],
+    ['GET', `/api/v1/receipts/${'a'.repeat(22)}/burn`, 'POST'],
+  ]) {
+    const r = await fetch(base + path, { method });
+    assert.equal(r.status, 405, `${method} ${path}`);
+    assert.equal(r.headers.get('allow'), allow, path);
+    assert.equal((await r.json()).error, 'method_not_allowed');
+  }
+  const r = await fetch(`${base}/api/v1/nothing`, { method: 'DELETE' });
+  assert.equal(r.status, 404);
+  assert.equal((await r.json()).error, 'not_found');
+});
+
+test('OpenAPI: every rate-limited operation documents 429', async () => {
+  const { readFileSync } = await import('node:fs');
+  const spec = JSON.parse(readFileSync(new URL('../openapi/openapi.json', import.meta.url), 'utf8'));
+  // The only operations without a per-endpoint limit (src/app.js, limit()).
+  const unlimited = new Set(['get /', 'get /v1', 'get /v1/config', 'get /v1/me']);
+  for (const [p, item] of Object.entries(spec.paths)) {
+    for (const [m, op] of Object.entries(/** @type {Record<string, any>} */ (item))) {
+      if (!unlimited.has(`${m} ${p}`)) assert.ok(op.responses['429'], `${m.toUpperCase()} ${p}`);
+    }
+  }
+  // And the code agrees: a limit() on every route the spec says is limited.
+  const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  for (const [, m, p] of src.matchAll(/api\.(get|post)\('(\/v1[^']*)',\s*(?:\w+,\s*)?(\w+)/g)) {
+    const key = `${m} ${p.replace(/:(\w+)/g, '{$1}')}`;
+    if (!unlimited.has(key)) assert.match(src, new RegExp(`api\\.${m}\\('${p.replace(/[/]/g, '\\/')}',\\s*(?:\\w+,\\s*)?limit\\(`), key);
+  }
+});
+
+test('contract: answers match their OpenAPI response schemas', opts, async () => {
+  const { readFileSync } = await import('node:fs');
+  const { Ajv2020 } = await import('ajv/dist/2020.js');
+  const spec = JSON.parse(readFileSync(new URL('../openapi/openapi.json', import.meta.url), 'utf8'));
+  const ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false });
+  ajv.addSchema(spec, 'spec');
+  /** @param {string} s */
+  const ptr = (s) => s.replace(/~/g, '~0').replace(/\//g, '~1');
+  /**
+   * Calls the API and checks status and body against the documented answer.
+   * @param {string} method @param {string} path @param {string} specPath @param {number} status @param {any} [body]
+   */
+  const check = async (method, path, specPath, status, body) => {
+    const r = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    assert.equal(r.status, status, `${method} ${path}`);
+    const data = await r.json();
+    const ref = `spec#/paths/${ptr(specPath)}/${method.toLowerCase()}/responses/${status}/content/application~1json/schema`;
+    const validate = ajv.getSchema(ref) || ajv.compile({ $ref: ref });
+    assert.ok(validate(data), `${method} ${specPath} ${status}: ${ajv.errorsText(validate.errors)}`);
+    return data;
+  };
+  await check('GET', '/api/v1', '/v1', 200);
+  await check('GET', '/api/v1/config', '/v1/config', 200);
+  await check('GET', '/api/v1/me', '/v1/me', 200);
+  const { key, payload } = await encryptSecret('contract');
+  const c = await check('POST', '/api/v1/secrets', '/v1/secrets', 201, { ...payload, ttl: 600, views: 2 });
+  await check('GET', `/api/v1/secrets/${c.id}`, '/v1/secrets/{id}', 200);
+  await check('POST', `/api/v1/secrets/${c.id}/reveal`, '/v1/secrets/{id}/reveal', 200, {});
+  await check('GET', `/api/v1/receipts/${c.receiptId}`, '/v1/receipts/{id}', 200);
+  await check('POST', `/api/v1/receipts/${c.receiptId}/burn`, '/v1/receipts/{id}/burn', 200);
+  await check('GET', `/api/v1/secrets/${c.id}`, '/v1/secrets/{id}', 404);
+  const s = await check('POST', '/api/v1/share', '/v1/share', 201, { secret: 'contract', ttl: 600 });
+  await check('POST', '/api/v1/open', '/v1/open', 200, { link: s.shareUrl });
+  await check('POST', '/api/v1/secrets', '/v1/secrets', 400, { ciphertext: 'x' });
+  await check('POST', '/api/v1/open', '/v1/open', 404, { link: `${base}/s/${'a'.repeat(22)}#${key}` });
+});

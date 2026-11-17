@@ -333,6 +333,64 @@ start with `initialize` then cannot connect), `AUDIT_LOG=true` shipped to
 a SIEM, `API_TOKEN_MAX_EXPIRY` set, TLS with `HSTS=true`, and
 `MCP_OAUTH` instead of hand-made tokens.
 
+## REST API and the CIS API Security Guide
+
+### Who may do what
+
+| Caller | May | Needs |
+|---|---|---|
+| Anyone with the link | open a secret without recipients (`/s`, `reveal`, `/v1/open`); with `STATUS_ACCESS=link` see its status and burn it | the full link (and the passphrase, if set) |
+| Anyone | create secrets (`/v1/secrets`, `/v1/share`); `GET /v1/config`, the index, the OpenAPI document | `AUTH_CREATE=anyone` or no sign-in |
+| Signed-in user | create; open secrets addressed to them or their groups; `/v1/me`, people and group search; with `STATUS_ACCESS=signed-in` the status of secrets they created, are responsible for or opened, and burn the ones they created or are responsible for | a session or a provider token (`AUTH_API_AUDIENCE`) |
+| Signed-in user, session only | own API tokens (`/v1/tokens`), "My secrets" (`/v1/me/secrets`) | the session cookie; a token cannot manage tokens |
+| API token | what its owner may, limited to its scopes: `create` (create), `read` (meta, reveal, open), `status` (status, burn) | `vnly_` token, from its networks, re-checked against the owner's current policy on every call |
+| Admin | the admin interface and `/v1/admin/*`: audit log, all tokens, token policies, secrets' metadata (never content), burn, local accounts, technical users | `ADMIN_USERS` / `ADMIN_GROUPS` and a session |
+| Technical user | what its tokens' scopes allow; scope `admin` only with `API_ADMIN_TOKENS`, IP-bound, with a comment on every call | tokens issued by an admin; no sign-in |
+| MCP client | the MCP tools of its person (`create`, `status`) at `/mcp` only | an OAuth token with audience `mcp` |
+
+### Mapping
+
+The REST API (`/api/v1`) follows the CIS API Security Guide v1.0.0
+(March 2025) where it applies to a self-hosted product. Most of the guide
+is about the processes of whoever builds and runs an API (documentation
+standards, threat modelling, release, incident response, decommissioning);
+those points are listed once as **Operator**. Status words as in the
+[MCP section](#mcp-server-and-the-cis-mcp-server-benchmark).
+
+| Recommendation | Status | How |
+|---|---|---|
+| 1.1.1-1.1.8 Documentation | Pass | one OpenAPI 3.1 document ([openapi.json](../openapi/openapi.json)) for every endpoint, method, parameter, model, error and rate limit, linted in CI; served reduced to the switched-on endpoints at `/api/openapi.json` and `/api/docs`; [INTERFACE.md](INTERFACE.md#rest-api) |
+| 1.1.5 Automation-friendly format | Pass | OpenAPI; a contract test checks the answers of the main endpoints against their schemas (`tests/api.test.js`) |
+| 1.1.9, 3.2.4 Communicate changes | Pass | `CHANGELOG.md` and the GitHub release notes for every release |
+| 1.2.1-1.2.5, 2.1.1-2.1.5 Roles and access | Pass | see the table above; RBAC (admins, groups) plus per-token scopes; the recipient check (`mayOpen`) runs before the passphrase check and the view count |
+| 2.1.3 MFA | Operator | through the OIDC provider; `AUTH_PROVIDER=local` has passwords only ([local.md](providers/local.md#security)) |
+| 1.3.1 Data protection | Pass | end-to-end encryption; Redis holds ciphertext and keyed hashes only ([What Redis holds](#what-redis-holds-and-what-it-does-not)) |
+| 1.3.3 Threat model | Pass / Operator | this page, including [what Vanishly cannot protect against](#what-vanishly-cannot-protect-against) |
+| 2.1.6 Credentials and tokens | Pass | tokens 256 bits, stored as HMAC-SHA256, constant-time compare; local passwords as scrypt; sessions under a hash of the cookie |
+| 2.2.1 Requirements per endpoint | Pass | one table in `src/app.js` with switch, rate-limit bucket, scope and IP class per endpoint; `security` per operation in the OpenAPI document |
+| 2.2.2, 3.1.4 TLS | Operator | TLS and the HTTP-to-HTTPS redirect at the reverse proxy, `HSTS=true`; Redis over TLS with `rediss://` and `REDIS_TLS_CA_FILE` |
+| 2.2.3 Request validation and authorization | Pass | every field checked on the server (types, base64url patterns, lengths, ranges); ids through `validId()`; body size limit; IP lists, scopes and recipients before anything is read or changed |
+| 2.2.4 Response validation | Pass | answers built field by field, never whole records; salt and views only for recipients; admins see metadata only; contract test |
+| 2.2.5 Rate limits | Pass | per client IP (`RATE_LIMIT_*`, shared in Redis, IPs HMACed), per token (`API_TOKEN_RATE_LIMIT`), own counters for sign-in, OAuth and MCP, `429` with `Retry-After`. WAF and DDoS protection: operator |
+| 2.2.6, 2.3.3, 2.4.6, 4.1.1, 4.1.2 Logging | Pass | access log without ids or IPs; the [audit log](#audit-log-and-api-tokens) with hash chain, never secrets, keys or full tokens; shipping to a SIEM (syslog, OTLP, webhook) |
+| 2.3.1, 2.3.2 Errors | Pass | one shape `{"error", "message"}`, no stack traces or internals (`500 internal`); status codes as meant (`401`, `403`, `404`, `405` with `Allow`, `409`, `410`, `413`, `422`, `429`, `502`, `503`) |
+| 2.3.5 Error recovery | Pass | fail-closed view taking, `AUDIT_LOG_FAIL=closed`, `/healthz` with a write check |
+| 2.4.1-2.4.5 Sessions | Pass | new session id per sign-in, `__Host-` cookie (`HttpOnly`, `SameSite=Lax`, `Secure`), `AUTH_SESSION_TTL` (8 hours), sign-out ends the session in Redis, a new password or disabling ends all of an account |
+| 2.4.3 Token lifetime | Pass / Operator | MCP tokens `1d` without refresh; hand-made tokens live as long as `API_TOKEN_MAX_EXPIRY` allows (default `never`): set it, e.g. `1y` |
+| 2.5.1-2.5.5 Third-party code | Pass | five runtime dependencies ([THIRD-PARTY-LICENSES.md](../THIRD-PARTY-LICENSES.md)), SBOM with each release, `npm audit`, Trivy, CodeQL and Dependabot ([DEVELOPMENT.md](DEVELOPMENT.md#security-checks)) |
+| 2.6.1-2.6.4 Testing | Pass | type check, tests, OpenAPI lint, accessibility and scans on every push and pull request |
+| 3.1.3 Release process | Pass | semantic-release, started by hand on `main` only |
+| 3.2.1-3.2.3 Versioning | Pass | `/api/v1`, only additive changes within it, breaking ones as `/api/v2` with `Deprecation` / `Sunset` ([Versioning](INTERFACE.md#versioning)) |
+| 4.3.1 Audit reporting | Pass | audit export (JSON, CSV, JSONL), `audit:verify`, the admin view is logged itself |
+| 4.3.2 Retention | Pass / Operator | secrets expire in Redis, receipts after `RECEIPT_KEEP`, the audit stream with `AUDIT_LOG_REDIS_MAXLEN`; rotating and keeping the audit file is the operator's |
+| 1.2.2, 1.3.2, 2.2.7, 2.4.7, 2.5.6-2.5.8, 3.1.1, 3.1.2, 3.1.5, 3.3, 4.1.3, 4.1.4, 4.2, 4.3.3, 5 | Operator | exposure and IP lists, compliance, environments, secrets (`*_FILE`), monitoring and alerting (`/healthz`, the audit stream), scaling (Helm chart with autoscaling), penetration tests, decommissioning (Vanishly's data ends with Redis; [uninstall](INSTALLATION.md)) |
+
+For the strictest API setup: `API_TOKEN_REQUIRED=true`,
+`API_TOKEN_IP_BINDING=required`, `API_TOKEN_MAX_EXPIRY` set,
+`API_TOKEN_RATE_LIMIT` set, `ENABLE_SHARE_API=false` and
+`ENABLE_OPEN_API=false` if no script needs them, `AUDIT_LOG=true` shipped
+to a SIEM, TLS with `HSTS=true`, and an OIDC provider with MFA.
+
 ## What Vanishly cannot protect against
 
 - **Whoever has the full link** (and the passphrase, if set) can read the
