@@ -143,6 +143,23 @@ export function parseScopes(v) {
   return SCOPES.filter((s) => list.includes(s));
 }
 
+/** The MCP revisions src/mcp.js speaks, newest first. */
+export const MCP_VERSIONS = ['2026-07-28', '2025-11-25', '2025-06-18'];
+
+/**
+ * MCP_PROTOCOL_VERSIONS: "2026-07-28,2025-06-18" to a checked list, newest
+ * first; unset all that src/mcp.js speaks. Older revisions than 2025-06-18
+ * are not offered (they had no MCP-Protocol-Version header).
+ * @param {string | undefined} v
+ */
+export function parseMcpVersions(v) {
+  if (v === undefined || v === '') return [...MCP_VERSIONS];
+  const list = v.split(/[\s,;]+/).filter(Boolean);
+  for (const x of list) if (!MCP_VERSIONS.includes(x)) throw new Error(`"${x}" is not one of ${MCP_VERSIONS.join(', ')}`);
+  if (!list.length) throw new Error('at least one version');
+  return MCP_VERSIONS.filter((x) => list.includes(x));
+}
+
 // Lifetimes are compared at this fixed date (a month is not always 30 days).
 const EXPIRY_REF = Date.UTC(2001, 0, 1);
 
@@ -187,7 +204,7 @@ export const SETTINGS = [
   'RATE_LIMIT_CREATE', 'RATE_LIMIT_READ', 'RATE_LIMIT_WINDOW', 'RATE_LIMIT_KEY', 'RATE_LIMIT_KEY_FILE',
   'CREATE_ALLOWED_IPS', 'CREATE_DENIED_IPS', 'READ_ALLOWED_IPS', 'READ_DENIED_IPS', 'ADMIN_ALLOWED_IPS', 'ADMIN_DENIED_IPS',
   'API_DOCS', 'ACCESS_LOG',
-  'ENABLE_API', 'ENABLE_MCP', 'MCP_OAUTH', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SHARE_API', 'ENABLE_OPEN_API',
+  'ENABLE_API', 'ENABLE_MCP', 'MCP_OAUTH', 'MCP_PROTOCOL_VERSIONS', 'MCP_OAUTH_TOKEN_EXPIRY', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SHARE_API', 'ENABLE_OPEN_API',
   'ENABLE_SECRET_META_API', 'ENABLE_CONFIG_API', 'ENABLE_ME_API',
   'ENABLE_CREATE_API', 'ENABLE_REVEAL_API', 'ENABLE_RECEIPT_API', 'ENABLE_API_INDEX',
   'RESPONSIBLE', 'STATUS_ACCESS',
@@ -731,6 +748,9 @@ function tokenConfig(env, h) {
   if (!/^(optional|required)$/.test(ipBinding)) throw new Error('API_TOKEN_IP_BINDING: optional or required');
   const comment = env.API_TOKEN_COMMENT || 'optional';
   if (!/^(optional|required)$/.test(comment)) throw new Error('API_TOKEN_COMMENT: optional or required');
+  // MCP_OAUTH_TOKEN_EXPIRY: the lifetime of a token an MCP client gets by signing in (short, CIS MCP 3.1.2).
+  const mcpExpiry = life('MCP_OAUTH_TOKEN_EXPIRY', env.MCP_OAUTH_TOKEN_EXPIRY || '1d');
+  if (length(mcpExpiry) > length(maxExpiry)) throw new Error(`MCP_OAUTH_TOKEN_EXPIRY=${mcpExpiry} is above API_TOKEN_MAX_EXPIRY=${maxExpiry}`);
   return {
     // API_TOKEN_REQUIRED: outside this server's own pages, the API takes only these tokens.
     required: h.sw('API_TOKEN_REQUIRED', false),
@@ -740,6 +760,7 @@ function tokenConfig(env, h) {
     expiryOptions: options,
     defaultExpiry,
     maxExpiry,
+    mcpExpiry,
     // Active (not revoked, not expired) tokens per user; 0 = no limit.
     maxPerUser: h.num('API_TOKEN_MAX_PER_USER', 10, 0, 1000),
     rateLimit: h.num('API_TOKEN_RATE_LIMIT', 0, 0, 100000),
@@ -1037,6 +1058,8 @@ export function loadConfig(env = process.env) {
     mcp: env.ENABLE_MCP ? sw('ENABLE_MCP', true) : sw('ENABLE_API', true),
     // MCP_OAUTH: MCP clients sign in through the browser (OAuth, src/oauth.js); needs sign-in, API_TOKENS and MCP (checked below).
     mcpOauth: sw('MCP_OAUTH', true),
+    // MCP_PROTOCOL_VERSIONS: the MCP revisions /mcp serves (src/mcp.js), newest first.
+    mcpVersions: named('MCP_PROTOCOL_VERSIONS', () => parseMcpVersions(env.MCP_PROTOCOL_VERSIONS)),
     apiDocs: env.ENABLE_API_DOCS ? sw('ENABLE_API_DOCS', true) : sw('API_DOCS', true),
     // Features an operator can switch off (ENABLE_*=false); all on by default.
     features: {

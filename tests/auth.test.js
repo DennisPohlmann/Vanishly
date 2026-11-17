@@ -802,6 +802,8 @@ test('MCP_OAUTH with Entra ID: an MCP client signs in through the provider and g
   const tr = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, client_id: reg.data.client_id, redirect_uri: cb, code_verifier: verifier }).toString() });
   const t = await tr.json();
   assert.equal(tr.status, 200, JSON.stringify(t));
-  const me = await call('/api/v1/me', { bearer: t.access_token });
-  assert.equal(me.data.user, BOB.preferred_username.toLowerCase());
+  // Valid only at /mcp (audience), there as the person.
+  assert.equal((await call('/api/v1/me', { bearer: t.access_token })).status, 401);
+  const mcp = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'MCP-Protocol-Version': '2025-06-18', Authorization: `Bearer ${t.access_token}` }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+  assert.equal(mcp.status, 200);
 });

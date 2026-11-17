@@ -440,3 +440,14 @@ test('contradictory combinations stop the start, naming both settings', () => {
   assert.equal(loadConfig({ ...kc, API_TOKENS: 'true', API_TOKEN_REQUIRED: 'true' }).auth?.tokens?.required, true);
   assert.equal(loadConfig({ ...kc, AUTH_API_AUDIENCE: 'api://vanishly' }).auth?.apiAudience, 'api://vanishly');
 });
+
+test('MCP_PROTOCOL_VERSIONS and MCP_OAUTH_TOKEN_EXPIRY: checked, ordered, within the limits', () => {
+  assert.deepEqual(loadConfig({}).mcpVersions, ['2026-07-28', '2025-11-25', '2025-06-18']);
+  assert.deepEqual(loadConfig({ MCP_PROTOCOL_VERSIONS: '2025-06-18, 2026-07-28' }).mcpVersions, ['2026-07-28', '2025-06-18']);
+  for (const bad of ['2025-03-26', '2024-11-05', 'latest', ',']) assert.throws(() => loadConfig({ MCP_PROTOCOL_VERSIONS: bad }), /MCP_PROTOCOL_VERSIONS/, bad);
+  const signIn = { AUTH_PROVIDER: 'local', AUTH_SECRET: 'x'.repeat(40), BASE_URL: 'https://ots.example.com', API_TOKENS: 'true' };
+  assert.equal(loadConfig(signIn).auth?.tokens?.mcpExpiry, '1d');
+  assert.equal(loadConfig({ ...signIn, MCP_OAUTH_TOKEN_EXPIRY: '7D' }).auth?.tokens?.mcpExpiry, '7d');
+  assert.throws(() => loadConfig({ ...signIn, MCP_OAUTH_TOKEN_EXPIRY: '12h' }), /MCP_OAUTH_TOKEN_EXPIRY/);
+  assert.throws(() => loadConfig({ ...signIn, MCP_OAUTH_TOKEN_EXPIRY: '60d', API_TOKEN_MAX_EXPIRY: '30d' }), /MCP_OAUTH_TOKEN_EXPIRY=60d is above API_TOKEN_MAX_EXPIRY=30d/);
+});

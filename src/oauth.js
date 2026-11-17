@@ -5,8 +5,9 @@
 // signs in with the sign-in of this server (AUTH_PROVIDER: Entra ID, OIDC,
 // the presets or local accounts), confirms on a consent page, and the
 // client gets a personal API token (src/tokens.js) of that person: same
-// scopes, policy, lifetime, IP binding, audit and revocation as one made on
-// the "API tokens" page.
+// policy, IP binding, audit and revocation as one made on the "API tokens"
+// page, but only the scopes of the MCP tools, the lifetime
+// MCP_OAUTH_TOKEN_EXPIRY and valid only at /mcp (audience "mcp", RFC 8707).
 //
 //   /.well-known/oauth-protected-resource[/mcp]   RFC 9728: /mcp and its authorization server
 //   /.well-known/oauth-authorization-server       RFC 8414: the endpoints below
@@ -26,7 +27,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { escapeHtml } from './theme.js';
-import { plainIp, SCOPES } from './tokens.js';
+import { plainIp } from './tokens.js';
 
 const REQ_TTL = 600;
 const CODE_TTL = 60;
@@ -83,9 +84,11 @@ export const s256 = (verifier) => createHash('sha256').update(verifier).digest('
  *   strings: (res: import('express').Response) => Record<string, string>,
  *   limit: import('express').RequestHandler,
  *   csp: (req: import('express').Request) => string,
+ *   scopes: string[],
  * }} o
+ *   scopes: what the MCP tools need (create, status): the only scopes offered and granted (CIS MCP 3.3.4)
  */
-export function oauthRouter({ auth, tokens, store, origin, userOf, ev, page, errorPage, strings, limit, csp }) {
+export function oauthRouter({ auth, tokens, store, origin, userOf, ev, page, errorPage, strings, limit, csp, scopes: SCOPES }) {
   const { redis, p } = store;
   const key = createHmac('sha256', auth.c.secret).update('vanishly oauth clients v1').digest();
   const sign = (/** @type {string} */ body) => createHmac('sha256', key).update(body).digest('base64url').slice(0, 22);
@@ -110,7 +113,7 @@ export function oauthRouter({ auth, tokens, store, origin, userOf, ev, page, err
     }
   };
 
-  /** The scopes of a request ("create status"), within the known ones. @param {unknown} v */
+  /** The scopes of a request ("create status"), within the MCP ones. @param {unknown} v */
   const scopesOf = (v) => (typeof v === 'string' ? v.split(' ').filter((s) => SCOPES.includes(s)) : []);
 
   /** Back to the client with an error (RFC 6749 section 4.1.2.1). @param {string} uri @param {Record<string, string>} q */
@@ -159,6 +162,10 @@ export function oauthRouter({ auth, tokens, store, origin, userOf, ev, page, err
     if (!uris.length || uris.length > 5 || !uris.every((u) => loopbackUri(u))) {
       return fail(res, 400, 'invalid_redirect_uri', 'redirect_uris: 1 to 5 loopback URIs (http://127.0.0.1:<port>/..., http://localhost:<port>/...)');
     }
+    // A loopback redirect is a native client's (OpenID Connect application_type).
+    if (b.application_type !== undefined && b.application_type !== 'native') {
+      return fail(res, 400, 'invalid_client_metadata', 'application_type: only "native" (loopback redirect URIs)');
+    }
     if (b.token_endpoint_auth_method !== undefined && b.token_endpoint_auth_method !== 'none') {
       return fail(res, 400, 'invalid_client_metadata', 'token_endpoint_auth_method: only "none" (public clients with PKCE)');
     }
@@ -173,6 +180,7 @@ export function oauthRouter({ auth, tokens, store, origin, userOf, ev, page, err
       client_id_issued_at: Math.floor(Date.now() / 1000),
       client_name: name,
       redirect_uris: uris,
+      application_type: 'native',
       grant_types: ['authorization_code'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none',
@@ -190,6 +198,8 @@ export function oauthRouter({ auth, tokens, store, origin, userOf, ev, page, err
     if (!h?.u) return fail(res, 400, 'invalid_grant', 'The code is unknown, used or expired');
     if (b.client_id !== h.c) return fail(res, 400, 'invalid_grant', 'The code belongs to another client');
     if (b.redirect_uri !== h.r) return fail(res, 400, 'invalid_grant', 'redirect_uri does not match');
+    // RFC 8707: the token request names the same resource (this server's /mcp) if it names one.
+    if (b.resource !== undefined && b.resource !== resource(req) && b.resource !== `${resource(req)}/`) return fail(res, 400, 'invalid_target', 'unknown resource');
     if (typeof b.code_verifier !== 'string' || !VERIFIER.test(b.code_verifier) || s256(b.code_verifier) !== h.ch) {
       return fail(res, 400, 'invalid_grant', 'code_verifier does not match the code_challenge');
     }
@@ -198,7 +208,8 @@ export function oauthRouter({ auth, tokens, store, origin, userOf, ev, page, err
     if (!c || !tokens.mayCreate(who)) return fail(res, 400, 'invalid_grant', 'This account may not create API tokens');
     // API_TOKEN_IP_BINDING=required: the address the client asks from (it calls /mcp from there too).
     const ips = tokens.c.ipBinding === 'required' ? [plainIp(req.ip || '')] : [];
-    const r = await tokens.create(who, { name: `MCP: ${c.name}`.slice(0, 64), scopes: h.sc.split(' ').filter(Boolean), ips });
+    // Audience "mcp": the token works at /mcp only, not on the rest of the API (RFC 8707, CIS MCP 3.3.1).
+    const r = await tokens.create(who, { name: `MCP: ${c.name}`.slice(0, 64), scopes: h.sc.split(' ').filter(Boolean), ips }, { aud: 'mcp', expiry: tokens.c.mcpExpiry });
     const actor = { type: 'user', user: who.user, name: who.name };
     if ('error' in r) {
       await ev(req, res, 'api.token_create_denied', { outcome: 'denied', actor, reason: r.error === 'too_many_tokens' ? 'limit_reached' : r.error, details: { via: 'oauth', client: c.name } });
@@ -206,7 +217,7 @@ export function oauthRouter({ auth, tokens, store, origin, userOf, ev, page, err
     }
     const tk = r.record;
     try {
-      await ev(req, res, 'api.token_created', { actor, details: { token: { id: tk.id, name: tk.name }, expires: tk.expires ? new Date(tk.expires).toISOString() : 'never', networks: tk.ips, scopes: tk.scopes, via: 'oauth', client: c.name } }, true);
+      await ev(req, res, 'api.token_created', { actor, details: { token: { id: tk.id, name: tk.name }, expires: tk.expires ? new Date(tk.expires).toISOString() : 'never', networks: tk.ips, scopes: tk.scopes, via: 'oauth', client: c.name, audience: resource(req) } }, true);
     } catch {
       await tokens.revoke(tk.id, '', 'audit failure');
       return fail(res, 503, 'temporarily_unavailable', 'The audit log cannot be written right now');
@@ -255,15 +266,22 @@ export function oauthRouter({ auth, tokens, store, origin, userOf, ev, page, err
     if (!u || u.token || u.app) return { u: null, why: 'login' };
     if (!tokens.mayCreate(u)) return { u, why: 'oauth.notAllowed' };
     const policy = await tokens.policy(u.user, u.ids);
-    if (!policy.scopes.length) return { u, why: 'oauth.notAllowed' };
+    if (!policy.scopes.some((s) => SCOPES.includes(s))) return { u, why: 'oauth.notAllowed' };
     if (policy.max && (await tokens.active(u.user)) >= policy.max) return { u, why: 'oauth.limit' };
     return { u, why: '', policy };
   };
 
-  /** What this request would grant: the asked scopes within the policy, else the defaults. @param {string} asked @param {import('./tokens.js').Policy} policy */
+  /**
+   * What this request would grant: the asked scopes within the policy, else
+   * the defaults, else all the policy allows; only MCP scopes.
+   * @param {string} asked @param {import('./tokens.js').Policy} policy
+   */
   const grant = (asked, policy) => {
-    const want = asked.split(' ').filter((s) => policy.scopes.includes(s));
-    return want.length ? want : tokens.defaultScopes(policy);
+    const mine = (/** @type {string[]} */ l) => l.filter((s) => SCOPES.includes(s) && policy.scopes.includes(s));
+    const want = mine(asked.split(' '));
+    if (want.length) return want;
+    const d = mine(tokens.defaultScopes(policy));
+    return d.length ? d : mine(policy.scopes);
   };
 
   router.get('/oauth/:rid', limit, async (req, res) => {

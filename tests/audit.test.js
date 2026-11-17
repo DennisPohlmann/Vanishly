@@ -55,6 +55,24 @@ test('canonical JSON sorts keys; clean drops empty values but keeps false and 0'
   assert.equal(csvCell(['a', 'b']), '"a; b"');
 });
 
+test('timestamps never go backwards, even when the clock is set back (CIS MCP 7.1.3)', async () => {
+  const file = join(dir, `clock-${Math.random()}.jsonl`);
+  const a = new Audit(/** @type {any} */ ({ format: 'plain', file, fsync: false, stdout: false, redis: false, failClosed: true, ip: 'full', userAgent: true, instance: 'clock', checkpoint: 0 }), { version: 't' });
+  const now = Date.now;
+  try {
+    Date.now = () => now() + 60000;
+    await a.log({ type: 'system.startup', actor: { type: 'system' } });
+    Date.now = () => now() - 60000;
+    await a.log({ type: 'auth.login', actor: { type: 'user', user: 'alice@example.com' } });
+  } finally {
+    Date.now = now;
+  }
+  await a.close();
+  const ts = readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l).ts);
+  assert.match(ts[0], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  assert.ok(ts[1] >= ts[0], ts.join(' '));
+});
+
 for (const format of /** @type {const} */ (['ecs', 'otel', 'plain'])) {
   test(`${format}: valid JSON lines with the expected keys; verify finds changes, removals, moves and insertions`, async () => {
     const { text } = await chainText(format);

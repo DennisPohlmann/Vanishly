@@ -547,6 +547,14 @@
             }
           ]
         },
+        "MCP_PROTOCOL_VERSIONS": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(2026-07-28|2025-11-25|2025-06-18)([\\s,;]+(2026-07-28|2025-11-25|2025-06-18))*$"
+            }
+          ]
+        },
         "ENABLE_API_DOCS": {
           "anyOf": [
             {
@@ -1392,6 +1400,14 @@
             {
               "type": "string",
               "pattern": "^$|^[\\s,;]*(?i:[0-9]{1,4}[dmy]|never|0)([\\s,;]+(?i:[0-9]{1,4}[dmy]|never|0))*[\\s,;]*$"
+            }
+          ]
+        },
+        "MCP_OAUTH_TOKEN_EXPIRY": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:[0-9]{1,4}[dmy]|never)$"
             }
           ]
         },

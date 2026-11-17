@@ -287,6 +287,52 @@ Optional (`AUDIT_LOG`, `API_TOKENS`, see [CONFIG.md](CONFIG.md#audit-log)).
   (default on) an admin can burn a secret that is not opened yet (it never
   sees its content), logged as `secret.burned` with reason `admin`.
 
+## MCP server and the CIS MCP Server Benchmark
+
+`/mcp` ([CONFIG.md](CONFIG.md#mcp-server)) follows the CIS MCP Server
+Benchmark v1.0.0 where it applies to a remote Streamable HTTP server with
+tools only. **Pass**: met by Vanishly itself. **Operator**: depends on the
+deployment. **Deviation**: deliberately not met, with the reason.
+**n.a.**: Vanishly has no such feature (stdio, Resources, Prompts, Tasks,
+Sampling, Elicitation, MCP Apps, files) or it is about MCP clients or
+third-party servers (sections 4 and 8).
+
+| Recommendation | Status | How |
+|---|---|---|
+| 1.1 Protocol version pinned and logged | Pass | `MCP_PROTOCOL_VERSIONS` (allowlist, floor `2025-06-18`); other versions `-32022`, header missing or differing `-32020`, missing `_meta` `-32602`, all `400` and logged (`mcp.request_denied`); version in every `mcp.*` event |
+| 1.2, 1.3 Capability baseline, re-validation | Operator | `server/discover` advertises a fixed `{"tools":{}}`, no `listChanged`, no extensions; the tool list changes only with the `ENABLE_*` switches |
+| 1.4 Client and server identity | Pass | `clientInfo` (name, version) in every `mcp.*` event; `serverInfo` in each 2026-07-28 result. Matching against an asset inventory: operator |
+| 2.2 TLS only | Operator | TLS ends at the reverse proxy; `HSTS=true` behind HTTPS |
+| 2.3 Auth through proxies to SSE | n.a. | no SSE: one JSON answer per request |
+| 2.4 Metadata headers match the body | Pass | `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name` (also in Base64 form) checked against the body, `-32020` |
+| 2.5 Origin validated | Pass | a foreign `Origin` gets `403` and `mcp.request_denied` (`origin_not_allowed`) |
+| 3.1.2 OAuth 2.1 or short-lived tokens | Pass | `MCP_OAUTH` (OAuth 2.1, PKCE S256); token lifetime `MCP_OAUTH_TOKEN_EXPIRY` (`1d`), no refresh tokens. Hand-made API tokens follow `API_TOKEN_MAX_EXPIRY` (set it, e.g. `90d`) |
+| 3.2.1 Per-tool authorization | Pass | each tool needs one scope (`create_secret`: `create`; status and burn: `status`), checked by the API with the owner's current policy; every call logged as `mcp.tool_called` |
+| 3.2.2 No token passthrough | Pass | the token is checked by Vanishly and never sent on; tools call the in-process API |
+| 3.2.3 Annotations not used for authorization | Pass | authorization comes only from token scopes and policy |
+| 3.3.1 Audience-bound tokens (RFC 8707) | Pass | `resource` must be `<BASE_URL>/mcp` (else `invalid_target`); the token gets audience `mcp` and is refused on `/api/v1/*` (`api.token_audience_denied`) |
+| 3.3.2 Discovery metadata over TLS, approved issuer | Pass / Operator | Vanishly is its own authorization server, named in the protected resource metadata; TLS by the proxy |
+| 3.3.3 No shared downstream service accounts | n.a. | no downstream services |
+| 3.3.4 Minimal scopes, step-up | Pass | OAuth offers only `create` and `status` (never `read`); a missing scope answers `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` |
+| 3.3.5 Confused deputy, static client ids | Pass / Deviation | no static client ids, no third-party authorization server; consent page per client; only `native` clients with loopback redirects. Any port on the loopback address is accepted, as RFC 8252 section 7.3 requires |
+| 5.1.1 Tool argument validation | Pass | arguments checked against the tool's input schema (types, lengths, ranges, enums, no unknown fields) before the API, refusals as tool errors (`invalid_arguments`) |
+| 5.2.2, 5.2.3 Sessions, legacy streams | Pass | no `Mcp-Session-Id`, no SSE stream, `GET`/`DELETE` `405`, `Last-Event-ID` ignored |
+| 5.6.1 Idempotency keys | Deviation | a replay would have to store the answer, and the answer of `create_secret` holds the link with its key: the server would keep the key. Each call creates a new secret; `burn_secret` is idempotent |
+| 6.1 Context minimized | Pass / limit | tools return only the API's answer (links, status, no secret contents); the plaintext of `create_secret` passes the AI client and its provider |
+| 6.2 Tokens and keys protected | Pass | tokens stored only as HMAC; the server never holds a secret's key |
+| 7.1.1 Lifecycle and invocation records | Pass | `mcp.request`, `mcp.tool_called`, `mcp.request_denied` with `AUDIT_LOG=true` |
+| 7.1.2 Non-null request ids | Pass | an `id` that is `null` or not a string or integer is refused (`-32600`); the id is in the events |
+| 7.1.3 Monotonic timestamps | Pass | audit timestamps never go back within one process; hash chain with `seq` |
+| 7.2.1 Alerts on audience failures | Pass / Operator | `api.token_audience_denied`, `api.token_denied` in the audit log; alerting in the SIEM |
+| 9.1, 9.2 Containers, least privilege | Pass / Operator | see [Containers](#containers); gateway ingress rules by the operator |
+| 10.1 Caching | Pass | `Cache-Control: no-store` on `/mcp`; `tools/list` and `server/discover` say `ttlMs` 300000, `cacheScope` `public` (the same for everyone) |
+| 10.2 Size limits and quotas | Pass | body limit (64 KiB or 8 × `MAX_SECRET_CHARS`, whichever is larger), own per-IP counter `mcp` (`RATE_LIMIT_READ`), per-token `API_TOKEN_RATE_LIMIT` |
+
+For the strictest setup: `MCP_PROTOCOL_VERSIONS=2026-07-28` (clients that
+start with `initialize` then cannot connect), `AUDIT_LOG=true` shipped to
+a SIEM, `API_TOKEN_MAX_EXPIRY` set, TLS with `HSTS=true`, and
+`MCP_OAUTH` instead of hand-made tokens.
+
 ## What Vanishly cannot protect against
 
 - **Whoever has the full link** (and the passphrase, if set) can read the

@@ -55,12 +55,13 @@ The container then does not come up (`docker compose logs vanishly`).
 | `GENERATOR_COMPLEXITY` | `all` | Character classes of the generated password: `upper`, `lower`, `digit`, `symbol` or `all`; each chosen class appears at least once. Look-alikes (0/O, 1/l/I) are left out |
 | `RECEIPT_KEEP` | `604800` | How long a receipt stays after its secret expired (seconds) |
 | `RATE_LIMIT_CREATE` | `30` | New secrets per client IP and window; `0` = off |
-| `RATE_LIMIT_READ` | `120` | Reads, reveals, receipts and burns per client IP and window; with sign-in also `/auth/login` and `/auth/callback` (own counter), with `MCP_OAUTH` also `/oauth/*` (own counter). With sign-in, all requests of one client IP together (not static files, `/healthz`) may reach 10 × the larger of `RATE_LIMIT_READ` and `RATE_LIMIT_CREATE` per window. `0` = off |
+| `RATE_LIMIT_READ` | `120` | Reads, reveals, receipts and burns per client IP and window; with sign-in also `/auth/login` and `/auth/callback` (own counter), with `MCP_OAUTH` also `/oauth/*` (own counter), with MCP also `/mcp` (own counter). With sign-in, all requests of one client IP together (not static files, `/healthz`) may reach 10 × the larger of `RATE_LIMIT_READ` and `RATE_LIMIT_CREATE` per window. `0` = off |
 | `RATE_LIMIT_WINDOW` | `600` | Window of the rate limits (seconds) |
 | `RATE_LIMIT_KEY` (`_FILE`) | (random per process) | At least 32 characters, no whitespace (`openssl rand -base64 48`): keys the IP hashes of the rate limits. Use the same value on all replicas so they share the limits. Unset: a random key per process, so limits are per process and reset on restart, with a warning at start (fine for one replica). Changing it starts the counters over. The Helm chart generates one |
 | `CREATE_ALLOWED_IPS`, `CREATE_DENIED_IPS` | (none: everybody) | Client IPs that may / may not create: the form, `POST /api/v1/secrets` and `/share`, people and group search, status page and burn ([details](#ip-access)) |
 | `READ_ALLOWED_IPS`, `READ_DENIED_IPS` | (none: everybody) | Client IPs that may / may not open secrets: `/s/<id>`, `GET /api/v1/secrets/{id}`, reveal, `/api/v1/open` ([details](#ip-access)) |
 | `ADMIN_ALLOWED_IPS`, `ADMIN_DENIED_IPS` | (none: everybody) | Client IPs that may / may not use the admin area: `/admin` and `/api/v1/admin/*` ([details](#ip-access)) |
+| `MCP_PROTOCOL_VERSIONS` | `2026-07-28,2025-11-25,2025-06-18` | MCP protocol versions `/mcp` speaks, any of these three. Others (e.g. `2025-03-26`) are refused with error `-32022` and logged as `mcp.request_denied`. `2026-07-28` alone is the strictest choice; older clients then fail ([details](#mcp-server)) |
 | `ACCESS_LOG` | `true` | One line per request to stdout (method, path with ids replaced by `:id`, status, time) |
 
 ### Switches (`ENABLE_*`)
@@ -238,6 +239,7 @@ Need sign-in. See [API tokens](#api-tokens) below.
 | `API_TOKEN_EXPIRY_OPTIONS` | `30d,60d,90d,never` | Lifetimes a user may pick: `d` days, `m` calendar months, `y` calendar years, `never` (note: `m` is months here, minutes in `TTL_OPTIONS`) |
 | `API_TOKEN_DEFAULT_EXPIRY` | `90d` (or the longest choice) | Preselected lifetime; added to the choices if missing |
 | `API_TOKEN_MAX_EXPIRY` | `never` (no cap) | Longest lifetime allowed, e.g. `1y`: longer choices and `never` disappear, the server refuses them |
+| `MCP_OAUTH_TOKEN_EXPIRY` | `1d` | Lifetime of the token an MCP client gets by signing in (`MCP_OAUTH`): `d`, `m` (months), `y` or `never`, at most `API_TOKEN_MAX_EXPIRY`; not limited to `API_TOKEN_EXPIRY_OPTIONS`. No refresh tokens: the client signs in again when it expires |
 | `API_TOKEN_MAX_PER_USER` | `10` | Active tokens per user, 0 to 1000 (`0`: no limit). Only active tokens count; revoked and expired ones do not. At the limit the API tokens page shows "10 of 10 active tokens" and a notice instead of the form, and the API refuses with `400 too_many_tokens` (logged as `api.token_create_denied`, reason `limit_reached`) |
 | `API_TOKEN_RATE_LIMIT` | `0` (off) | Calls per token per `RATE_LIMIT_WINDOW` |
 | `API_TOKEN_COMMENT` | `optional` | `required`: every POST with a token needs a comment (`X-Audit-Comment` or `comment`); needs `AUDIT_LOG` |
@@ -377,6 +379,18 @@ AI clients that speak the [Model Context Protocol](https://modelcontextprotocol.
 (Streamable HTTP, one JSON answer per request, no sessions). On by default,
 `ENABLE_MCP=false` switches it off; it follows `ENABLE_API`.
 
+Protocol versions (`MCP_PROTOCOL_VERSIONS`, all three by default):
+`2026-07-28` (stateless: no `initialize`, `server/discover`, the version and
+client capabilities in each request's `_meta`) and `2025-11-25` /
+`2025-06-18` (with `initialize`). After `initialize`, every request needs
+the `MCP-Protocol-Version` header; with `2026-07-28` also `Mcp-Method`
+and, for `tools/call`, `Mcp-Name`, matching the body. A missing or
+differing header is refused (`400`, `-32020`), an unknown version too
+(`400`, `-32022`, with the supported ones). `GET` and `DELETE` answer
+`405`; answers carry `Cache-Control: no-store`; `/mcp` has its own rate
+limit counter (`RATE_LIMIT_READ`). Tool arguments are checked against the
+tool's input schema (unknown fields too) before the API is called.
+
 | Tool | Runs | Needs |
 |---|---|---|
 | `create_secret` | `POST /api/v1/share`: the secret is encrypted on the server, the answer has `shareUrl` (for the recipient) and `receiptUrl` | `ENABLE_SHARE_API` |
@@ -396,6 +410,11 @@ a refusal comes back as a tool error with the API's `error` code.
   `API_TOKENS=true` the client gets that token itself by a sign-in in the
   browser ([below](#sign-in-of-mcp-clients-mcp_oauth)).
 - A browser `Origin` other than this server is refused (403).
+- With `AUDIT_LOG=true` every call is logged: `mcp.tool_called` (tool,
+  client name and version, protocol version, outcome), `mcp.request`
+  (other methods) and `mcp.request_denied` (reason, e.g.
+  `origin_not_allowed`, `header_mismatch`, `unsupported_protocol_version`),
+  besides the API's own events.
 - The plaintext of `create_secret` passes through the AI client and its
   provider. Keep that in mind for what you let an assistant share.
 
@@ -428,14 +447,19 @@ claude mcp add --transport http vanishly https://ots.example.com/mcp
 
 - `/mcp` then needs a signed-in person: without a token (or with an
   unknown, revoked or expired one) it answers `401` with
-  `WWW-Authenticate: Bearer resource_metadata=".../.well-known/oauth-protected-resource/mcp"`,
+  `WWW-Authenticate: Bearer resource_metadata=".../.well-known/oauth-protected-resource/mcp", scope="create status"`,
   which starts the sign-in.
 - The client gets a normal [API token](#api-tokens) of the person, named
   `MCP: <client name>`: on the "API tokens" page, revocable there and on
   `/admin`, counting towards `API_TOKEN_MAX_PER_USER`, with the scopes the
   client asks for within the person's policy (else the default scopes),
-  the default lifetime (`API_TOKEN_DEFAULT_EXPIRY`) and no refresh token:
-  when it expires, the client signs in again. With
+  the lifetime `MCP_OAUTH_TOKEN_EXPIRY` (default `1d`) and no refresh
+  token: when it expires, the client signs in again. The token is bound to
+  `/mcp` (audience, RFC 8707): on `/api/v1/*` it is refused (`401
+  invalid_token`, logged as `api.token_audience_denied`). Its scopes are
+  only those the tools need (`create`, `status`; never `read`); a tool
+  call without the needed scope answers `403` with
+  `WWW-Authenticate: Bearer error="insufficient_scope"`. With
   `API_TOKEN_IP_BINDING=required` it is bound to the address the client
   fetched it from. `API_TOKEN_USERS` / `API_TOKEN_GROUPS` decide who may.
   The audit log has it as `api.token_created` with `details.via: oauth`

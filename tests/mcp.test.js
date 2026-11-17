@@ -5,10 +5,11 @@ import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import express from 'express';
-import { flatSchema, mcpRouter, PROTOCOL_VERSIONS, receiptId } from '../src/mcp.js';
+import { flatSchema, headerValue, mcpRouter, PROTOCOL_VERSIONS, receiptId, schemaError } from '../src/mcp.js';
 
 const spec = JSON.parse(readFileSync(new URL('../openapi/openapi.json', import.meta.url), 'utf8'));
 const ID = 'A'.repeat(22);
+const NOSCOPE = 'S'.repeat(22);
 const ON = { shareApi: true, receipts: true, receiptApi: true, burn: true };
 
 /** @param {string} base @param {any} msg @param {Record<string, string>} [headers] */
@@ -22,8 +23,20 @@ async function rpc(base, msg, headers = {}) {
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
-/** @param {any} features @returns {Promise<{ base: string, close: () => void, seen: any[] }>} */
-async function fake(features = ON) {
+const LEGACY = { 'MCP-Protocol-Version': '2025-06-18' };
+const META = { 'io.modelcontextprotocol/protocolVersion': '2026-07-28', 'io.modelcontextprotocol/clientInfo': { name: 'test-client', version: '1.0' }, 'io.modelcontextprotocol/clientCapabilities': {} };
+
+/**
+ * A 2026-07-28 request: _meta in the body, mirrored in the headers.
+ * @param {string} base @param {string} method @param {any} [params] @param {Record<string, string>} [headers] @param {any} [id]
+ */
+function modern(base, method, params = {}, headers = {}, id = 1) {
+  const h = { 'MCP-Protocol-Version': '2026-07-28', 'Mcp-Method': method, ...(typeof params.name === 'string' ? { 'Mcp-Name': params.name } : {}), ...headers };
+  return rpc(base, { jsonrpc: '2.0', id, method, params: { ...params, _meta: { ...META, ...params._meta } } }, h);
+}
+
+/** @param {any} features @param {any} [more] @returns {Promise<{ base: string, close: () => void, seen: any[], events: any[] }>} */
+async function fake(features = ON, more = {}) {
   /** @type {any[]} */
   const seen = [];
   const api = express.Router();
@@ -33,16 +46,22 @@ async function fake(features = ON) {
     if (req.body.secret === 'bad') return void res.status(400).json({ error: 'too_short', message: 'too short' });
     res.status(201).json({ id: ID, shareUrl: `http://x/s/${ID}#key` });
   });
-  api.get('/v1/receipts/:id', (req, res) => res.json({ state: 'new', id: req.params.id }));
+  api.get('/v1/receipts/:id', (req, res) => {
+    if (req.params.id === NOSCOPE) return void res.status(403).json({ error: 'insufficient_scope', message: 'This token lacks the scope "status"' });
+    res.json({ state: 'new', id: req.params.id });
+  });
   api.post('/v1/receipts/:id/burn', (req, res) => {
     seen.push({ body: req.body });
     res.json({ state: 'burned' });
   });
+  /** @type {any[]} */
+  const events = [];
   const app = express();
-  app.use('/mcp', mcpRouter({ api, spec, features, version: 't', origin: () => 'http://vanishly.test/sub', bodyLimit: 65536 }));
+  const ev = async (/** @type {any} */ _req, /** @type {any} */ _res, /** @type {string} */ type, /** @type {any} */ e = {}) => void events.push({ type, ...e });
+  app.use('/mcp', mcpRouter({ api, spec, features, version: 't', origin: () => 'http://vanishly.test/sub', bodyLimit: 65536, ev, ...more }));
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
-  return { base: `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`, close: () => server.close(), seen };
+  return { base: `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`, close: () => server.close(), seen, events };
 }
 
 test('flatSchema merges the allOf of /v1/share into one object schema', () => {
@@ -59,23 +78,155 @@ test('receiptId takes the id or the receipt link', () => {
   for (const v of ['', 'x', `${ID}A`, `https://x/s/${ID}/../r`, 42, null]) assert.equal(receiptId(v), '', String(v));
 });
 
-test('initialize, ping, tools/list, notifications', async () => {
+test('initialize (2025-11-25, 2025-06-18), ping, tools/list, notifications', async () => {
   const f = await fake();
   try {
-    let r = await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } });
+    let r = await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } });
     assert.equal(r.status, 200);
-    assert.equal(r.body.result.protocolVersion, '2025-03-26');
+    assert.equal(r.body.result.protocolVersion, '2025-06-18');
     assert.deepEqual(r.body.result.capabilities, { tools: {} });
-    r = await rpc(f.base, { jsonrpc: '2.0', id: 2, method: 'initialize', params: { protocolVersion: '1999-01-01' } });
-    assert.equal(r.body.result.protocolVersion, PROTOCOL_VERSIONS[0]);
+    // An older or unknown version: the newest older one this server speaks.
+    for (const v of ['2025-03-26', '2024-11-05', '1999-01-01']) {
+      r = await rpc(f.base, { jsonrpc: '2.0', id: 2, method: 'initialize', params: { protocolVersion: v } });
+      assert.equal(r.body.result.protocolVersion, '2025-11-25', v);
+    }
     assert.equal((await rpc(f.base, { jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
-    assert.deepEqual((await rpc(f.base, { jsonrpc: '2.0', id: 3, method: 'ping' })).body.result, {});
-    r = await rpc(f.base, { jsonrpc: '2.0', id: 4, method: 'tools/list' });
+    assert.deepEqual((await rpc(f.base, { jsonrpc: '2.0', id: 3, method: 'ping' }, LEGACY)).body.result, {});
+    r = await rpc(f.base, { jsonrpc: '2.0', id: 4, method: 'tools/list' }, LEGACY);
     assert.deepEqual(r.body.result.tools.map((/** @type {any} */ t) => t.name), ['create_secret', 'get_secret_status', 'burn_secret']);
-    assert.equal((await rpc(f.base, { jsonrpc: '2.0', id: 5, method: 'nope' })).body.error.code, -32601);
+    for (const t of r.body.result.tools) assert.equal(t.inputSchema.additionalProperties, false, t.name);
+    assert.equal((await rpc(f.base, { jsonrpc: '2.0', id: 5, method: 'nope' }, LEGACY)).body.error.code, -32601);
     assert.equal((await rpc(f.base, [{ jsonrpc: '2.0', id: 6, method: 'ping' }])).status, 400);
     assert.equal((await rpc(f.base, '{"jsonrpc":')).status, 400);
-    assert.equal((await fetch(`${f.base}/mcp`)).status, 405);
+    const get = await fetch(`${f.base}/mcp`);
+    assert.equal(get.status, 405);
+    assert.equal((await fetch(`${f.base}/mcp`, { method: 'DELETE' })).status, 405);
+    assert.equal(get.headers.get('cache-control'), 'no-store');
+    assert.equal(get.headers.get('mcp-session-id'), null);
+  } finally {
+    f.close();
+  }
+});
+
+test('MCP-Protocol-Version: required after initialize, only allowed versions (CIS 1.1)', async () => {
+  const f = await fake();
+  try {
+    // No header: no silent fallback to 2025-03-26.
+    let r = await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    assert.equal(r.status, 400);
+    assert.equal(r.body.error.code, -32020);
+    for (const v of ['2025-03-26', '2024-11-05', 'x']) {
+      r = await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, { 'MCP-Protocol-Version': v });
+      assert.equal(r.status, 400, v);
+      assert.equal(r.body.error.code, -32022, v);
+      assert.deepEqual(r.body.error.data.supported, PROTOCOL_VERSIONS);
+    }
+    assert.equal((await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, { 'MCP-Protocol-Version': '2025-11-25' })).status, 200);
+    // Refusals are audit events with the asserted version.
+    const d = f.events.filter((e) => e.type === 'mcp.request_denied');
+    assert.deepEqual(d.map((e) => e.reason), ['header_mismatch', 'unsupported_protocol_version', 'unsupported_protocol_version', 'unsupported_protocol_version']);
+    assert.equal(d[1].details.protocol_version, '2025-03-26');
+    assert.equal(d[1].details.request_id, '1');
+    assert.equal(d[1].details.method, 'tools/list');
+  } finally {
+    f.close();
+  }
+  // MCP_PROTOCOL_VERSIONS=2026-07-28: no initialize at all, the error names the versions.
+  const g = await fake(ON, { versions: ['2026-07-28'] });
+  try {
+    const r = await rpc(g.base, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+    assert.equal(r.status, 400);
+    assert.equal(r.body.error.code, -32022);
+    assert.match(r.body.error.message, /2026-07-28/);
+    assert.equal((await rpc(g.base, { jsonrpc: '2.0', id: 2, method: 'tools/list' }, LEGACY)).body.error.code, -32022);
+    assert.equal((await modern(g.base, 'tools/list')).status, 200);
+  } finally {
+    g.close();
+  }
+});
+
+test('2026-07-28: server/discover, _meta, resultType, caching hints, serverInfo', async () => {
+  const f = await fake();
+  try {
+    let r = await modern(f.base, 'server/discover');
+    assert.equal(r.status, 200);
+    assert.equal(r.body.result.resultType, 'complete');
+    assert.deepEqual(r.body.result.supportedVersions, PROTOCOL_VERSIONS);
+    assert.deepEqual(r.body.result.capabilities, { tools: {} });
+    assert.equal(r.body.result.cacheScope, 'public');
+    assert.ok(r.body.result.ttlMs >= 0);
+    assert.deepEqual(r.body.result._meta['io.modelcontextprotocol/serverInfo'], { name: 'vanishly', title: 'Vanishly', version: 't' });
+    r = await modern(f.base, 'tools/list');
+    assert.equal(r.body.result.resultType, 'complete');
+    assert.equal(r.body.result.tools.length, 3);
+    assert.equal(r.body.result.cacheScope, 'public');
+    r = await modern(f.base, 'tools/call', { name: 'get_secret_status', arguments: { receipt: ID } });
+    assert.equal(r.body.result.resultType, 'complete');
+    assert.equal(r.body.result.structuredContent.state, 'new');
+    // ping is gone; an unknown method is a 404 with -32601.
+    r = await modern(f.base, 'ping');
+    assert.equal(r.status, 404);
+    assert.equal(r.body.error.code, -32601);
+    // The audit log has the claimed client and version of every request.
+    const call = f.events.find((e) => e.type === 'mcp.tool_called');
+    assert.equal(call.details.tool, 'get_secret_status');
+    assert.equal(call.details.scope, 'status');
+    assert.equal(call.details.protocol_version, '2026-07-28');
+    assert.deepEqual(call.details.client, { name: 'test-client', version: '1.0' });
+    assert.ok(f.events.some((e) => e.type === 'mcp.request' && e.details.method === 'server/discover'));
+  } finally {
+    f.close();
+  }
+});
+
+test('2026-07-28: headers must be there and match the body (CIS 2.4)', async () => {
+  const f = await fake();
+  try {
+    const call = { name: 'get_secret_status', arguments: { receipt: ID } };
+    /** @param {Promise<{ status: number, body: any }>} p @param {number} code */
+    const refused = async (p, code) => {
+      const r = await p;
+      assert.equal(r.status, 400, JSON.stringify(r.body));
+      assert.equal(r.body.error.code, code);
+    };
+    await refused(modern(f.base, 'tools/list', {}, { 'MCP-Protocol-Version': '2025-06-18' }), -32020);
+    await refused(rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: META } }, { 'Mcp-Method': 'tools/list' }), -32020);
+    await refused(modern(f.base, 'tools/list', { _meta: { 'io.modelcontextprotocol/protocolVersion': '2025-11-25' } }), -32022);
+    await refused(rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }, { 'MCP-Protocol-Version': '2026-07-28', 'Mcp-Method': 'tools/list' }), -32602);
+    await refused(rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } } }, { 'MCP-Protocol-Version': '2026-07-28', 'Mcp-Method': 'tools/list' }), -32602);
+    await refused(modern(f.base, 'tools/list', {}, { 'Mcp-Method': 'tools/call' }), -32020);
+    await refused(rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: META } }, { 'MCP-Protocol-Version': '2026-07-28' }), -32020);
+    await refused(modern(f.base, 'tools/call', call, { 'Mcp-Name': 'burn_secret' }), -32020);
+    await refused(rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { ...call, _meta: META } }, { 'MCP-Protocol-Version': '2026-07-28', 'Mcp-Method': 'tools/call' }), -32020);
+    // An older client's header that disagrees is refused too.
+    await refused(rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, { ...LEGACY, 'Mcp-Method': 'ping' }), -32020);
+    // Base64 sentinel form of Mcp-Name.
+    const r = await modern(f.base, 'tools/call', call, { 'Mcp-Name': `=?base64?${Buffer.from('get_secret_status').toString('base64')}?=` });
+    assert.equal(r.status, 200);
+    assert.equal(f.events.filter((e) => e.type === 'mcp.request_denied').length, 10);
+  } finally {
+    f.close();
+  }
+});
+
+test('headerValue: plain ASCII or the Base64 sentinel form', () => {
+  assert.equal(headerValue('get_weather'), 'get_weather');
+  assert.equal(headerValue('=?base64?SGVsbG8sIOS4lueVjA==?='), 'Hello, 世界');
+  assert.equal(headerValue(`a${String.fromCharCode(1)}b`), null);
+  assert.equal(headerValue('café'), null);
+});
+
+test('request ids: a string or an integer, never null (CIS 7.1.2)', async () => {
+  const f = await fake();
+  try {
+    for (const id of [null, 1.5, true, { a: 1 }, [1]]) {
+      const r = await rpc(f.base, { jsonrpc: '2.0', id, method: 'tools/list' }, LEGACY);
+      assert.equal(r.status, 400, JSON.stringify(id));
+      assert.equal(r.body.error.code, -32600);
+      assert.equal(r.body.id, null);
+    }
+    assert.equal((await rpc(f.base, { jsonrpc: '2.0', id: 'abc', method: 'tools/list' }, LEGACY)).body.id, 'abc');
+    assert.equal(f.events.filter((e) => e.reason === 'invalid_request_id').length, 5);
   } finally {
     f.close();
   }
@@ -84,9 +235,9 @@ test('initialize, ping, tools/list, notifications', async () => {
 test('only the tools whose endpoints are on', async () => {
   const f = await fake({ shareApi: false, receipts: true, receiptApi: true, burn: false });
   try {
-    const r = await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    const r = await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, LEGACY);
     assert.deepEqual(r.body.result.tools.map((/** @type {any} */ t) => t.name), ['get_secret_status']);
-    assert.equal((await rpc(f.base, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'create_secret', arguments: {} } })).body.error.code, -32602);
+    assert.equal((await rpc(f.base, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'create_secret', arguments: {} } }, LEGACY)).body.error.code, -32602);
   } finally {
     f.close();
   }
@@ -95,22 +246,22 @@ test('only the tools whose endpoints are on', async () => {
 test('tools/call runs the API endpoint and wraps its answer', async () => {
   const f = await fake();
   try {
-    let r = await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'create_secret', arguments: { secret: 'hunter22', ttl: 3600 } } });
+    let r = await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'create_secret', arguments: { secret: 'hunter22', ttl: 3600 } } }, LEGACY);
     assert.equal(r.status, 200);
     assert.equal(r.body.result.isError, undefined);
     assert.equal(r.body.result.structuredContent.shareUrl, `http://x/s/${ID}#key`);
     assert.deepEqual(f.seen[0], { method: 'POST', path: '/v1/share', body: { secret: 'hunter22', ttl: 3600 }, route: '/api/v1/share' });
     // An API error is a tool error (isError), not a protocol error.
-    r = await rpc(f.base, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'create_secret', arguments: { secret: 'bad' } } });
+    r = await rpc(f.base, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'create_secret', arguments: { secret: 'bad' } } }, LEGACY);
     assert.equal(r.status, 200);
     assert.equal(r.body.result.isError, true);
     assert.match(r.body.result.content[0].text, /^too_short: /);
-    r = await rpc(f.base, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_secret_status', arguments: { receipt: `https://x/r/${ID}` } } });
+    r = await rpc(f.base, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_secret_status', arguments: { receipt: `https://x/r/${ID}` } } }, LEGACY);
     assert.deepEqual(r.body.result.structuredContent, { state: 'new', id: ID });
-    r = await rpc(f.base, { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'burn_secret', arguments: { receipt: ID, comment: 'leaked' } } });
+    r = await rpc(f.base, { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'burn_secret', arguments: { receipt: ID, comment: 'leaked' } } }, LEGACY);
     assert.equal(r.body.result.structuredContent.state, 'burned');
     assert.deepEqual(f.seen[2].body, { comment: 'leaked' });
-    r = await rpc(f.base, { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'burn_secret', arguments: { receipt: '../../v1/share' } } });
+    r = await rpc(f.base, { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'burn_secret', arguments: { receipt: '../../v1/share' } } }, LEGACY);
     assert.equal(r.body.result.isError, true);
     assert.equal(f.seen.length, 3);
   } finally {
@@ -118,11 +269,71 @@ test('tools/call runs the API endpoint and wraps its answer', async () => {
   }
 });
 
+test('tools/call: arguments checked against the input schema before the API runs (CIS 5.1.1)', async () => {
+  const f = await fake();
+  try {
+    /** @param {any} args @param {RegExp} text */
+    const toolError = async (args, text, name = 'create_secret') => {
+      const r = await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, LEGACY);
+      assert.equal(r.status, 200);
+      assert.equal(r.body.result.isError, true, JSON.stringify(args));
+      assert.match(r.body.result.content[0].text, text);
+    };
+    await toolError({}, /^invalid_arguments: arguments\.secret is required/);
+    await toolError({ secret: 'x', ttl: '3600' }, /arguments\.ttl must be an integer/);
+    await toolError({ secret: 'x', ttl: 1.5 }, /arguments\.ttl must be an integer/);
+    await toolError({ secret: 'x', ttl: 10 }, /arguments\.ttl must be at least 60/);
+    await toolError({ secret: 'x', recipients: ['a@example.com', 7] }, /arguments\.recipients\[1\] must be a string/);
+    await toolError({ secret: 'x', evil: true }, /arguments\.evil is not a known argument/);
+    await toolError({ receipt: ID, comment: 'x'.repeat(2001) }, /at most 2000 characters/, 'burn_secret');
+    assert.equal(f.seen.length, 0, 'the API never ran');
+    // arguments that are no object: a protocol error (malformed CallToolRequest).
+    const r = await rpc(f.base, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'create_secret', arguments: ['x'] } }, LEGACY);
+    assert.equal(r.body.error.code, -32602);
+    assert.ok(f.events.filter((e) => e.type === 'mcp.tool_called').every((e) => e.outcome === 'denied'));
+  } finally {
+    f.close();
+  }
+});
+
+test('schemaError covers the keywords of the tool schemas', () => {
+  const s = { type: 'object', properties: { a: { type: 'string', enum: ['x'] }, n: { type: 'number', maximum: 2 }, l: { type: 'array', maxItems: 1 } }, additionalProperties: false };
+  assert.equal(schemaError({ a: 'x', n: 2, l: [1] }, s), '');
+  assert.match(schemaError({ a: 'y' }, s), /one of x/);
+  assert.match(schemaError({ n: 3 }, s), /at most 2/);
+  assert.match(schemaError({ l: [1, 2] }, s), /at most 1 entries/);
+  assert.match(schemaError(null, s), /must be an object/);
+});
+
+test('MCP_OAUTH: a missing scope is a 403 with an insufficient_scope challenge (step-up, CIS 3.3.4)', async () => {
+  const msg = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_secret_status', arguments: { receipt: NOSCOPE } } };
+  const f = await fake(ON, { challenge: (/** @type {any} */ _req, /** @type {string} */ scope) => `Bearer error="insufficient_scope", scope="${scope}"` });
+  try {
+    const r = await rpc(f.base, msg, LEGACY);
+    assert.equal(r.status, 403);
+    assert.equal(r.body.id, 1);
+    assert.ok(r.body.error);
+  } finally {
+    f.close();
+  }
+  // Without MCP_OAUTH there is nobody to sign in with: a tool error.
+  const g = await fake();
+  try {
+    const r = await rpc(g.base, msg, LEGACY);
+    assert.equal(r.status, 200);
+    assert.match(r.body.result.content[0].text, /^insufficient_scope: /);
+  } finally {
+    g.close();
+  }
+});
+
 test('a foreign Origin is refused, the own one (without the BASE_URL path) taken', async () => {
   const f = await fake();
   try {
-    assert.equal((await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'ping' }, { Origin: 'https://evil.example' })).status, 403);
-    assert.equal((await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'ping' }, { Origin: 'http://vanishly.test' })).status, 200);
+    assert.equal((await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'ping' }, { ...LEGACY, Origin: 'https://evil.example' })).status, 403);
+    assert.equal((await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'ping' }, { ...LEGACY, Origin: 'http://vanishly.test' })).status, 200);
+    // The refusal is a security event (CIS 2.5).
+    assert.deepEqual(f.events.map((e) => [e.type, e.reason]), [['mcp.request_denied', 'origin_not_allowed']]);
   } finally {
     f.close();
   }
@@ -170,15 +381,15 @@ async function vanishly(env) {
 
 test('standalone: create, status and burn over MCP, like the open API', opts, async () => {
   const base = await vanishly({});
-  let r = await rpc(base, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'create_secret', arguments: { secret: 'hunter22' } } });
+  let r = await rpc(base, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'create_secret', arguments: { secret: 'hunter22' } } }, LEGACY);
   assert.equal(r.body.result.isError, undefined, JSON.stringify(r.body));
   const made = r.body.result.structuredContent;
   assert.match(made.shareUrl, /\/s\/[A-Za-z0-9_-]{22}#/);
-  r = await rpc(base, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_secret_status', arguments: { receipt: made.receiptUrl } } });
+  r = await rpc(base, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_secret_status', arguments: { receipt: made.receiptUrl } } }, LEGACY);
   assert.equal(r.body.result.structuredContent.state, 'new');
-  r = await rpc(base, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'burn_secret', arguments: { receipt: made.receiptId } } });
+  r = await rpc(base, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'burn_secret', arguments: { receipt: made.receiptId } } }, LEGACY);
   assert.equal(r.body.result.structuredContent.state, 'burned');
-  r = await rpc(base, { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'burn_secret', arguments: { receipt: made.receiptId } } });
+  r = await rpc(base, { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'burn_secret', arguments: { receipt: made.receiptId } } }, LEGACY);
   assert.equal(r.body.result.isError, true);
   // The answers of the API still work after MCP calls on the same app.
   assert.equal((await fetch(`${base}/api/v1/receipts/${made.receiptId}`)).status, 200);
@@ -186,12 +397,12 @@ test('standalone: create, status and burn over MCP, like the open API', opts, as
 
 test('ENABLE_MCP=false: /mcp is gone, the API stays', opts, async () => {
   const base = await vanishly({ ENABLE_MCP: 'false' });
-  assert.equal((await rpc(base, { jsonrpc: '2.0', id: 1, method: 'ping' })).status, 404);
+  assert.equal((await rpc(base, { jsonrpc: '2.0', id: 1, method: 'ping' }, LEGACY)).status, 404);
   const res = await fetch(`${base}/api/v1/share`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: 'hunter22' }) });
   assert.equal(res.status, 201);
 });
 
 test('ENABLE_API=false: no MCP either', opts, async () => {
   const base = await vanishly({ ENABLE_API: 'false' });
-  assert.equal((await rpc(base, { jsonrpc: '2.0', id: 1, method: 'ping' })).status, 404);
+  assert.equal((await rpc(base, { jsonrpc: '2.0', id: 1, method: 'ping' }, LEGACY)).status, 404);
 });

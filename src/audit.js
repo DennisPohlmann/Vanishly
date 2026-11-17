@@ -784,6 +784,8 @@ export class Audit {
     this.refKey = cfg.hmacKey || cfg.refKey || randomBytes(32).toString('hex');
     this.seq = 0;
     this.prev = GENESIS;
+    /** The time of the last event (ms), so the next one is never earlier. */
+    this.lastTs = 0;
     /** @type {number | null} */ this.fd = null;
     this.failedAt = 0;
     /** @type {Promise<any>} */ this.queue = Promise.resolve();
@@ -889,7 +891,10 @@ export class Audit {
   /** @param {AuditEvent} input */
   async append(input) {
     await this.start();
-    const ev = { ...input, id: input.id || randomUUID(), ts: input.ts || new Date() };
+    // Times never go backwards in the stream, even when the clock is set back (CIS MCP 7.1.3).
+    const ts = input.ts || new Date(Math.max(Date.now(), this.lastTs || 0));
+    this.lastTs = ts.getTime();
+    const ev = { ...input, id: input.id || randomUUID(), ts };
     const seq = this.seq + 1;
     const rec = formatEvent(ev, this.c.format, this.service, { seq, prev: this.prev });
     const hash = hashOf(rec);

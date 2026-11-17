@@ -8,9 +8,10 @@
 // only HMAC-SHA256(pepper, token), the pepper derived from AUTH_SECRET.
 //
 // Keys (below REDIS_PREFIX):
-//   tok:<id>          hash  h own nm ids name created expires ips scopes revoked used by
+//   tok:<id>          hash  h own nm ids name created expires ips scopes revoked used by aud
 //                           (h: the HMAC; own/nm: owner address and name; ids: the
-//                           owner's recipient hashes, renewed at each sign-in);
+//                           owner's recipient hashes, renewed at each sign-in; aud: "mcp"
+//                           for a token an MCP client got by signing in, valid only at /mcp);
 //                           kept 30 days after expiry or revocation
 //   tok:u:<owner>     set   the token ids of a user (owner = HMAC of the address)
 //   tok:all           set   all token ids (admin list)
@@ -55,8 +56,8 @@ export function ipAllowed(ipIn, nets) {
 
 /**
  * @typedef {{ id: string, name: string, owner: string, ownerName: string, ids: string[], created: number,
- *   expires: number, ips: string[], scopes: string[], revoked: number, used: number, revokedBy: string, svc: string }} TokenRecord
- *   svc: the technical user it belongs to ('' for a person's token)
+ *   expires: number, ips: string[], scopes: string[], revoked: number, used: number, revokedBy: string, svc: string, aud: string }} TokenRecord
+ *   svc: the technical user it belongs to ('' for a person's token); aud: 'mcp' or '' (the whole API)
  * @typedef {{ name: string, description: string, responsible: string, ips: string[], enabled: boolean,
  *   max: number | null, created: number, by: string, updated: number }} Service a technical user
  * @typedef {{ scopes: string[], max: number, source: 'user' | 'group' | 'env-group' | 'default' }} Policy
@@ -132,6 +133,7 @@ export class Tokens {
       revokedBy: h.by || '',
       used: Number(h.used || 0),
       svc: h.svc || '',
+      aud: h.aud || '',
     };
   }
 
@@ -159,9 +161,11 @@ export class Tokens {
    * Makes a token for a user. The caller checks mayCreate().
    * @param {import('./auth.js').User} user
    * @param {{ name?: unknown, expires?: unknown, ips?: unknown, scopes?: unknown }} b
+   * @param {{ aud?: string, expiry?: string }} [o] aud: the only resource it is valid for;
+   *   expiry: a lifetime outside API_TOKEN_EXPIRY_OPTIONS (MCP_OAUTH_TOKEN_EXPIRY), still within API_TOKEN_MAX_EXPIRY
    * @returns {Promise<{ token: string, record: TokenRecord } | { error: string, message: string, active?: number, max?: number, allowed?: string[] }>}
    */
-  async create(user, b) {
+  async create(user, b, o = {}) {
     // What this user may give a token (API_TOKEN_ALLOWED_SCOPES, by group, admin policy).
     const policy = await this.policy(user.user, user.ids);
     return this.issue({ owner: user.user, ownerName: user.name || user.user, ids: user.ids, svc: '' }, b, {
@@ -170,6 +174,7 @@ export class Tokens {
       max: policy.max,
       maxExpiry: this.c.maxExpiry,
       ipsRequired: this.c.ipBinding === 'required',
+      ...o,
     });
   }
 
@@ -177,14 +182,14 @@ export class Tokens {
    * Makes a token for a user or a technical user under the given rules.
    * @param {{ owner: string, ownerName: string, ids: string[], svc: string }} who
    * @param {{ name?: unknown, expires?: unknown, ips?: unknown, scopes?: unknown }} b
-   * @param {{ allowed: string[], defaults: string[], max: number, maxExpiry: string, ipsRequired: boolean }} rules
+   * @param {{ allowed: string[], defaults: string[], max: number, maxExpiry: string, ipsRequired: boolean, aud?: string, expiry?: string }} rules
    * @returns {Promise<{ token: string, record: TokenRecord } | { error: string, message: string, active?: number, max?: number, allowed?: string[] }>}
    */
   async issue(who, b, rules) {
     const name = typeof b.name === 'string' ? b.name.normalize('NFC').replace(/[\u0000-\u001f\u007f]/g, ' ').trim() : '';
     if (!name || name.length > 64) return { error: 'invalid_name', message: 'name: 1 to 64 characters' };
-    const choice = b.expires === undefined || b.expires === null || b.expires === '' ? this.c.defaultExpiry : String(b.expires);
-    if (!this.c.expiryOptions.includes(choice)) {
+    const choice = rules.expiry || (b.expires === undefined || b.expires === null || b.expires === '' ? this.c.defaultExpiry : String(b.expires));
+    if (!rules.expiry && !this.c.expiryOptions.includes(choice)) {
       return { error: 'invalid_expiry', message: `expires must be one of ${this.c.expiryOptions.join(', ')}` };
     }
     const now = Date.now();
@@ -227,6 +232,7 @@ export class Tokens {
       ips: ips.join(' '),
       scopes: valid.filter((s) => scopes.includes(s)).join(' '),
       ...(who.svc ? { svc: who.svc } : {}),
+      ...(rules.aud ? { aud: rules.aud } : {}),
     });
     if (expires) tx.pExpireAt(key, expires + KEEP);
     await tx.sAdd(own, id).sAdd(`${this.p}tok:all`, id).exec();

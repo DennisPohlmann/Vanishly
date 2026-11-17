@@ -166,6 +166,8 @@ config:
   ENABLE_API: ""
   ENABLE_MCP: ""
   MCP_OAUTH: ""
+  # MCP protocol versions /mcp speaks (2026-07-28,2025-11-25,2025-06-18); 2026-07-28 alone is strictest.
+  MCP_PROTOCOL_VERSIONS: ""
   ENABLE_API_DOCS: ""
   ENABLE_API_LINK: ""
   ENABLE_SHARE_API: ""
@@ -352,6 +354,8 @@ config:
   API_TOKEN_DEFAULT_EXPIRY: ""
   # Longest lifetime allowed, e.g. 1y (never = no cap).
   API_TOKEN_MAX_EXPIRY: ""
+  # Lifetime of the token an MCP client gets by signing in (MCP_OAUTH), at most API_TOKEN_MAX_EXPIRY (1d).
+  MCP_OAUTH_TOKEN_EXPIRY: ""
   # Active (not revoked, not expired) tokens per user, 0-1000, 0 = no limit (10).
   API_TOKEN_MAX_PER_USER: ""
   # Calls per token per RATE_LIMIT_WINDOW, 0 = off (0).

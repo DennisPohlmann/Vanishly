@@ -75,7 +75,7 @@ async function startApp(env = {}) {
   const req = (path, init = {}) => fetch(base + path, { redirect: 'manual', ...init });
   /** @param {any} msg @param {string} [token] */
   const mcp = (msg, token) =>
-    req('/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(msg) });
+    req('/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-06-18', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(msg) });
   /** A form post of the browser on this site. @param {string} path @param {Record<string, string>} fields @param {string} [cookie] */
   const form = (path, fields, cookie = '') =>
     req(path, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Sec-Fetch-Site': 'same-origin', ...(cookie ? { Cookie: cookie } : {}) }, body: new URLSearchParams(fields).toString() });
@@ -123,10 +123,12 @@ test('discovery: 401 with resource metadata, then the authorization server metad
   const a = await startApp();
   const r = await a.mcp({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
   assert.equal(r.status, 401);
-  assert.equal(r.headers.get('www-authenticate'), `Bearer resource_metadata="${a.base}/.well-known/oauth-protected-resource/mcp"`);
+  assert.equal(r.headers.get('www-authenticate'), `Bearer resource_metadata="${a.base}/.well-known/oauth-protected-resource/mcp", scope="create status"`);
   const prm = await (await a.req('/.well-known/oauth-protected-resource/mcp')).json();
   assert.equal(prm.resource, `${a.base}/mcp`);
   assert.deepEqual(prm.authorization_servers, [a.base]);
+  // Only the scopes the MCP tools need, never "read" (CIS MCP 3.3.4).
+  assert.deepEqual(prm.scopes_supported, ['create', 'status']);
   const as = await (await a.req('/.well-known/oauth-authorization-server')).json();
   assert.equal(as.issuer, a.base);
   assert.equal(as.token_endpoint, `${a.base}/oauth/token`);
@@ -144,6 +146,8 @@ test('registration: loopback redirect URIs only, public clients only', opts, asy
   assert.equal((await reg({ redirect_uris: ['https://evil.example/cb'] })).status, 400);
   assert.equal((await reg({ redirect_uris: [] })).status, 400);
   assert.equal((await reg({ redirect_uris: [CB], token_endpoint_auth_method: 'client_secret_basic' })).status, 400);
+  assert.equal((await reg({ redirect_uris: [CB], application_type: 'web' })).status, 400);
+  assert.equal((await (await reg({ redirect_uris: [CB], application_type: 'native' })).json()).application_type, 'native');
   const ok = await (await reg({ redirect_uris: [CB], client_name: 'x'.repeat(200) })).json();
   assert.equal(ok.client_name.length, 50);
   // A changed client_id (another redirect) is refused before any redirect.
@@ -195,7 +199,7 @@ test('the whole flow: sign-in, consent, code, token, MCP call as the person', op
   assert.match(t.access_token, /^vnly_[0-9a-f]{16}_[\w-]{43}$/);
   assert.equal(t.token_type, 'Bearer');
   assert.equal(t.scope, 'create status');
-  assert.ok(t.expires_in > 80 * 86400, 'API_TOKEN_DEFAULT_EXPIRY (90d)');
+  assert.ok(t.expires_in > 86000 && t.expires_in <= 86400, 'MCP_OAUTH_TOKEN_EXPIRY (1d)');
   // A code works once.
   assert.equal((await (await token(fields)).json()).error, 'invalid_grant');
 
@@ -209,6 +213,33 @@ test('the whole flow: sign-in, consent, code, token, MCP call as the person', op
   const list = await (await a.req('/api/v1/tokens', { headers: { Cookie: cookie, 'Sec-Fetch-Site': 'same-origin' } })).json();
   assert.equal(list.tokens[0].name, 'MCP: Claude Code');
   assert.deepEqual(list.tokens[0].scopes, ['create', 'status']);
+  // Audience /mcp: the rest of the API refuses it, and the audit log says why (CIS MCP 3.3.1, 7.2.1).
+  const api = await a.req('/api/v1/me', { headers: { Authorization: `Bearer ${t.access_token}` } });
+  assert.equal(api.status, 401);
+  assert.equal((await api.json()).error, 'invalid_token');
+  const { normalize } = await import('../src/audit.js');
+  const events = (await a.app.locals.audit.query({ limit: 200 })).records.map(normalize);
+  const wrong = events.find((/** @type {any} */ e) => e.type === 'api.token_audience_denied');
+  assert.ok(wrong, 'api.token_audience_denied');
+  assert.equal(wrong.reason, 'wrong_audience');
+  const called = events.find((/** @type {any} */ e) => e.type === 'mcp.tool_called');
+  assert.ok(called, 'mcp.tool_called');
+  assert.equal(called.details.tool, 'create_secret');
+  assert.equal(called.actor.type, 'api_token');
+});
+
+test('token request: another resource (RFC 8707) is refused', opts, async () => {
+  const a = await startApp();
+  const cookie = await a.login();
+  const f = await begin(a);
+  const code = new URL(String((await a.form(f.consent, { decision: 'allow' }, cookie)).headers.get('location'))).searchParams.get('code');
+  const tr = await a.req('/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'authorization_code', code: String(code), client_id: f.clientId, redirect_uri: f.redirectUri, code_verifier: f.verifier, resource: 'https://other.example/mcp' }).toString(),
+  });
+  assert.equal(tr.status, 400);
+  assert.equal((await tr.json()).error, 'invalid_target');
 });
 
 test('wrong verifier, wrong redirect, deny: no token', opts, async () => {

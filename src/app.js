@@ -11,7 +11,7 @@ import { validId } from './store.js';
 import { limiter } from './ratelimit.js';
 import { Auth, RETURN } from './auth.js';
 import { Users } from './users.js';
-import { mcpRouter } from './mcp.js';
+import { mcpRouter, toolScopes } from './mcp.js';
 import { oauthRouter } from './oauth.js';
 import { missingClasses } from '../public/js/rules.js';
 import { escapeHtml, ROOT } from './theme.js';
@@ -246,7 +246,11 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         if (tokens && bearer.startsWith('vnly_')) {
           // A personal API token: acts as its owner (src/tokens.js).
           const r = await tokens.verify(bearer, req.ip || '');
-          if (r.ok) {
+          // A token an MCP client got by signing in (audience "mcp") works only at /mcp (RFC 8707).
+          if (r.ok && r.record.aud === 'mcp' && req.path !== '/mcp') {
+            res.locals.user = null;
+            res.locals.tokenDenied = { ok: false, reason: 'wrong_audience', record: r.record };
+          } else if (r.ok) {
             const t = r.record;
             // scopes: what the token may do under the owner's policy of today.
             res.locals.user = { name: t.ownerName, user: t.owner, ids: t.ids, token: { id: t.id, name: t.name, scopes: r.scopes }, ...(t.svc ? { service: t.svc } : {}) };
@@ -455,16 +459,17 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       try {
         const d = res.locals.tokenDenied;
         if (d) {
-          const type = d.reason === 'expired' ? 'api.token_expired' : d.reason === 'ip_denied' ? 'api.ip_denied' : 'api.token_denied';
+          const type = d.reason === 'expired' ? 'api.token_expired' : d.reason === 'ip_denied' ? 'api.ip_denied' : d.reason === 'wrong_audience' ? 'api.token_audience_denied' : 'api.token_denied';
           const r = d.record;
           await ev(req, res, type, {
             outcome: 'denied',
             reason: d.reason,
             ...(r ? { actor: { type: 'api_token', user: r.owner, name: r.ownerName, token: { id: r.id, name: r.name } } } : {}),
-            details: r && d.reason === 'ip_denied' ? { allowed_networks: r.ips } : undefined,
+            details: r && d.reason === 'ip_denied' ? { allowed_networks: r.ips } : r && d.reason === 'wrong_audience' ? { audience: r.aud } : undefined,
           });
           if (d.reason === 'ip_denied') throw new ApiError(403, 'ip_not_allowed', 'This token may not be used from this address');
           if (d.reason === 'token_required') throw new ApiError(401, 'token_required', 'This server takes only its own API tokens (vnly_...)');
+          if (d.reason === 'wrong_audience') throw new ApiError(401, 'invalid_token', 'This token is valid only for the MCP server (/mcp)');
           throw new ApiError(401, d.reason === 'expired' ? 'token_expired' : 'invalid_token', d.reason === 'expired' ? 'The token has expired' : 'The token is unknown, revoked or malformed');
         }
         const u = userOf(res);
@@ -1680,6 +1685,22 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   const spec = JSON.parse(readFileSync(join(ROOT, 'openapi', 'openapi.json'), 'utf8'));
   // ENABLE_MCP: the MCP server; its tools run the API endpoints above.
   if (config.mcp) {
+    const mcpScopes = toolScopes(config.features);
+    const prmUrl = (/** @type {import('express').Request} */ req) => `${origin(req)}/.well-known/oauth-protected-resource/mcp`;
+    // Per client IP, besides the limits of the API calls the tools make (CIS MCP 10.2).
+    app.use(
+      '/mcp',
+      limiter({
+        store,
+        bucket: 'mcp',
+        limit: config.rateRead,
+        window: config.rateWindow,
+        onLimit: (_req, res, _next, retryAfter) => {
+          res.set('Retry-After', String(retryAfter));
+          res.status(429).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Too many requests' } });
+        },
+      }),
+    );
     // MCP_OAUTH: /mcp needs a signed-in person; without (or with a refused
     // token) a 401 that points the client to the browser sign-in (src/oauth.js).
     if (config.mcpOauth) {
@@ -1695,11 +1716,25 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
             ...(r ? { actor: { type: 'api_token', user: r.owner, name: r.ownerName, token: { id: r.id, name: r.name } } } : {}),
           });
         }
-        res.set('WWW-Authenticate', `Bearer resource_metadata="${origin(req)}/.well-known/oauth-protected-resource/mcp"${d ? ', error="invalid_token"' : ''}`);
+        res.set('WWW-Authenticate', `Bearer resource_metadata="${prmUrl(req)}", scope="${mcpScopes.join(' ')}"${d ? ', error="invalid_token"' : ''}`);
         res.status(401).json({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Sign in: this server takes its API tokens; MCP clients get one by signing in through the browser' } });
       });
     }
-    app.use('/mcp', mcpRouter({ api, spec, features: config.features, version, origin, bodyLimit: Math.max(64 * 1024, config.maxSecretChars * 8) }));
+    app.use(
+      '/mcp',
+      mcpRouter({
+        api,
+        spec,
+        features: config.features,
+        version,
+        origin,
+        bodyLimit: Math.max(64 * 1024, config.maxSecretChars * 8),
+        versions: config.mcpVersions,
+        ev,
+        // MCP_OAUTH: a missing scope is a 403 the client answers by signing in again (step-up).
+        challenge: config.mcpOauth ? (req, scope) => `Bearer error="insufficient_scope", scope="${scope}", resource_metadata="${prmUrl(req)}"` : undefined,
+      }),
+    );
   } else {
     // switched off: a JSON 404 for MCP clients, told apart from a wrong path
     app.all('/mcp', (_req, res) => void res.status(404).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'The MCP server is disabled on this server' } }));
@@ -1843,6 +1878,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         strings: (res) => theme.strings[lang(res)],
         limit: oauthLimit,
         csp: () => auth.csp(CSP),
+        scopes: toolScopes(config.features),
       }),
     );
   }
