@@ -14,7 +14,7 @@ texts ship with each package in `node_modules/<package>/LICENSE`.
 | [openid-client](https://github.com/panva/openid-client) | 6.9.0 | MIT | sign-in with OpenID Connect (optional, `AUTH_PROVIDER`) |
 | [jose](https://github.com/panva/jose) | 6.2.17 | MIT | checks API bearer tokens (optional, `AUTH_API_AUDIENCE`) |
 | [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | 8.7.4 | MIT | rate-limit middleware; counts in Redis through `src/ratelimit.js` |
-| [mock-oauth2-server](https://github.com/navikt/mock-oauth2-server) (docker-compose/standalone/docker-compose.auth-test.yml, separate container) | 7.0.0 | MIT | test login server, only for trying the sign-in locally; not part of the image |
+| [mock-oauth2-server](https://github.com/navikt/mock-oauth2-server) (docker-compose/standalone/docker-compose.auth-test.yml, separate container) | 7.0.1 | MIT | test login server, only for trying the sign-in locally; not part of the image |
 | [Keycloak](https://www.keycloak.org) (docker-compose/keycloak/, separate container) | 26.8 | Apache-2.0 | example login server with demo users, only for trying sign-in, recipients and groups locally; not part of the image |
 | [Node.js](https://nodejs.org) (container base image) | 24 LTS | MIT and others | runtime |
 | [Alpine Linux](https://alpinelinux.org) (container base image) | | various (GPL-2.0, MIT, ...) | container OS |
