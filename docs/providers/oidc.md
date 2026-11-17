@@ -42,8 +42,9 @@ and pick the groups listed in `RECIPIENT_GROUPS`.
 ## Example (`.env` or Compose)
 
 The same lines go into `.env` next to `docker-compose.yml`
-([docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml))
-or into its `environment:` block.
+([docker-compose/oidc](../../docker-compose/oidc/README.md), which has
+all settings in its `.env.example`), or into an `environment:` block of your
+`docker-compose.override.yml`.
 
 ```bash
 AUTH_PROVIDER=oidc

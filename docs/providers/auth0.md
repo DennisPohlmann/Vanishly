@@ -48,8 +48,9 @@ With a custom domain the Management API still lives on the tenant domain:
 Required: `AUTH_PROVIDER`, `BASE_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
 `OIDC_CLIENT_SECRET` (or `_FILE`) and `AUTH_SECRET` (or `_FILE`). The
 same lines go into `.env` next to `docker-compose.yml`
-([docker-compose/standalone](../../docker-compose/standalone/docker-compose.yml))
-or into its `environment:` block.
+([docker-compose/auth0](../../docker-compose/auth0/README.md), which has
+all settings in its `.env.example`), or into an `environment:` block of your
+`docker-compose.override.yml`.
 
 ```bash
 AUTH_PROVIDER=auth0

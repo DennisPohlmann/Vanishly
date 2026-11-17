@@ -7,6 +7,7 @@ dist/
 !/docker-compose/standalone/custom-templates/README.md
 /docker-compose/*/.env
 /docker-compose/*/keycloak.env
+/docker-compose/*/google-service-account.json
 vendor/
 .claude/
 CLAUDE.md

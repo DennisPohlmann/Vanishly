@@ -33,6 +33,9 @@ test('RATE_LIMIT_KEY: optional, checked, also from a file; a wrong one stops the
   assert.ok(!(r.stdout + r.stderr).includes(bad), 'the value is not logged');
 });
 
+/** The Compose examples, each with a full .env.example. */
+const EXAMPLES = ['standalone', 'keycloak', 'entra', 'local', 'okta', 'auth0', 'google', 'ping', 'jumpcloud', 'cognito', 'oidc'];
+
 /** The settings of an env file (comments and empty lines left out). @param {string} path */
 const envFile = (path) => Object.fromEntries(
   readFileSync(path, 'utf8')
@@ -47,13 +50,15 @@ test('the env files of the Compose examples: the defaults, and only settings of 
   assert.deepEqual(loadConfig(standalone), loadConfig({ REDIS_URL: 'redis://redis:6379', DEFAULT_LANG: 'en' }));
   // All settings in every .env.example (NAME= or #NAME=): a new, renamed or removed one fails here.
   // KEYCLOAK_PORT is no setting: only Compose reads it, for Keycloak's port.
-  for (const path of ['.env.example', 'docker-compose/standalone/.env.example', 'docker-compose/keycloak/.env.example', 'docker-compose/entra/.env.example', 'docker-compose/local/.env.example']) {
+  // The cognito example also has the standard AWS variables of its directory access.
+  for (const path of ['.env.example', ...EXAMPLES.map((e) => `docker-compose/${e}/.env.example`)]) {
     const text = readFileSync(path, 'utf8');
-    for (const name of Object.keys(envFile(path))) assert.ok(SETTINGS.includes(name) || name === 'KEYCLOAK_PORT', `${path}: ${name} is no setting`);
+    const other = (/** @type {string} */ name) => name === 'KEYCLOAK_PORT' || (path.includes('/cognito/') && /^AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY)$/.test(name));
+    for (const name of Object.keys(envFile(path))) assert.ok(SETTINGS.includes(name) || other(name), `${path}: ${name} is no setting`);
     for (const name of SETTINGS) assert.match(text, new RegExp(`^#?${name}=`, 'm'), `${path}: ${name} is missing`);
   }
   // The Compose files set no settings: their env files must be enough to start.
-  for (const file of ['standalone', 'keycloak', 'entra', 'local']) {
+  for (const file of EXAMPLES) {
     assert.ok(!/^ +environment:/m.test(readFileSync(`docker-compose/${file}/docker-compose.yml`, 'utf8').split(/^ {2}vanishly:/m)[1].split(/^ {2}\w+:/m)[0]), file);
   }
   const c = loadConfig(envFile('docker-compose/keycloak/.env.example'));
@@ -68,7 +73,30 @@ test('the env files of the Compose examples: the defaults, and only settings of 
   const e = loadConfig({ ...entra, ENTRA_TENANT_ID: id, ENTRA_CLIENT_ID: id, ENTRA_CLIENT_SECRET: 'x', AUTH_SECRET: 'x'.repeat(32) });
   assert.equal(e.auth?.provider, 'entra');
   assert.equal(e.auth?.graph, true);
+  // Each provider example starts once its own values are in.
+  const own = {
+    okta: { OIDC_ISSUER: 'https://example.okta.com/oauth2/default', DIRECTORY_API_TOKEN: 'change-me-token' },
+    auth0: { OIDC_ISSUER: 'https://example.eu.auth0.com/' },
+    google: { AUTH_ALLOWED_DOMAINS: 'example.com', DIRECTORY_GOOGLE_CREDENTIALS_FILE: googleKey(), DIRECTORY_GOOGLE_ADMIN: 'admin@example.com' },
+    ping: { OIDC_ISSUER: 'https://auth.pingone.eu/11111111-2222-3333-4444-555555555555/as' },
+    jumpcloud: { DIRECTORY_API_TOKEN: 'change-me-token' },
+    cognito: { OIDC_ISSUER: 'https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_Example', AWS_ACCESS_KEY_ID: 'change-me', AWS_SECRET_ACCESS_KEY: 'change-me' },
+    oidc: { OIDC_ISSUER: 'https://sso.example.com/application/o/vanishly/' },
+  };
+  for (const [provider, values] of Object.entries(own)) {
+    const env = envFile(`docker-compose/${provider}/.env.example`);
+    assert.throws(() => loadConfig(env), /is required/, provider);
+    const p = loadConfig({ ...env, OIDC_CLIENT_ID: 'vanishly', OIDC_CLIENT_SECRET: 'x', AUTH_SECRET: 'y'.repeat(32), ...values });
+    assert.equal(p.auth?.provider, provider);
+  }
 });
+
+/** A stand-in service account key file for the google example. */
+function googleKey() {
+  const file = join(mkdtempSync(join(tmpdir(), 'vanishly-')), 'key.json');
+  writeFileSync(file, JSON.stringify({ type: 'service_account', client_email: 'reader@example.iam.gserviceaccount.com', private_key: 'change-me' }));
+  return file;
+}
 
 test('MY_SECRETS: on by default with sign-in and the audit stream in Redis; asked for without it, an error', () => {
   const kc = envFile('docker-compose/keycloak/.env.example');

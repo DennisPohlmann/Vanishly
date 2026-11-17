@@ -95,6 +95,22 @@ backends are covered by tests against stand-ins of their APIs
 (`tests/directory.test.js`); the request formats follow the providers'
 documentation. Please report anything that differs in your tenant.
 
+## Compose examples
+
+Each provider has a Compose example with all settings in its `.env.example`
+and the setup steps in its README:
+[entra](../../docker-compose/entra/README.md),
+[keycloak](../../docker-compose/keycloak/README.md) (local demo with a
+Keycloak of its own), [okta](../../docker-compose/okta/README.md),
+[auth0](../../docker-compose/auth0/README.md),
+[google](../../docker-compose/google/README.md),
+[ping](../../docker-compose/ping/README.md),
+[jumpcloud](../../docker-compose/jumpcloud/README.md),
+[cognito](../../docker-compose/cognito/README.md),
+[oidc](../../docker-compose/oidc/README.md),
+[local](../../docker-compose/local/README.md); without sign-in
+[standalone](../../docker-compose/standalone/docker-compose.yml).
+
 ## Try it locally
 
 - [docker-compose/keycloak](../../docker-compose/keycloak/README.md):
