@@ -72,6 +72,7 @@ Everything is on by default; `false` (or `0`, `no`, `off`) switches it off.
 |---|---|
 | `ENABLE_API` | No public API: every API endpoint and `/api/openapi.json` answer 404, except the calls of this server's own pages; also switches off `ENABLE_API_DOCS`, `ENABLE_SHARE_API`, `ENABLE_OPEN_API`, `ENABLE_MCP` and the footer link ([details](#api-access)) |
 | `ENABLE_MCP` | No MCP server: `/mcp` answers 404, the API stays. Unset it follows `ENABLE_API`; `ENABLE_MCP=true` with `ENABLE_API=false` stops the start ([details](#mcp-server)) |
+| `MCP_OAUTH` | No browser sign-in for MCP clients: they need an API token made by hand, and `/mcp` works without one as far as the API does. On by default with sign-in, `API_TOKENS=true` and MCP; `MCP_OAUTH=true` without them stops the start ([details](#sign-in-of-mcp-clients-mcp_oauth)) |
 | `ENABLE_API_DOCS` | No API reference page at `/api/docs` (`API_DOCS` is the older name) |
 | `ENABLE_API_LINK` | No "API" link in the footer; the API itself stays |
 | `ENABLE_SHARE_API` | `POST /api/v1/share` (server-side encryption for scripts) answers 404 |
@@ -392,7 +393,9 @@ a refusal comes back as a tool error with the API's `error` code.
   see or burn them.
 - **With sign-in** the client sends `Authorization: Bearer vnly_...` (an
   [API token](#api-tokens)) and acts as its owner, with the token's scopes
-  (`create`, `status`); `API_TOKEN_REQUIRED` applies as on the API.
+  (`create`, `status`); `API_TOKEN_REQUIRED` applies as on the API. With
+  `API_TOKENS=true` the client gets that token itself by a sign-in in the
+  browser ([below](#sign-in-of-mcp-clients-mcp_oauth)).
 - A browser `Origin` other than this server is refused (403).
 - The plaintext of `create_secret` passes through the AI client and its
   provider. Keep that in mind for what you let an assistant share.
@@ -401,6 +404,52 @@ a refusal comes back as a tool error with the API's `error` code.
 { "mcpServers": { "vanishly": { "type": "http", "url": "https://ots.example.com/mcp",
   "headers": { "Authorization": "Bearer vnly_..." } } } }
 ```
+
+### Sign-in of MCP clients (`MCP_OAUTH`)
+
+With sign-in and `API_TOKENS=true` an MCP client needs no token made by
+hand. Add only the URL; on the first call the client opens the browser,
+the person signs in with this server's sign-in (any `AUTH_PROVIDER`: Entra
+ID, Keycloak and the other OIDC providers, local accounts) and confirms on
+the page "Allow access", and the browser goes back to the client on its
+local port. This is the [MCP authorization](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization):
+OAuth 2.1 with the authorization code flow and PKCE (S256), a loopback
+redirect (RFC 8252), protected resource metadata (RFC 9728), authorization
+server metadata (RFC 8414) and dynamic client registration (RFC 7591).
+Vanishly is the authorization server itself; the sign-in provider needs no
+change (no new redirect URI, no app registration).
+
+```sh
+claude mcp add --transport http vanishly https://ots.example.com/mcp
+```
+
+```json
+{ "mcpServers": { "vanishly": { "type": "http", "url": "https://ots.example.com/mcp" } } }
+```
+
+- `/mcp` then needs a signed-in person: without a token (or with an
+  unknown, revoked or expired one) it answers `401` with
+  `WWW-Authenticate: Bearer resource_metadata=".../.well-known/oauth-protected-resource/mcp"`,
+  which starts the sign-in.
+- The client gets a normal [API token](#api-tokens) of the person, named
+  `MCP: <client name>`: on the "API tokens" page, revocable there and on
+  `/admin`, counting towards `API_TOKEN_MAX_PER_USER`, with the scopes the
+  client asks for within the person's policy (else the default scopes),
+  the default lifetime (`API_TOKEN_DEFAULT_EXPIRY`) and no refresh token:
+  when it expires, the client signs in again. With
+  `API_TOKEN_IP_BINDING=required` it is bound to the address the client
+  fetched it from. `API_TOKEN_USERS` / `API_TOKEN_GROUPS` decide who may.
+  The audit log has it as `api.token_created` with `details.via: oauth`
+  and `details.client`.
+- Only redirect URIs on a loopback address (`http://127.0.0.1:<port>`,
+  `http://localhost:<port>`, `http://[::1]:<port>`) are accepted, so
+  desktop and command line clients work; web clients (e.g. connectors in
+  claude.ai) do not.
+- With `BASE_URL` on a path (`https://example.com/ots`) clients look for
+  `/.well-known/oauth-authorization-server/ots` at the host's root; route
+  that to Vanishly's `/.well-known/oauth-authorization-server` in the
+  reverse proxy.
+- `MCP_OAUTH=false`: no OAuth endpoints, `/mcp` as without it.
 
 ## Sign-in and recipients
 

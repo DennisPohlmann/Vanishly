@@ -395,5 +395,14 @@
   "users.enabledDone": "{name} enabled.",
   "users.deleted": "{name} deleted; {n} token(s) revoked.",
   "users.disableConfirm": "Disable {name}? Their sessions end and their API tokens are revoked at once.",
-  "users.deleteConfirm": "Delete {name}? Their sessions end and their API tokens are revoked at once."
+  "users.deleteConfirm": "Delete {name}? Their sessions end and their API tokens are revoked at once.",
+  "oauth.title": "Allow access",
+  "oauth.text": "{client} wants to use Vanishly as {user}. It gets an API token with these rights:",
+  "oauth.target": "After that your browser goes back to the app at {target}. You can revoke the token at any time on the API tokens page.",
+  "oauth.allow": "Allow",
+  "oauth.deny": "Deny",
+  "oauth.badClient": "This sign-in request comes from an unknown app or names a wrong return address.",
+  "oauth.expired": "This sign-in request has expired or was already used. Start the sign-in in the app again.",
+  "oauth.notAllowed": "Your account may not create API tokens, so it cannot connect apps. Ask an admin.",
+  "oauth.limit": "You already have {max} active API tokens. Revoke one on the API tokens page, then try again."
 }

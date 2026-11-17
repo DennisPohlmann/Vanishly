@@ -1,0 +1,10 @@
+<section class="card" id="oauth-card">
+  <h1>{{ heading }}</h1>
+  <p class="lead">{{ text }}</p>
+  <ul class="oauth-scopes">{{{ scopeList }}}</ul>
+  <p class="hint">{{ target }}</p>
+  <form method="post" action="/oauth/{{ rid }}">
+    <button type="submit" name="decision" value="allow" class="btn btn-primary btn-block">{{ t:oauth.allow }}</button>
+    <button type="submit" name="decision" value="deny" class="btn btn-ghost btn-block">{{ t:oauth.deny }}</button>
+  </form>
+</section>

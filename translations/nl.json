@@ -395,5 +395,14 @@
   "users.enabledDone": "{name} ingeschakeld.",
   "users.deleted": "{name} verwijderd; {n} token(s) ingetrokken.",
   "users.disableConfirm": "{name} uitschakelen? De sessies eindigen en de API-tokens worden meteen ingetrokken.",
-  "users.deleteConfirm": "{name} verwijderen? De sessies eindigen en de API-tokens worden meteen ingetrokken."
+  "users.deleteConfirm": "{name} verwijderen? De sessies eindigen en de API-tokens worden meteen ingetrokken.",
+  "oauth.title": "Toegang toestaan",
+  "oauth.text": "{client} wil Vanishly gebruiken als {user}. De app krijgt een API-token met deze rechten:",
+  "oauth.target": "Daarna gaat je browser terug naar de app op {target}. Je kunt het token altijd intrekken op de pagina API-tokens.",
+  "oauth.allow": "Toestaan",
+  "oauth.deny": "Weigeren",
+  "oauth.badClient": "Dit aanmeldverzoek komt van een onbekende app of noemt een verkeerd terugkeeradres.",
+  "oauth.expired": "Dit aanmeldverzoek is verlopen of al gebruikt. Start het aanmelden opnieuw in de app.",
+  "oauth.notAllowed": "Je account mag geen API-tokens maken en kan dus geen apps koppelen. Vraag het een beheerder.",
+  "oauth.limit": "Je hebt al {max} actieve API-tokens. Trek er een in op de pagina API-tokens en probeer het opnieuw."
 }

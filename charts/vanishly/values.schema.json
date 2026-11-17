@@ -536,6 +536,17 @@
             }
           ]
         },
+        "MCP_OAUTH": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
         "ENABLE_API_DOCS": {
           "anyOf": [
             {

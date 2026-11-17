@@ -395,5 +395,14 @@
   "users.enabledDone": "Włączono {name}.",
   "users.deleted": "Usunięto {name}; unieważniono tokeny: {n}.",
   "users.disableConfirm": "Wyłączyć {name}? Sesje się kończą, a tokeny API zostają natychmiast unieważnione.",
-  "users.deleteConfirm": "Usunąć {name}? Sesje się kończą, a tokeny API zostają natychmiast unieważnione."
+  "users.deleteConfirm": "Usunąć {name}? Sesje się kończą, a tokeny API zostają natychmiast unieważnione.",
+  "oauth.title": "Zezwól na dostęp",
+  "oauth.text": "{client} chce używać Vanishly jako {user}. Otrzyma token API z tymi uprawnieniami:",
+  "oauth.target": "Następnie przeglądarka wróci do aplikacji pod adresem {target}. Token możesz w każdej chwili unieważnić na stronie tokenów API.",
+  "oauth.allow": "Zezwól",
+  "oauth.deny": "Odmów",
+  "oauth.badClient": "To żądanie logowania pochodzi z nieznanej aplikacji lub podaje błędny adres powrotu.",
+  "oauth.expired": "To żądanie logowania wygasło lub zostało już użyte. Rozpocznij logowanie w aplikacji ponownie.",
+  "oauth.notAllowed": "Twoje konto nie może tworzyć tokenów API, więc nie może łączyć aplikacji. Zwróć się do administratora.",
+  "oauth.limit": "Masz już {max} aktywnych tokenów API. Unieważnij jeden na stronie tokenów API i spróbuj ponownie."
 }

@@ -395,5 +395,14 @@
   "users.enabledDone": "{name} activado.",
   "users.deleted": "{name} eliminado; {n} token(s) revocado(s).",
   "users.disableConfirm": "¿Desactivar {name}? Sus sesiones terminan y sus tokens de API se revocan de inmediato.",
-  "users.deleteConfirm": "¿Eliminar {name}? Sus sesiones terminan y sus tokens de API se revocan de inmediato."
+  "users.deleteConfirm": "¿Eliminar {name}? Sus sesiones terminan y sus tokens de API se revocan de inmediato.",
+  "oauth.title": "Permitir acceso",
+  "oauth.text": "{client} quiere usar Vanishly como {user}. Recibe un token de API con estos permisos:",
+  "oauth.target": "Después, tu navegador vuelve a la aplicación en {target}. Puedes revocar el token en cualquier momento en la página de tokens de API.",
+  "oauth.allow": "Permitir",
+  "oauth.deny": "Denegar",
+  "oauth.badClient": "Esta solicitud de inicio de sesión viene de una aplicación desconocida o indica una dirección de retorno incorrecta.",
+  "oauth.expired": "Esta solicitud de inicio de sesión ha caducado o ya se usó. Vuelve a iniciar sesión desde la aplicación.",
+  "oauth.notAllowed": "Tu cuenta no puede crear tokens de API, por lo que no puede conectar aplicaciones. Pregunta a un administrador.",
+  "oauth.limit": "Ya tienes {max} tokens de API activos. Revoca uno en la página de tokens de API e inténtalo de nuevo."
 }

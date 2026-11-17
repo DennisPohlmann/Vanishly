@@ -12,6 +12,7 @@ import { limiter } from './ratelimit.js';
 import { Auth, RETURN } from './auth.js';
 import { Users } from './users.js';
 import { mcpRouter } from './mcp.js';
+import { oauthRouter } from './oauth.js';
 import { missingClasses } from '../public/js/rules.js';
 import { escapeHtml, ROOT } from './theme.js';
 
@@ -1679,6 +1680,25 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   const spec = JSON.parse(readFileSync(join(ROOT, 'openapi', 'openapi.json'), 'utf8'));
   // ENABLE_MCP: the MCP server; its tools run the API endpoints above.
   if (config.mcp) {
+    // MCP_OAUTH: /mcp needs a signed-in person; without (or with a refused
+    // token) a 401 that points the client to the browser sign-in (src/oauth.js).
+    if (config.mcpOauth) {
+      app.post('/mcp', async (req, res, next) => {
+        const d = res.locals.tokenDenied;
+        // A token used from another address stays a 403 (the API logs and refuses it).
+        if ((userOf(res) && !d) || d?.reason === 'ip_denied') return next();
+        if (d) {
+          const r = d.record;
+          await ev(req, res, d.reason === 'expired' ? 'api.token_expired' : 'api.token_denied', {
+            outcome: 'denied',
+            reason: d.reason,
+            ...(r ? { actor: { type: 'api_token', user: r.owner, name: r.ownerName, token: { id: r.id, name: r.name } } } : {}),
+          });
+        }
+        res.set('WWW-Authenticate', `Bearer resource_metadata="${origin(req)}/.well-known/oauth-protected-resource/mcp"${d ? ', error="invalid_token"' : ''}`);
+        res.status(401).json({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Sign in: this server takes its API tokens; MCP clients get one by signing in through the browser' } });
+      });
+    }
     app.use('/mcp', mcpRouter({ api, spec, features: config.features, version, origin, bodyLimit: Math.max(64 * 1024, config.maxSecretChars * 8) }));
   } else {
     // switched off: a JSON 404 for MCP clients, told apart from a wrong path
@@ -1795,6 +1815,36 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       }
       res.redirect(303, back ? `/auth/login?fresh=1&return=${encodeURIComponent(back)}` : '/');
     });
+  }
+
+  // MCP_OAUTH: MCP clients sign in through the browser and get an API token (src/oauth.js).
+  if (auth && tokens && config.mcpOauth) {
+    const oauthLimit = limiter({
+      store,
+      bucket: 'oauth',
+      limit: config.rateRead,
+      window: config.rateWindow,
+      onLimit: (req, res, _next, retryAfter) => {
+        res.set('Retry-After', String(retryAfter));
+        if (req.method === 'POST' && !/^\/oauth\/[A-Za-z0-9_-]{22}$/.test(req.path)) return void res.status(429).json({ error: 'slow_down', error_description: 'Too many requests' });
+        errorPage(req, res, 429, theme.strings[lang(res)]['error.ratelimit']);
+      },
+    });
+    app.use(
+      oauthRouter({
+        auth,
+        tokens,
+        store,
+        origin,
+        userOf,
+        ev,
+        page,
+        errorPage,
+        strings: (res) => theme.strings[lang(res)],
+        limit: oauthLimit,
+        csp: () => auth.csp(CSP),
+      }),
+    );
   }
 
   /** OpenID Connect: to the provider and back. @param {import('express').RequestHandler} authLimit */

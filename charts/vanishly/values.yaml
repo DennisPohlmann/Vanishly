@@ -165,6 +165,7 @@ config:
   # == API (true = on)
   ENABLE_API: ""
   ENABLE_MCP: ""
+  MCP_OAUTH: ""
   ENABLE_API_DOCS: ""
   ENABLE_API_LINK: ""
   ENABLE_SHARE_API: ""

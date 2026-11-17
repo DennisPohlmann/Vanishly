@@ -395,5 +395,14 @@
   "users.enabledDone": "{name} aktiviert.",
   "users.deleted": "{name} gelöscht; {n} Token(s) widerrufen.",
   "users.disableConfirm": "{name} deaktivieren? Die Sitzungen enden und die API-Tokens werden sofort widerrufen.",
-  "users.deleteConfirm": "{name} löschen? Die Sitzungen enden und die API-Tokens werden sofort widerrufen."
+  "users.deleteConfirm": "{name} löschen? Die Sitzungen enden und die API-Tokens werden sofort widerrufen.",
+  "oauth.title": "Zugriff erlauben",
+  "oauth.text": "{client} möchte Vanishly als {user} nutzen. Die App erhält ein API-Token mit diesen Rechten:",
+  "oauth.target": "Danach kehrt Ihr Browser zur App unter {target} zurück. Sie können das Token jederzeit auf der Seite API-Tokens widerrufen.",
+  "oauth.allow": "Erlauben",
+  "oauth.deny": "Ablehnen",
+  "oauth.badClient": "Diese Anmeldeanfrage kommt von einer unbekannten App oder nennt eine falsche Rücksprungadresse.",
+  "oauth.expired": "Diese Anmeldeanfrage ist abgelaufen oder wurde schon verwendet. Starten Sie die Anmeldung in der App erneut.",
+  "oauth.notAllowed": "Ihr Konto darf keine API-Tokens erstellen und kann deshalb keine Apps verbinden. Wenden Sie sich an einen Admin.",
+  "oauth.limit": "Sie haben bereits {max} aktive API-Tokens. Widerrufen Sie eines auf der Seite API-Tokens und versuchen Sie es erneut."
 }

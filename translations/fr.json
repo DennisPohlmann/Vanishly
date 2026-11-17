@@ -395,5 +395,14 @@
   "users.enabledDone": "{name} activé.",
   "users.deleted": "{name} supprimé ; {n} jeton(s) révoqué(s).",
   "users.disableConfirm": "Désactiver {name} ? Ses sessions se terminent et ses jetons d’API sont révoqués immédiatement.",
-  "users.deleteConfirm": "Supprimer {name} ? Ses sessions se terminent et ses jetons d’API sont révoqués immédiatement."
+  "users.deleteConfirm": "Supprimer {name} ? Ses sessions se terminent et ses jetons d’API sont révoqués immédiatement.",
+  "oauth.title": "Autoriser l'accès",
+  "oauth.text": "{client} souhaite utiliser Vanishly en tant que {user}. L'application reçoit un jeton d'API avec ces droits :",
+  "oauth.target": "Ensuite, votre navigateur revient à l'application sur {target}. Vous pouvez révoquer le jeton à tout moment sur la page des jetons d'API.",
+  "oauth.allow": "Autoriser",
+  "oauth.deny": "Refuser",
+  "oauth.badClient": "Cette demande de connexion provient d'une application inconnue ou indique une adresse de retour incorrecte.",
+  "oauth.expired": "Cette demande de connexion a expiré ou a déjà été utilisée. Relancez la connexion dans l'application.",
+  "oauth.notAllowed": "Votre compte ne peut pas créer de jetons d'API et ne peut donc pas connecter d'applications. Contactez un administrateur.",
+  "oauth.limit": "Vous avez déjà {max} jetons d'API actifs. Révoquez-en un sur la page des jetons d'API, puis réessayez."
 }

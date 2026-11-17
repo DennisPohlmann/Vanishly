@@ -2,6 +2,7 @@
 // provider stand-in in oidc-mock.js.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { after, before, test } from 'node:test';
 import { createApp } from '../src/app.js';
@@ -780,4 +781,27 @@ test('rate limits with sign-in: /auth/* per IP, and a ceiling for everything the
   assert.ok(retry >= 1 && retry <= 60, String(retry));
   assert.equal((await call('/')).status, 429);
   assert.equal((await call('/static/js/vanishly-crypto.js')).status, 200);
+});
+
+test('MCP_OAUTH with Entra ID: an MCP client signs in through the provider and gets a token', opts, async () => {
+  const { base, call, login } = await startApp({ API_TOKENS: 'true' });
+  const cb = 'http://127.0.0.1:43210/callback';
+  const reg = await call('/oauth/register', { body: { client_name: 'Claude Code', redirect_uris: [cb] } });
+  assert.equal(reg.status, 201);
+  const verifier = 'v'.repeat(50);
+  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  const q = new URLSearchParams({ response_type: 'code', client_id: reg.data.client_id, redirect_uri: cb, code_challenge: challenge, code_challenge_method: 'S256', state: 'x' });
+  const consent = String((await call(`/oauth/authorize?${q}`)).headers.get('location'));
+  // The provider's sign-in returns to the consent page.
+  const li = await login(BOB, consent);
+  assert.equal(li.location, consent);
+  const page = await call(consent, { cookie: li.cookie });
+  assert.equal(page.status, 200);
+  const ok = await fetch(base + consent, { method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Sec-Fetch-Site': 'same-origin', Cookie: li.cookie }, body: 'decision=allow' });
+  const code = String(new URL(String(ok.headers.get('location'))).searchParams.get('code'));
+  const tr = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, client_id: reg.data.client_id, redirect_uri: cb, code_verifier: verifier }).toString() });
+  const t = await tr.json();
+  assert.equal(tr.status, 200, JSON.stringify(t));
+  const me = await call('/api/v1/me', { bearer: t.access_token });
+  assert.equal(me.data.user, BOB.preferred_username.toLowerCase());
 });

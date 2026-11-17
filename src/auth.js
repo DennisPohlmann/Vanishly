@@ -33,8 +33,8 @@ import { Users } from './users.js';
 const EMAIL = /^[^\s@<>"',;]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 const STATE_TTL = 600;
 // Paths a login may return to: the home page, a secret, a receipt, the
-// API token page, the admin page.
-const RETURN = /^\/((s|r)\/[A-Za-z0-9_-]{22}|settings\/(tokens|password)|admin|secrets)?$/;
+// API token page, the admin page, an MCP client's sign-in (/oauth/<request>).
+const RETURN = /^\/((s|r|oauth)\/[A-Za-z0-9_-]{22}|settings\/(tokens|password)|admin|secrets)?$/;
 
 /** @param {string} v */
 function sha256(v) {

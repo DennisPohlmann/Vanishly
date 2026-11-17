@@ -258,6 +258,22 @@ Optional (`AUDIT_LOG`, `API_TOKENS`, see [CONFIG.md](CONFIG.md#audit-log)).
   session (the browser marks them `Sec-Fetch-Site: same-origin`; a script
   could fake that header, but only with a signed-in session of its own, and
   every call is then logged under that user).
+- **Sign-in of MCP clients (`MCP_OAUTH`):** an MCP client gets an API
+  token only after the person signed in on this server and pressed
+  "Allow" on a page that names the client and the local address the
+  browser returns to. The flow is OAuth 2.1 with PKCE (S256 only): a code is
+  useless without the verifier that stays in the client, works once and
+  for one minute, and is bound to its client and redirect URI. Redirect URIs
+  are loopback addresses only (`127.0.0.1`, `localhost`, `[::1]`; any port,
+  RFC 8252), so a code never leaves the person's computer. Registered
+  clients are not stored: the client id carries name and redirect URIs and
+  an HMAC (key derived from `AUTH_SECRET`), so a client id cannot be
+  changed to point elsewhere, and open registration fills no storage. The
+  consent page is a same-origin form post (`Sec-Fetch-Site`/`Origin`), its
+  CSP `form-action` allows only this site and that one loopback origin. The
+  token is an ordinary API token of the person (HMAC in Redis, revocable,
+  `api.token_created` with `details.via: oauth`). A local program the
+  person runs could start this flow, but only the person can allow it.
 - **Technical users and admin tokens:** technical users have no sign-in, only
   the tokens an admin issues; disabling or deleting one revokes them all.
   The scope `admin` (the admin API) exists only with `API_ADMIN_TOKENS`
