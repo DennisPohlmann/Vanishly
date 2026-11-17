@@ -46,6 +46,8 @@ const envFile = (path) => Object.fromEntries(
 
 test('the env files of the Compose examples: the defaults, and only settings of the app', () => {
   const standalone = envFile('docker-compose/standalone/.env.example');
+  // The tar.gz ships .env.example as /etc/vanishly/vanishly.env: it must start as it is.
+  assert.doesNotThrow(() => loadConfig(envFile('.env.example')));
   // DEFAULT_LANG=en is what empty means while LANGUAGES is empty.
   assert.deepEqual(loadConfig(standalone), loadConfig({ REDIS_URL: 'redis://redis:6379', DEFAULT_LANG: 'en' }));
   // All settings in every .env.example (NAME= or #NAME=): a new, renamed or removed one fails here.
