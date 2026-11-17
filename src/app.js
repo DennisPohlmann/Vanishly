@@ -1936,7 +1936,8 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     app.post('/auth/login', authLimit, form, async (req, res) => {
       const t = theme.strings[lang(res)];
       if (!fromHere(req)) return errorPage(req, res, 403, t['error.generic']);
-      const back = RETURN.test(field(req.body?.return)) ? field(req.body.return) : '/';
+      const ret = field(req.body?.return);
+      const back = RETURN.test(ret) ? ret : '/';
       const user = field(req.body?.user).trim().toLowerCase().slice(0, 254);
       const lock = await store.rateLimit('login', lockKey(user), users.c.attempts, config.rateWindow);
       if (!lock.ok) {

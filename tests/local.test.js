@@ -157,6 +157,7 @@ test('sign-in: form, same answer for unknown and wrong, new session each time, o
   // A form from another site is refused, and an open redirect is not possible.
   assert.equal((await form('/auth/login', { user: ADMIN, password: PW }, { origin: 'https://evil.example' })).status, 403);
   assert.equal((await form('/auth/login', { user: ADMIN, password: PW, return: 'https://evil.example/' })).location, '/');
+  assert.equal((await form('/auth/login', { user: ADMIN, password: PW, return: '//evil.example/' })).location, '/');
   // Logout ends it; the CSP has no provider in form-action.
   assert.equal((await form('/auth/logout', {}, { cookie: again.cookie })).status, 303);
   assert.equal((await call('/api/v1/me', { cookie: again.cookie })).data.signedIn, false);
