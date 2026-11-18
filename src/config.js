@@ -70,7 +70,65 @@ export function parseNetworks(v, max = 20) {
   return out;
 }
 
-const UNITS = /** @type {Record<string, number>} */ ({ s: 1, m: 60, h: 3600, d: 86400, w: 604800 });
+// Every duration setting reads the same units; m is always minutes, mo months.
+const UNIT = /** @type {Record<string, string>} */ ({
+  '': 's', s: 's', sec: 's', second: 's', m: 'm', min: 'm', minute: 'm', h: 'h', hour: 'h',
+  d: 'd', day: 'd', w: 'w', week: 'w', mo: 'mo', month: 'mo', y: 'y', year: 'y',
+});
+// Where a fixed length is needed (Redis TTLs), a month is 30 days, a year 365.
+const UNITS = /** @type {Record<string, number>} */ ({ s: 1, m: 60, h: 3600, d: 86400, w: 604800, mo: 2592000, y: 31536000 });
+const DURATION_HINT = 'a duration like 30s, 15m, 8h, 7d, 2w, 6mo or 1y (also 15 minutes, 6 months; a plain number is seconds)';
+
+/**
+ * "15m", "6 months", "3600" to [count, unit] (unit one of UNITS).
+ * @param {string} v
+ * @returns {[number, string]}
+ */
+function durationParts(v) {
+  const m = /^(\d{1,9})\s*([a-z]*)$/i.exec(String(v ?? '').trim());
+  const word = m ? m[2].toLowerCase() : '';
+  // Plural words ("days", "mins"); "ms" stays unknown, it is no plural of m.
+  const unit = m && (UNIT[word] || (word.length > 2 && word.endsWith('s') ? UNIT[word.slice(0, -1)] : undefined));
+  if (!m || !unit) throw new Error(`"${v}" is not ${DURATION_HINT}`);
+  return [Number(m[1]), unit];
+}
+
+/**
+ * One duration ("7d", "6 months", "600") to seconds.
+ * @param {string} v
+ */
+export function parseDuration(v) {
+  const [n, unit] = durationParts(v);
+  return n * UNITS[unit];
+}
+
+/**
+ * A list of durations: "1d, 15m,1h 2w" or "30 days, 6 months".
+ * @param {string} v
+ */
+function durationList(v) {
+  return v.split(/[,;]|\s+(?=\d)/).map((x) => x.trim()).filter(Boolean);
+}
+
+/**
+ * A duration setting in seconds; empty = the default.
+ * @param {string | undefined} v
+ * @param {number} def
+ * @param {number} min
+ * @param {number} max
+ */
+function seconds(v, def, min, max) {
+  if (v === undefined || v === '') return def;
+  const s = parseDuration(v);
+  if (s < min || s > max) throw new Error(`"${v}" is out of range (${humanSeconds(min)} to ${humanSeconds(max)})`);
+  return s;
+}
+
+/** @param {number} s */
+function humanSeconds(s) {
+  const unit = ['y', 'w', 'd', 'h', 'm'].find((u) => s >= UNITS[u] && s % UNITS[u] === 0) || 's';
+  return `${s / UNITS[unit]}${unit}`;
+}
 
 /**
  * "5m,1h,1d,7d" (or seconds) to sorted seconds.
@@ -78,10 +136,8 @@ const UNITS = /** @type {Record<string, number>} */ ({ s: 1, m: 60, h: 3600, d: 
  */
 export function parseDurations(v) {
   const out = new Set();
-  for (const part of v.split(/[\s,;]+/).filter(Boolean)) {
-    const m = /^(\d+)([smhdw]?)$/i.exec(part);
-    if (!m) throw new Error(`"${part}" is not a duration like 30m, 12h, 7d or 2w`);
-    const s = Number(m[1]) * UNITS[(m[2] || 's').toLowerCase()];
+  for (const part of durationList(v)) {
+    const s = parseDuration(part);
     if (s < 60 || s > 365 * 86400) throw new Error(`"${part}" must be from 1 minute to 1 year`);
     out.add(s);
   }
@@ -90,33 +146,42 @@ export function parseDurations(v) {
 }
 
 /**
- * An API token lifetime: "30d" (days), "6m" (calendar months), "1y"
- * (calendar years) or "never". Returns it normalized ("never" also for 0).
- * Note: m means months here, unlike TTL_OPTIONS (minutes).
+ * An API token lifetime: "30d" (days), "2w" (weeks, kept as days), "6mo"
+ * (calendar months), "1y" (calendar years) or "never". Returns it normalized
+ * ("never" also for 0). "6m" is minutes like everywhere else, too short for a
+ * token: it is refused with a hint, so an older "6m" (months) does not turn
+ * into minutes.
  * @param {string} v
  */
 export function parseExpiry(v) {
   const s = String(v ?? '').trim().toLowerCase();
   if (s === 'never' || s === '0') return 'never';
-  const m = /^(\d{1,4})([dmy])$/.exec(s);
-  const max = /** @type {Record<string, number>} */ ({ d: 3660, m: 120, y: 10 });
-  if (!m || Number(m[1]) < 1 || Number(m[1]) > max[m[2]]) {
-    throw new Error(`"${v}" is not a lifetime like 30d, 6m, 1y or never (d days up to 3660, m months up to 120, y years up to 10)`);
+  const hint = `"${v}" is not a lifetime like 30d, 2w, 6mo, 1y or never (d days up to 3660, mo months up to 120, y years up to 10)`;
+  let n, unit;
+  try {
+    [n, unit] = durationParts(s);
+  } catch {
+    throw new Error(hint);
   }
-  return `${Number(m[1])}${m[2]}`;
+  if (unit === 'm' && /^\d+\s*m$/.test(s)) throw new Error(`"${v}": m means minutes; write ${n}mo for ${n} months (a token lives at least 1 day)`);
+  if (unit === 'w') [n, unit] = [n * 7, 'd'];
+  const max = /** @type {Record<string, number>} */ ({ d: 3660, mo: 120, y: 10 });
+  if (!max[unit] || n < 1 || n > max[unit]) throw new Error(hint);
+  return `${n}${unit}`;
 }
 
 /**
  * When a token made at `now` with this lifetime expires (ms); 0 = never.
  * Months and years are calendar ones; the 31st becomes the last day of a
- * shorter month (Jan 31 + 1m = Feb 28/29).
+ * shorter month (Jan 31 + 1mo = Feb 28/29).
  * @param {string} opt from parseExpiry
  * @param {number} now
  */
 export function expiryAt(opt, now) {
   if (opt === 'never') return 0;
-  const n = Number(opt.slice(0, -1));
-  const unit = opt.slice(-1);
+  const [, num, unit] = /^(\d+)(d|mo|y)$/.exec(opt) || [];
+  if (!unit) throw new Error(`not a lifetime: ${opt}`);
+  const n = Number(num);
   if (unit === 'd') return now + n * 86400000;
   const d = new Date(now);
   const months = d.getUTCMonth() + (unit === 'y' ? 12 * n : n);
@@ -671,7 +736,7 @@ function authConfig(env, baseUrl) {
     groupPaths,
     allowedDomains,
     graphUrl: entra ? url('ENTRA_GRAPH_URL', 'https://graph.microsoft.com') : '',
-    sessionTtl: num('AUTH_SESSION_TTL', 8 * 3600, 300, 7 * 86400),
+    sessionTtl: named('AUTH_SESSION_TTL', () => seconds(env.AUTH_SESSION_TTL, 8 * 3600, 300, 7 * 86400)),
     createNeedsLogin: create === 'signed-in',
     apiAudience: audience,
     recipients: /** @type {'off' | 'optional' | 'required'} */ (recipients),
@@ -725,7 +790,7 @@ function tokenConfig(env, h) {
   const length = (o) => (o === 'never' ? Infinity : expiryAt(o, EXPIRY_REF) - EXPIRY_REF);
   const maxExpiry = env.API_TOKEN_MAX_EXPIRY ? life('API_TOKEN_MAX_EXPIRY', env.API_TOKEN_MAX_EXPIRY) : 'never';
   let options = named('API_TOKEN_EXPIRY_OPTIONS', () => {
-    const list = (env.API_TOKEN_EXPIRY_OPTIONS || '30d,60d,90d,never').split(/[\s,;]+/).filter(Boolean).map(parseExpiry);
+    const list = durationList(env.API_TOKEN_EXPIRY_OPTIONS || '30d,60d,90d,never').map(parseExpiry);
     if (!list.length) throw new Error('empty');
     return [...new Set(list)];
   });
@@ -944,7 +1009,7 @@ export function loadConfig(env = process.env) {
   if (languages && defaultLang && !languages.includes(defaultLang)) throw new Error(`DEFAULT_LANG=${defaultLang} is not one of LANGUAGES`);
   const template = str('TEMPLATE', /^[a-z0-9_-]{1,32}$/, 'default', 'lower-case letters, digits, "-" and "_", at most 32 characters');
   // The expiry dropdown: TTL_OPTIONS, otherwise the built-in steps up to MAX_TTL.
-  let maxTtl = num('MAX_TTL', 7 * 86400, 300, 365 * 86400);
+  let maxTtl = named('MAX_TTL', () => seconds(env.MAX_TTL, 7 * 86400, 300, 365 * 86400));
   let ttlOptions = [300, 3600, 86400, 259200, 604800, 1209600, 2592000, 7776000].filter((t) => t <= maxTtl);
   if (env.TTL_OPTIONS) {
     ttlOptions = named('TTL_OPTIONS', () => parseDurations(env.TTL_OPTIONS || ''));
@@ -1034,10 +1099,10 @@ export function loadConfig(env = process.env) {
     // The "Generate" button: length and character classes (empty = all four).
     generatorLength: num('GENERATOR_LENGTH', 20, 8, 128),
     generatorClasses: named('GENERATOR_COMPLEXITY', () => classes(env.GENERATOR_COMPLEXITY || 'all')),
-    receiptKeep: num('RECEIPT_KEEP', 7 * 86400, 0, 365 * 86400),
+    receiptKeep: named('RECEIPT_KEEP', () => seconds(env.RECEIPT_KEEP, 7 * 86400, 0, 365 * 86400)),
     rateCreate: num('RATE_LIMIT_CREATE', 30, 0, 100000),
     rateRead: num('RATE_LIMIT_READ', 120, 0, 100000),
-    rateWindow: num('RATE_LIMIT_WINDOW', 600, 1, 86400),
+    rateWindow: named('RATE_LIMIT_WINDOW', () => seconds(env.RATE_LIMIT_WINDOW, 600, 1, 86400)),
     // Keys the IP hashes of the rate limits; '' = a random key per process (src/store.js).
     rateLimitKey: named('RATE_LIMIT_KEY', () => {
       const v = secretValue(env, 'RATE_LIMIT_KEY');

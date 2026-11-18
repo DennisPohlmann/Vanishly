@@ -254,7 +254,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^$|^[0-9]+[smhdwSMHDW]?([\\s,;]+[0-9]+[smhdwSMHDW]?)*$"
+              "pattern": "^$|^[0-9]+ ?(?i:s|secs?|seconds?|m|mins?|minutes?|h|hours?|d|days?|w|weeks?|mo|months?|y|years?)?([\\s,;]+[0-9]+ ?(?i:s|secs?|seconds?|m|mins?|minutes?|h|hours?|d|days?|w|weeks?|mo|months?|y|years?)?)*$"
             }
           ]
         },
@@ -262,7 +262,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^$|^[0-9]+[smhdwSMHDW]?([\\s,;]+[0-9]+[smhdwSMHDW]?)*$"
+              "pattern": "^$|^[0-9]+ ?(?i:s|secs?|seconds?|m|mins?|minutes?|h|hours?|d|days?|w|weeks?|mo|months?|y|years?)?([\\s,;]+[0-9]+ ?(?i:s|secs?|seconds?|m|mins?|minutes?|h|hours?|d|days?|w|weeks?|mo|months?|y|years?)?)*$"
             }
           ]
         },
@@ -275,7 +275,7 @@
             },
             {
               "type": "string",
-              "pattern": "^$|^[0-9]+$"
+              "pattern": "^$|^[0-9]+ ?(?i:s|secs?|seconds?|m|mins?|minutes?|h|hours?|d|days?|w|weeks?|mo|months?|y|years?)?$"
             }
           ]
         },
@@ -301,7 +301,7 @@
             },
             {
               "type": "string",
-              "pattern": "^$|^[0-9]+$"
+              "pattern": "^$|^[0-9]+ ?(?i:s|secs?|seconds?|m|mins?|minutes?|h|hours?|d|days?|w|weeks?|mo|months?|y|years?)?$"
             }
           ]
         },
@@ -455,7 +455,7 @@
             },
             {
               "type": "string",
-              "pattern": "^$|^[0-9]+$"
+              "pattern": "^$|^[0-9]+ ?(?i:s|secs?|seconds?|m|mins?|minutes?|h|hours?|d|days?|w|weeks?|mo|months?|y|years?)?$"
             }
           ]
         },
@@ -1012,7 +1012,7 @@
             },
             {
               "type": "string",
-              "pattern": "^$|^[0-9]+$"
+              "pattern": "^$|^[0-9]+ ?(?i:s|secs?|seconds?|m|mins?|minutes?|h|hours?|d|days?|w|weeks?|mo|months?|y|years?)?$"
             }
           ]
         },
@@ -1399,7 +1399,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^$|^[\\s,;]*(?i:[0-9]{1,4}[dmy]|never|0)([\\s,;]+(?i:[0-9]{1,4}[dmy]|never|0))*[\\s,;]*$"
+              "pattern": "^$|^[\\s,;]*(?i:[0-9]{1,4} ?(?:d|days?|w|weeks?|mo|months?|y|years?)|never|0)([\\s,;]+(?i:[0-9]{1,4} ?(?:d|days?|w|weeks?|mo|months?|y|years?)|never|0))*[\\s,;]*$"
             }
           ]
         },
@@ -1407,7 +1407,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^$|^(?i:[0-9]{1,4}[dmy]|never)$"
+              "pattern": "^$|^(?i:[0-9]{1,4} ?(?:d|days?|w|weeks?|mo|months?|y|years?)|never|0)$"
             }
           ]
         },
@@ -1415,7 +1415,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^$|^(?i:[0-9]{1,4}[dmy]|never|0)$"
+              "pattern": "^$|^(?i:[0-9]{1,4} ?(?:d|days?|w|weeks?|mo|months?|y|years?)|never|0)$"
             }
           ]
         },
@@ -1423,7 +1423,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^$|^(?i:[0-9]{1,4}[dmy]|never|0)$"
+              "pattern": "^$|^(?i:[0-9]{1,4} ?(?:d|days?|w|weeks?|mo|months?|y|years?)|never|0)$"
             }
           ]
         },
@@ -1601,7 +1601,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^$|^(?i:[0-9]{1,4}[dmy]|never|0)$"
+              "pattern": "^$|^(?i:[0-9]{1,4} ?(?:d|days?|w|weeks?|mo|months?|y|years?)|never|0)$"
             }
           ]
         },

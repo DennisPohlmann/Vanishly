@@ -5741,7 +5741,7 @@
           },
           "expires": {
             "type": "string",
-            "description": "One of API_TOKEN_EXPIRY_OPTIONS (e.g. `30d`, `6m`, `1y`, `never`; d days, m calendar months, y calendar years); default API_TOKEN_DEFAULT_EXPIRY. Never beyond API_TOKEN_MAX_EXPIRY."
+            "description": "One of API_TOKEN_EXPIRY_OPTIONS (e.g. `30d`, `6mo`, `1y`, `never`; d days, mo calendar months, y calendar years; an older `6m` still means 6 months here); default API_TOKEN_DEFAULT_EXPIRY. Never beyond API_TOKEN_MAX_EXPIRY."
           },
           "ips": {
             "type": "array",

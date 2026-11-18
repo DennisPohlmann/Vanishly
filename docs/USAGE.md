@@ -84,7 +84,7 @@ each person who opened it. Details: [CONFIG.md](CONFIG.md#status-page).
 | Burned | you burned it, or too many wrong passphrases |
 | Expired | the expiry passed before all views were used |
 
-Receipts stay `RECEIPT_KEEP` seconds after the expiry, then they are gone
+Receipts stay for `RECEIPT_KEEP` (default `7d`) after the expiry, then they are gone
 too. They hold times, no IPs or browsers; with sign-in the names and
 addresses shown on the status page (`RECEIPT_SHOW_VIEWER`,
 `STATUS_ACCESS=signed-in`).

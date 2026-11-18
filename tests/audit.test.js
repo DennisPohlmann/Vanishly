@@ -198,17 +198,21 @@ test('formatEvent: refused token call in ECS, OTel and plain', () => {
   assert.equal(plain.message, 'api.ip_denied denied (ip_denied) by a@example.com via token api_aap');
 });
 
-test('token lifetimes: units d, m, y; calendar months; config caps and errors', () => {
+test('token lifetimes: units d, w, mo, y; calendar months; config caps and errors', () => {
   assert.equal(parseExpiry('30D'), '30d');
-  assert.equal(parseExpiry('6m'), '6m');
+  assert.equal(parseExpiry('6mo'), '6mo');
+  assert.equal(parseExpiry('6 months'), '6mo');
+  assert.equal(parseExpiry('2w'), '14d');
+  assert.equal(parseExpiry('1 year'), '1y');
   assert.equal(parseExpiry('never'), 'never');
   assert.equal(parseExpiry('0'), 'never');
-  for (const bad of ['30', '1w', '0d', '-1d', '11y', '121m', 'soon', '']) assert.throws(() => parseExpiry(bad), /lifetime/, bad);
+  for (const bad of ['30', '12h', '0d', '-1d', '11y', '121mo', 'soon', '']) assert.throws(() => parseExpiry(bad), /lifetime/, bad);
+  assert.throws(() => parseExpiry('6m'), /m means minutes; write 6mo/, 'an older 6m (months) does not become minutes');
   const jan31 = Date.UTC(2027, 0, 31, 10, 0);
-  assert.equal(new Date(expiryAt('1m', jan31)).toISOString(), '2027-02-28T10:00:00.000Z');
-  assert.equal(new Date(expiryAt('1m', Date.UTC(2028, 0, 31))).toISOString(), '2028-02-29T00:00:00.000Z');
+  assert.equal(new Date(expiryAt('1mo', jan31)).toISOString(), '2027-02-28T10:00:00.000Z');
+  assert.equal(new Date(expiryAt('1mo', Date.UTC(2028, 0, 31))).toISOString(), '2028-02-29T00:00:00.000Z');
   assert.equal(new Date(expiryAt('1y', Date.UTC(2028, 1, 29))).toISOString(), '2029-02-28T00:00:00.000Z');
-  assert.equal(new Date(expiryAt('13m', Date.UTC(2027, 11, 15))).toISOString(), '2029-01-15T00:00:00.000Z');
+  assert.equal(new Date(expiryAt('13mo', Date.UTC(2027, 11, 15))).toISOString(), '2029-01-15T00:00:00.000Z');
   assert.equal(expiryAt('30d', 0), 30 * 86400000);
   assert.equal(expiryAt('never', 5), 0);
 
@@ -216,11 +220,12 @@ test('token lifetimes: units d, m, y; calendar months; config caps and errors', 
   let c = loadConfig({ ...base, API_TOKENS: 'true' });
   assert.deepEqual(c.auth?.tokens?.expiryOptions, ['30d', '60d', '90d', 'never']);
   assert.equal(c.auth?.tokens?.defaultExpiry, '90d');
-  c = loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_EXPIRY_OPTIONS: '1y,30d,6m,never,60d', API_TOKEN_MAX_EXPIRY: '6m' });
-  assert.deepEqual(c.auth?.tokens?.expiryOptions, ['30d', '60d', '6m'], 'never and 1y go with a cap');
-  assert.equal(c.auth?.tokens?.defaultExpiry, '6m');
-  c = loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_EXPIRY_OPTIONS: '30d,1y', API_TOKEN_DEFAULT_EXPIRY: '6m' });
-  assert.deepEqual(c.auth?.tokens?.expiryOptions, ['30d', '6m', '1y'], 'the default joins the options');
+  c = loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_EXPIRY_OPTIONS: '1y,30 days,6mo,never,60d', API_TOKEN_MAX_EXPIRY: '6 months' });
+  assert.deepEqual(c.auth?.tokens?.expiryOptions, ['30d', '60d', '6mo'], 'never and 1y go with a cap');
+  assert.equal(c.auth?.tokens?.defaultExpiry, '6mo');
+  c = loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_EXPIRY_OPTIONS: '30d,1y', API_TOKEN_DEFAULT_EXPIRY: '6mo' });
+  assert.deepEqual(c.auth?.tokens?.expiryOptions, ['30d', '6mo', '1y'], 'the default joins the options');
+  assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_MAX_EXPIRY: '6m' }), /API_TOKEN_MAX_EXPIRY: "6m": m means minutes/);
   assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_DEFAULT_EXPIRY: '1y', API_TOKEN_MAX_EXPIRY: '90d' }), /above API_TOKEN_MAX_EXPIRY/);
   assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_EXPIRY_OPTIONS: '1y,never', API_TOKEN_MAX_EXPIRY: '30d' }), /no lifetime within/);
   assert.throws(() => loadConfig({ ...base, API_TOKENS: 'true', API_TOKEN_EXPIRY_OPTIONS: '30x' }), /API_TOKEN_EXPIRY_OPTIONS: "30x"/);

@@ -37,7 +37,7 @@ are. The exact crypto format is in [INTERFACE.md](INTERFACE.md#crypto-format-v1)
    decrypts it locally with the key from the `#` part.
 5. **Gone.** On the last view Redis deletes the ciphertext in the same step
    that hands it out. What stays is the receipt (status and view times, no
-   content, no IP addresses) for `RECEIPT_KEEP` seconds.
+   content, no IP addresses) for `RECEIPT_KEEP` (default 7 days).
 
 ## Recipients (sign-in)
 

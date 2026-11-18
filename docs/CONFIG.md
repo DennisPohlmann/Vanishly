@@ -21,6 +21,9 @@ letter or two off a real one (`ENABLE_VEIWS`) stops Vanishly with exit code
 `Vanishly: invalid setting: ENABLE_VEIWS: unknown setting, did you mean ENABLE_VIEWS?`.
 The container then does not come up (`docker compose logs vanishly`).
 
+**Time spans** are written like `30m`, `8h`, `7d`, `6mo`, `1y` (`m` minutes,
+`mo` months; a plain number is seconds), see [Durations](#durations).
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `BASE_URL` | (from the request) | Public address, e.g. `https://ots.example.com`; used for the links that `POST /api/v1/share` returns |
@@ -39,9 +42,9 @@ The container then does not come up (`docker compose logs vanishly`).
 | `LANGUAGES` | (all translations: `en,de,es,fr,it,nl,pl,pt`) | Languages served, comma-separated. Only these count for `?lang=`, the `lang` cookie and `Accept-Language`. One language (`LANGUAGES=en`) serves every page in it and hides the language link; two show a link to the other one, more a language menu. A code without a translation stops the start |
 | `DEFAULT_LANG` | `en` (or the first of `LANGUAGES` without `en`) | Language when the browser names none of `LANGUAGES` (and no `?lang=` or cookie decides); must be one of `LANGUAGES` |
 | `TRANSLATIONS_DIR` | `/var/lib/vanishly/translations` | Folder with own translations: `<code>.json` (e.g. `fr.json`) adds a language, `de.json` replaces single German texts; missing keys come from English. Plain JSON files (`"key": "text"`) up to 512 KB, no symbolic links |
-| `TTL_OPTIONS` | (built-in steps) | Entries of the expiry dropdown, comma-separated: `15m,1h,1d,3d,7d` (`m`, `h`, `d`, `w`, or seconds; 1 minute to 1 year). Without it the form offers 5m, 1h, 1d, 3d, 7d, 14d, 30d, 90d up to `MAX_TTL` |
-| `DEFAULT_TTL` | 1 day, or the option closest to it | Preselected expiry, also used by the API without `ttl`; with `TTL_OPTIONS` it must be one of them (`1d` or seconds) |
-| `MAX_TTL` | `604800`, or the largest of `TTL_OPTIONS` | Longest expiry the API accepts (seconds, at most one year) |
+| `TTL_OPTIONS` | (built-in steps) | Entries of the expiry dropdown, comma-separated: `15m,1h,1d,3d,7d` ([durations](#durations), 1 minute to 1 year). Without it the form offers 5m, 1h, 1d, 3d, 7d, 14d, 30d, 90d up to `MAX_TTL` |
+| `DEFAULT_TTL` | 1 day, or the option closest to it | Preselected expiry, also used by the API without `ttl`; with `TTL_OPTIONS` it must be one of them, e.g. `1d` ([durations](#durations)) |
+| `MAX_TTL` | `7d`, or the largest of `TTL_OPTIONS` | Longest expiry the API accepts, `5m` to `1y` ([durations](#durations)) |
 | `MAX_VIEWS` | `10` | Most views a secret can have (1 to 100) |
 | `MAX_SECRET_CHARS` | `10000` | Longest secret in characters |
 | `MIN_SECRET_CHARS` | `1` | Shortest secret in characters, e.g. `12` to refuse short passwords ([details](#minimum-lengths-and-passphrase-rules)) |
@@ -53,16 +56,49 @@ The container then does not come up (`docker compose logs vanishly`).
 | `PASSPHRASE_ATTEMPTS` | `5` | Wrong passphrases before the secret is destroyed |
 | `GENERATOR_LENGTH` | `20` | Length of the password of the "Generate" button (8 to 128) |
 | `GENERATOR_COMPLEXITY` | `all` | Character classes of the generated password: `upper`, `lower`, `digit`, `symbol` or `all`; each chosen class appears at least once. Look-alikes (0/O, 1/l/I) are left out |
-| `RECEIPT_KEEP` | `604800` | How long a receipt stays after its secret expired (seconds) |
+| `RECEIPT_KEEP` | `7d` | How long a receipt (the status page) stays after its secret expired, `0` to `1y`, e.g. `1m`, `30d`, `6mo`, `1y` ([durations](#durations)); `0`: it goes with the secret |
 | `RATE_LIMIT_CREATE` | `30` | New secrets per client IP and window; `0` = off |
 | `RATE_LIMIT_READ` | `120` | Reads, reveals, receipts and burns per client IP and window; with sign-in also `/auth/login` and `/auth/callback` (own counter), with `MCP_OAUTH` also `/oauth/*` (own counter), with MCP also `/mcp` (own counter). With sign-in, all requests of one client IP together (not static files, `/healthz`) may reach 10 × the larger of `RATE_LIMIT_READ` and `RATE_LIMIT_CREATE` per window. `0` = off |
-| `RATE_LIMIT_WINDOW` | `600` | Window of the rate limits (seconds) |
+| `RATE_LIMIT_WINDOW` | `10m` | Window of the rate limits, `1s` to `1d` ([durations](#durations)) |
 | `RATE_LIMIT_KEY` (`_FILE`) | (random per process) | At least 32 characters, no whitespace (`openssl rand -base64 48`): keys the IP hashes of the rate limits. Use the same value on all replicas so they share the limits. Unset: a random key per process, so limits are per process and reset on restart, with a warning at start (fine for one replica). Changing it starts the counters over. The Helm chart generates one |
 | `CREATE_ALLOWED_IPS`, `CREATE_DENIED_IPS` | (none: everybody) | Client IPs that may / may not create: the form, `POST /api/v1/secrets` and `/share`, people and group search, status page and burn ([details](#ip-access)) |
 | `READ_ALLOWED_IPS`, `READ_DENIED_IPS` | (none: everybody) | Client IPs that may / may not open secrets: `/s/<id>`, `GET /api/v1/secrets/{id}`, reveal, `/api/v1/open` ([details](#ip-access)) |
 | `ADMIN_ALLOWED_IPS`, `ADMIN_DENIED_IPS` | (none: everybody) | Client IPs that may / may not use the admin area: `/admin` and `/api/v1/admin/*` ([details](#ip-access)) |
 | `MCP_PROTOCOL_VERSIONS` | `2026-07-28,2025-11-25,2025-06-18` | MCP protocol versions `/mcp` speaks, any of these three. Others (e.g. `2025-03-26`) are refused with error `-32022` and logged as `mcp.request_denied`. `2026-07-28` alone is the strictest choice; older clients then fail ([details](#mcp-server)) |
 | `ACCESS_LOG` | `true` | One line per request to stdout (method, path with ids replaced by `:id`, status, time) |
+
+### Durations
+
+Every setting that takes a time span (`TTL_OPTIONS`, `DEFAULT_TTL`,
+`MAX_TTL`, `RECEIPT_KEEP`, `RATE_LIMIT_WINDOW`, `AUTH_SESSION_TTL` and the
+token lifetimes `API_TOKEN_EXPIRY_OPTIONS`, `API_TOKEN_DEFAULT_EXPIRY`,
+`API_TOKEN_MAX_EXPIRY`, `MCP_OAUTH_TOKEN_EXPIRY`,
+`API_ADMIN_TOKEN_MAX_EXPIRY`) reads the same format: a whole number and a
+unit, with or without a space, upper or lower case.
+
+| Unit | Short | Long | Example |
+|---|---|---|---|
+| seconds | `s` or no unit | `second`, `seconds` | `30s`, `600` |
+| minutes | `m`, `min` | `minute`, `minutes` | `1m`, `30m`, `30 minutes` |
+| hours | `h` | `hour`, `hours` | `8h` |
+| days | `d` | `day`, `days` | `30d`, `30 days` |
+| weeks | `w` | `week`, `weeks` | `2w` |
+| months | `mo` | `month`, `months` | `3mo`, `6 months` |
+| years | `y` | `year`, `years` | `1y` |
+
+`m` is always minutes, months are always `mo`: `3m` is 3 minutes, `3mo` is
+3 months. A plain number is seconds, so older values such as
+`RECEIPT_KEEP=604800` keep working. Lists are comma-separated:
+`TTL_OPTIONS=15m,1h,1d,7d` or `TTL_OPTIONS=30 minutes, 1 day`. For settings
+kept in seconds (all but the token lifetimes) a month counts as 30 days and
+a year as 365 days; token lifetimes use calendar months and years. `never`
+exists only for token lifetimes. A value out of the allowed range stops the
+start, e.g. `RECEIPT_KEEP: "2y" is out of range (0s to 1y)`.
+
+Token lifetimes are at least one day (`d`, `w`, `mo`, `y` or `never`). Older
+versions read `m` there as months: `API_TOKEN_MAX_EXPIRY=6m` now stops the
+start with `m means minutes; write 6mo for 6 months`, so a lifetime never
+turns into minutes unnoticed.
 
 ### Switches (`ENABLE_*`)
 
@@ -164,7 +200,7 @@ only that provider has) and what each supports:
 | `DIRECTORY_API_TOKEN` (`_FILE`), `DIRECTORY_GOOGLE_CREDENTIALS_FILE`, `DIRECTORY_GOOGLE_ADMIN`, `AWS_*` | | The directory access of `okta` and `jumpcloud` (API token), `google` (service account) and `cognito` (AWS credentials); see their pages in [providers](providers/README.md) |
 | `DIRECTORY_URL` | from the issuer | The directory API's address, where it differs (Auth0 with a custom domain, JumpCloud EU, an internal Keycloak admin address) |
 | `AUTH_SECRET` | (required) | At least 32 random characters (`openssl rand -base64 48`); or `AUTH_SECRET_FILE`. Keys the hashes of the recipients: changing it locks every open restricted secret |
-| `AUTH_SESSION_TTL` | `28800` | Lifetime of a sign-in in seconds (5 minutes to 7 days) |
+| `AUTH_SESSION_TTL` | `8h` | Lifetime of a sign-in, `5m` to `7d` ([durations](#durations)) |
 | `AUTH_LOGOUT` | `provider` (Entra: `local`) | `provider`: "Sign out" also ends the session at the provider, which then asks again at the next sign-in; needs `<BASE_URL>/auth/logged-out` as post logout redirect URI there. `local`: only Vanishly signs out (with Entra the default, as the Microsoft session is shared with Microsoft 365) |
 | `AUTH_AUTO_LOGIN` | `false` | `true`: a visitor who is not signed in is signed in automatically when the provider still knows them (silent sign-in, `prompt=none`, once per browser tab); otherwise the page stays as it is. A sign-out in that tab is not undone |
 | `AUTH_CREATE` | `signed-in` | Who may create secrets: `signed-in` or `anyone` (restricting a secret always needs a sign-in) |
@@ -236,10 +272,10 @@ Need sign-in. See [API tokens](#api-tokens) below.
 | `API_TOKEN_REQUIRED` | `false` | `true`: outside this server's own pages the API takes only these tokens: no anonymous calls, no session cookies from scripts, no other bearer tokens (`AUTH_API_AUDIENCE`) |
 | `API_TOKEN_USERS`, `API_TOKEN_GROUPS` | (everyone signed in) | Only these addresses / groups (as in the groups claim; Entra: object ids) may make tokens: the "activation" by the admins |
 | `API_TOKEN_IP_BINDING` | `optional` | `required`: every token must name the IP addresses or networks (IPv4/IPv6 CIDR) it works from; any other address is refused (403) and logged, which stops passing tokens on |
-| `API_TOKEN_EXPIRY_OPTIONS` | `30d,60d,90d,never` | Lifetimes a user may pick: `d` days, `m` calendar months, `y` calendar years, `never` (note: `m` is months here, minutes in `TTL_OPTIONS`) |
+| `API_TOKEN_EXPIRY_OPTIONS` | `30d,60d,90d,never` | Lifetimes a user may pick: `d` days, `w` weeks, `mo` calendar months, `y` calendar years, `never` ([durations](#durations); `m` is minutes, too short for a token) |
 | `API_TOKEN_DEFAULT_EXPIRY` | `90d` (or the longest choice) | Preselected lifetime; added to the choices if missing |
 | `API_TOKEN_MAX_EXPIRY` | `never` (no cap) | Longest lifetime allowed, e.g. `1y`: longer choices and `never` disappear, the server refuses them |
-| `MCP_OAUTH_TOKEN_EXPIRY` | `1d` | Lifetime of the token an MCP client gets by signing in (`MCP_OAUTH`): `d`, `m` (months), `y` or `never`, at most `API_TOKEN_MAX_EXPIRY`; not limited to `API_TOKEN_EXPIRY_OPTIONS`. No refresh tokens: the client signs in again when it expires |
+| `MCP_OAUTH_TOKEN_EXPIRY` | `1d` | Lifetime of the token an MCP client gets by signing in (`MCP_OAUTH`): `d`, `w`, `mo` (months), `y` or `never` ([durations](#durations)), at most `API_TOKEN_MAX_EXPIRY`; not limited to `API_TOKEN_EXPIRY_OPTIONS`. No refresh tokens: the client signs in again when it expires |
 | `API_TOKEN_MAX_PER_USER` | `10` | Active tokens per user, 0 to 1000 (`0`: no limit). Only active tokens count; revoked and expired ones do not. At the limit the API tokens page shows "10 of 10 active tokens" and a notice instead of the form, and the API refuses with `400 too_many_tokens` (logged as `api.token_create_denied`, reason `limit_reached`) |
 | `API_TOKEN_RATE_LIMIT` | `0` (off) | Calls per token per `RATE_LIMIT_WINDOW` |
 | `API_TOKEN_COMMENT` | `optional` | `required`: every POST with a token needs a comment (`X-Audit-Comment` or `comment`); needs `AUDIT_LOG` |
@@ -255,7 +291,7 @@ Need sign-in. See [API tokens](#api-tokens) below.
 | `API_SERVICE_ACCOUNTS` | `true` | Technical users: API-only accounts (e.g. `api_aap`) that admins make on `/admin` and issue tokens for; they cannot sign in |
 | `API_ADMIN_TOKENS` | `true` (with admins) | The scope `admin` for technical users' tokens: every admin function over the API. Only a signed-in admin can give it. Needs `API_SERVICE_ACCOUNTS`, admins and `ADMIN_UI`: unset it is off without them, an explicit `true` is an error |
 | `API_ADMIN_TOKEN_REQUIRE_IP` | `true` | Admin tokens must name the IP networks they work from |
-| `API_ADMIN_TOKEN_MAX_EXPIRY` | `90d` | Longest lifetime of an admin token (`d`, `m`, `y`) |
+| `API_ADMIN_TOKEN_MAX_EXPIRY` | `90d` | Longest lifetime of an admin token (`d`, `w`, `mo`, `y`; [durations](#durations)) |
 | `API_ADMIN_TOKEN_CAN_ISSUE_ADMIN` | `true` | An admin token may issue further admin tokens (`false`: only a signed-in admin) |
 | `API_ADMIN_COMMENT` | `required` | Every admin API call with a token needs `X-Audit-Comment` (`optional`: not) |
 

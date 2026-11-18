@@ -5,13 +5,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { duration } from '../src/app.js';
-import { SETTINGS, loadConfig, parseDurations } from '../src/config.js';
+import { SETTINGS, loadConfig, parseDuration, parseDurations } from '../src/config.js';
 
 test('TTL_OPTIONS: units, order, duplicates, limits', () => {
   assert.deepEqual(parseDurations('1d, 15m,1h 2w,1d,3600'), [900, 3600, 86400, 1209600]);
   assert.throws(() => parseDurations('5x'));
   assert.throws(() => parseDurations('30s'));
   assert.throws(() => parseDurations('2y'));
+  assert.deepEqual(parseDurations('30 minutes, 6 months; 1 year'), [1800, 15552000, 31536000]);
+});
+
+test('durations: one format for every setting (m minutes, mo months, plain numbers seconds)', () => {
+  assert.equal(parseDuration('90'), 90);
+  for (const [v, s] of /** @type {[string, number][]} */ ([['30s', 30], ['1m', 60], ['3 min', 180], ['2 hours', 7200], ['7d', 604800], ['2w', 1209600], ['6mo', 15552000], ['1 Year', 31536000]])) assert.equal(parseDuration(v), s, v);
+  for (const bad of ['5x', '1.5h', 'ms', '10ms', '-1d', 'never', '']) assert.throws(() => parseDuration(bad), /not a duration/, bad);
+  const c = loadConfig({ RECEIPT_KEEP: '30d', MAX_TTL: '6mo', RATE_LIMIT_WINDOW: '10m' });
+  assert.deepEqual([c.receiptKeep, c.maxTtl, c.rateWindow], [2592000, 15552000, 600]);
+  assert.equal(loadConfig({ RECEIPT_KEEP: '0' }).receiptKeep, 0, '0: gone with the secret');
+  assert.equal(loadConfig({ RECEIPT_KEEP: '604800' }).receiptKeep, 604800, 'seconds still work');
+  assert.throws(() => loadConfig({ RECEIPT_KEEP: '2y' }), /RECEIPT_KEEP: "2y" is out of range \(0s to 1y\)/);
+  assert.throws(() => loadConfig({ RECEIPT_KEEP: 'never' }), /RECEIPT_KEEP: "never" is not a duration/);
 });
 
 test('RATE_LIMIT_KEY: optional, checked, also from a file; a wrong one stops the start without showing it', () => {

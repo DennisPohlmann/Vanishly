@@ -199,7 +199,8 @@ export class Tokens {
   async issue(who, b, rules) {
     const name = typeof b.name === 'string' ? b.name.normalize('NFC').replace(/[\u0000-\u001f\u007f]/g, ' ').trim() : '';
     if (!name || name.length > 64) return { error: 'invalid_name', message: 'name: 1 to 64 characters' };
-    const choice = rules.expiry || (b.expires === undefined || b.expires === null || b.expires === '' ? this.c.defaultExpiry : String(b.expires));
+    // An older client may still send "6m" for months (a token never lives minutes).
+    const choice = rules.expiry || (b.expires === undefined || b.expires === null || b.expires === '' ? this.c.defaultExpiry : String(b.expires).replace(/^(\d+)m$/, '$1mo'));
     if (!rules.expiry && !this.c.expiryOptions.includes(choice)) {
       return { error: 'invalid_expiry', message: `expires must be one of ${this.c.expiryOptions.join(', ')}` };
     }

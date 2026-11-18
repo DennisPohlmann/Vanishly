@@ -2273,7 +2273,12 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     if (!u) return void res.type('html').send(page('login', req, res, { page: 'login', title: t['tokens.title'], heading: t['tokens.title'], text: t['tokens.loginText'], returnTo: '/settings/tokens' }));
     const c = tokens.c;
     const expirySelect = c.expiryOptions
-      .map((o) => `<option value="${escapeHtml(o)}"${o === c.defaultExpiry ? ' selected' : ''}>${escapeHtml(o === 'never' ? t['tokens.never'] : (t[`tokens.unit.${o.slice(-1)}.${o.slice(0, -1) === '1' ? 1 : 'n'}`] || o).replace('{n}', o.slice(0, -1)))}</option>`)
+      .map((o) => {
+        const [, n, u] = /^(\d+)(\D+)$/.exec(o) || [];
+        // The translation keys still call months "m" (tokens.unit.m.*).
+        const label = o === 'never' ? t['tokens.never'] : (t[`tokens.unit.${u === 'mo' ? 'm' : u}.${n === '1' ? 1 : 'n'}`] || o).replace('{n}', n);
+        return `<option value="${escapeHtml(o)}"${o === c.defaultExpiry ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+      })
       .join('');
     // What this user may give a token: "only create", "only read (pull)",
     // "both" as far as the policy allows, and "status" and "burn" as boxes of their own.
