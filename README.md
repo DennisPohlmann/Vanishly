@@ -141,7 +141,7 @@ How a secret is protected, step by step and with its limits:
 
 ## Requirements
 
-- Docker with Docker Compose (the image brings Node.js 24 LTS on Alpine
+- Docker with Docker Compose (the image brings Node.js 26 LTS on Alpine
   Linux), or Node.js 22 or newer
 - Redis 7 or newer (included in the Compose files and in the Helm chart), or an
   external one (`REDIS_URL`, also `rediss://` with an own CA)

@@ -102,7 +102,7 @@ Image tags: `latest` (newest release), `<major>.<minor>`, `<version>`,
 
 ## 3. tar.gz with systemd
 
-Needs Node.js 22 or newer (24 LTS recommended) and a Redis server on the
+Needs Node.js 22 or newer (26 LTS recommended) and a Redis server on the
 host (`apt install redis-server`).
 
 ```bash
