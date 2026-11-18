@@ -15,7 +15,7 @@ import { Audit, canonical, chainOf, clean, formatEvent, hashOf, normalize, parse
 import { expiryAt, loadConfig, parseExpiry } from '../src/config.js';
 import { Store } from '../src/store.js';
 import { loadTheme } from '../src/theme.js';
-import { ipAllowed, parseNetworks } from '../src/tokens.js';
+import { ipAllowed, parseNetworks, Tokens } from '../src/tokens.js';
 import { encryptSecret } from '../public/js/vanishly-crypto.js';
 import { startMock } from './oidc-mock.js';
 
@@ -527,10 +527,10 @@ test('API_TOKEN_MAX_PER_USER: active tokens only, revoked and expired ones do no
 test('scopes: API_TOKEN_ALLOWED_SCOPES, _DEFAULT_SCOPES, _SCOPES_BY_GROUP and API_TOKEN_ADMIN_POLICY are checked at start', () => {
   const base = { BASE_URL: 'https://ots.example.com', AUTH_PROVIDER: 'entra', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_CLIENT_SECRET: SECRET, AUTH_SECRET: 'x'.repeat(40), API_TOKENS: 'true' };
   let t = loadConfig(base).auth?.tokens;
-  assert.deepEqual([t?.allowedScopes, t?.defaultScopes, t?.scopesByGroup, t?.adminPolicy], [['create', 'read', 'status'], ['create', 'status'], [], false]);
+  assert.deepEqual([t?.allowedScopes, t?.defaultScopes, t?.scopesByGroup, t?.adminPolicy], [['create', 'read', 'status', 'burn'], ['create', 'status', 'burn'], [], false]);
   t = loadConfig({ ...base, API_TOKEN_ALLOWED_SCOPES: 'read', API_TOKEN_SCOPES_BY_GROUP: `${IT}=create+read; ${HR}=none` }).auth?.tokens;
   assert.deepEqual(t?.allowedScopes, ['read']);
-  assert.deepEqual(t?.defaultScopes, [], 'create,status filtered by the allowed ones');
+  assert.deepEqual(t?.defaultScopes, [], 'create,status,burn filtered by the allowed ones');
   assert.deepEqual(t?.scopesByGroup, [{ group: IT, scopes: ['create', 'read'] }, { group: HR, scopes: [] }]);
   assert.ok(loadConfig({ ...base, API_TOKEN_SCOPES_BY_GROUP: `${IT}=read` }).auth?.extraGroups.includes(IT), 'the group is kept in the identity');
   assert.throws(() => loadConfig({ ...base, API_TOKEN_ALLOWED_SCOPES: 'create,delete' }), /API_TOKEN_ALLOWED_SCOPES: "delete" is not one of/);
@@ -541,13 +541,21 @@ test('scopes: API_TOKEN_ALLOWED_SCOPES, _DEFAULT_SCOPES, _SCOPES_BY_GROUP and AP
   assert.equal(loadConfig({ ...base, API_TOKEN_ADMIN_POLICY: 'true', ADMIN_USERS: 'alice@example.com' }).auth?.tokens?.adminPolicy, true);
 });
 
-test('scopes per token: only create, only retrieve, both, status; refusals are api.scope_denied', opts, async () => {
+test('scopes: tokens and policies from before "burn" was a scope keep burn with status', () => {
+  assert.deepEqual(Tokens.record({ scopes: 'create status' }, 'a').scopes, ['create', 'status', 'burn']);
+  assert.deepEqual(Tokens.record({ scopes: 'create status', v: '2' }, 'a').scopes, ['create', 'status'], 'new: status only');
+  assert.deepEqual(Tokens.record({ scopes: 'read' }, 'a').scopes, ['read']);
+  assert.deepEqual(Tokens.storedPolicy({ type: 'user', scopes: 'status' }).scopes, ['status', 'burn']);
+  assert.deepEqual(Tokens.storedPolicy({ type: 'user', scopes: 'status', v: '2' }).scopes, ['status']);
+});
+
+test('scopes per token: only create, only retrieve, both, status, burn; refusals are api.scope_denied', opts, async () => {
   const a = await startApp();
   const alice = await a.login(ALICE);
   const bob = await a.login(BOB);
   /** @param {string[]} scopes */
   const token = async (scopes) => (await a.call('/api/v1/tokens', { cookie: alice, body: { name: scopes.join('+'), scopes } })).data.token;
-  const tok = { create: await token(['create']), read: await token(['read']), both: await token(['create', 'read']), status: await token(['status']) };
+  const tok = { create: await token(['create']), read: await token(['read']), both: await token(['create', 'read']), status: await token(['status']), burn: await token(['burn']) };
   // A secret for bob or anyone: made on the page by bob.
   const fresh = async () => (await a.call('/api/v1/share', { cookie: bob, body: { secret: PLAIN, ttl: 600 } })).data;
   /** @param {string} t */
@@ -556,13 +564,16 @@ test('scopes per token: only create, only retrieve, both, status; refusals are a
   const open = async (t) => a.call('/api/v1/open', { bearer: t, body: { link: (await fresh()).shareUrl } });
   /** @param {string} t */
   const status = async (t) => a.call(`/api/v1/receipts/${(await share(tok.create)).data.receiptId}`, { bearer: t });
+  /** @param {string} t */
+  const burn = async (t) => a.call(`/api/v1/receipts/${(await share(tok.create)).data.receiptId}/burn`, { bearer: t, body: {} });
   const table = {
-    create: [201, 403, 403],
-    read: [403, 200, 403],
-    both: [201, 200, 403],
-    status: [403, 403, 200],
+    create: [201, 403, 403, 403],
+    read: [403, 200, 403, 403],
+    both: [201, 200, 403, 403],
+    status: [403, 403, 200, 403],
+    burn: [403, 403, 403, 200],
   };
-  for (const [name, [s, o, st]] of Object.entries(table)) {
+  for (const [name, [s, o, st, b]] of Object.entries(table)) {
     const t = tok[/** @type {keyof typeof tok} */ (name)];
     assert.equal((await share(t)).status, s, `${name}: share`);
     const op = await open(t);
@@ -570,19 +581,26 @@ test('scopes per token: only create, only retrieve, both, status; refusals are a
     if (o === 200) assert.equal(op.data.secret, PLAIN);
     else assert.equal(op.data.error, 'insufficient_scope');
     assert.equal((await status(t)).status, st, `${name}: status`);
+    assert.equal((await burn(t)).status, b, `${name}: burn`);
   }
+  // Without "burn" the status says mayBurn false; a burn-only token learns only "gone" (409).
+  assert.equal((await status(tok.status)).data.mayBurn, false);
+  const gone = (await share(tok.create)).data.receiptId;
+  assert.equal((await a.call(`/api/v1/receipts/${gone}/burn`, { bearer: tok.burn, body: {} })).status, 200);
+  const again = await a.call(`/api/v1/receipts/${gone}/burn`, { bearer: tok.burn, body: {} });
+  assert.deepEqual([again.status, again.data.error], [409, 'gone']);
   const denied = (await a.events()).filter((e) => e.type === 'api.scope_denied');
   assert.ok(denied.length >= 6);
   assert.equal(denied[0].reason, 'not_granted');
   assert.equal(denied[0].actor.user, 'alice@example.com');
   assert.ok(denied[0].raw.vanishly.details.scope);
-  // The default when no scopes are sent: create and status.
+  // The default when no scopes are sent: create, status and burn.
   const d = (await a.call('/api/v1/tokens', { cookie: alice, body: { name: 'default' } })).data;
-  assert.deepEqual(d.scopes, ['create', 'status']);
-  // The form: "only create", "only retrieve", "both" and the status box.
+  assert.deepEqual(d.scopes, ['create', 'status', 'burn']);
+  // The form: "only create", "only retrieve", "both" and the status and burn boxes.
   const html = await (await fetch(`${a.base}/settings/tokens`, { headers: { Cookie: alice } })).text();
-  for (const id of ['access-create', 'access-read', 'access-both', 'scope-status']) assert.match(html, new RegExp(`id="${id}"`));
-  assert.match(html, /id="access-create"[^>]*checked/, 'default create,status: "only create" and status');
+  for (const id of ['access-create', 'access-read', 'access-both', 'scope-status', 'scope-burn']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /id="access-create"[^>]*checked/, 'default create,status,burn: "only create", status and burn');
 });
 
 test('API_TOKEN_ALLOWED_SCOPES: only these can be given; the form offers only them', opts, async () => {
@@ -597,7 +615,7 @@ test('API_TOKEN_ALLOWED_SCOPES: only these can be given; the form offers only th
   assert.deepEqual(list.data.options.allowedScopes, ['create']);
   const html = await (await fetch(`${a.base}/settings/tokens`, { headers: { Cookie: alice } })).text();
   assert.match(html, /id="access-create"/);
-  assert.doesNotMatch(html, /id="access-read"|id="access-both"|id="scope-status"/);
+  assert.doesNotMatch(html, /id="access-read"|id="access-both"|id="scope-status"|id="scope-burn"/);
 });
 
 test('API_TOKEN_ADMIN_POLICY: per user beats per group beats env; tighter policies apply at once; every change logged', opts, async () => {
@@ -613,7 +631,7 @@ test('API_TOKEN_ADMIN_POLICY: per user beats per group beats env; tighter polici
   const policy = async (c) => (await a.call('/api/v1/tokens', { cookie: c })).data.options;
   // Without admin settings: env by group for dave, the defaults for bob.
   assert.deepEqual([(await policy(dave)).allowedScopes, (await policy(dave)).policy], [['status'], 'env-group']);
-  assert.deepEqual((await policy(bob)).allowedScopes, ['create', 'read', 'status']);
+  assert.deepEqual((await policy(bob)).allowedScopes, ['create', 'read', 'status', 'burn']);
   // Only admins set policies.
   assert.equal((await a.call('/api/v1/admin/token-policies', { cookie: bob, body: { type: 'user', subject: 'bob@example.com', scopes: ['create'] } })).status, 403);
   /** @param {any} body */
@@ -786,8 +804,8 @@ test('technical users: create, tokens act as the technical user, disable/delete 
   assert.equal(shared.status, 201);
   const created = (await a.events()).find((e) => e.type === 'secret.created' && e.runId === 'svc-run');
   assert.deepEqual([created?.actor.type, created?.actor.user, created?.actor.name, created?.actor.token], ['service_account', 'svc:api_aap', 'api_aap', 'prod']);
-  // With "status" it sees and burns its own secrets (STATUS_ACCESS=signed-in).
-  const st = (await admin('/api_aap/tokens', { name: 'status', scopes: ['create', 'status'] })).data.token;
+  // With "status" and "burn" it sees and burns its own secrets (STATUS_ACCESS=signed-in).
+  const st = (await admin('/api_aap/tokens', { name: 'status', scopes: ['create', 'status', 'burn'] })).data.token;
   const own = await a.call('/api/v1/share', { bearer: st, body: { secret: 'x', ttl: 600 } });
   assert.equal((await a.call(`/api/v1/receipts/${own.data.receiptId}`, { bearer: st })).status, 200);
   assert.equal((await a.call(`/api/v1/receipts/${own.data.receiptId}/burn`, { bearer: st, body: {} })).status, 200);

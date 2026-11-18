@@ -797,7 +797,6 @@
         ],
         "operationId": "getReceipt",
         "summary": "Status of a secret for its sender",
-        "description": "An API token needs the scope `status`.",
         "parameters": [
           {
             "name": "id",
@@ -905,7 +904,7 @@
             }
           }
         },
-        "description": "ENABLE_RECEIPT_API=false: only this server's status page may call it (404 for scripts). With STATUS_ACCESS=signed-in only for the creator, the responsible people and who opened the secret (signed in)."
+        "description": "ENABLE_RECEIPT_API=false: only this server's status page may call it (404 for scripts). With STATUS_ACCESS=signed-in only for the creator, the responsible people and who opened the secret (signed in). An API token needs the scope `status`."
       }
     },
     "/v1/receipts/{id}/burn": {
@@ -915,7 +914,6 @@
         ],
         "operationId": "burnSecret",
         "summary": "Destroy the secret now",
-        "description": "An API token needs the scope `burn` (not `status`). The answer tells only whether the secret was still there: 200 burned now, 409 already gone (opened, burned or expired, not told apart), 404 unknown receipt.",
         "parameters": [
           {
             "name": "id",
@@ -1053,7 +1051,7 @@
             }
           }
         },
-        "description": "ENABLE_RECEIPT_API=false: only this server's status page may call it (404 for scripts). With STATUS_ACCESS=signed-in only the creator and the responsible people (signed in) may burn it."
+        "description": "ENABLE_RECEIPT_API=false: only this server's status page may call it (404 for scripts). With STATUS_ACCESS=signed-in only the creator and the responsible people (signed in) may burn it. An API token needs the scope `burn` (not `status`); the answer tells only whether the secret was still there: 200 burned now, 409 already gone (opened, burned or expired, not told apart), 404 unknown receipt."
       }
     },
     "/v1/open": {
