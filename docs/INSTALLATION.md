@@ -263,7 +263,7 @@ message names both) instead of being ignored. After an update check
 `AUTH_API_AUDIENCE` with `API_TOKEN_REQUIRED=true` (set one of them),
 `ADMIN_BURN=true` without `ENABLE_BURN`, `ADMIN_UI`, admins or
 `AUDIT_LOG_REDIS=true` (remove it or add what it needs), and
-`RECEIPT_SHOW_VIEWER=true` with `ENABLE_RECEIPTS=false` (remove it or turn
+`RECEIPT_SHOW_VIEWER` set with `ENABLE_RECEIPTS=false` (remove it or turn
 receipts on).
 
 ## 8. Troubleshooting

@@ -725,12 +725,14 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       throw err;
     }
   };
-  /** RECEIPT_SHOW_VIEWER: "name<TAB>address" for the view log. @param {import('express').Response} res */
+  /** RECEIPT_SHOW_VIEWER: "name<TAB>address" for the view log, only the chosen fields. @param {import('express').Response} res */
   const viewerName = (res) => {
     const u = userOf(res);
-    if (!auth?.c.showViewer || !u) return '';
+    const f = auth?.c.showViewer;
+    // Only shown to the creator and the responsible people (STATUS_ACCESS=signed-in): else not kept.
+    if (!f || !u || config.statusAccess !== 'signed-in') return '';
     /** @param {string} v */ const clean = (v) => String(v || '').replace(/[\t\r\n]/g, ' ');
-    return `${clean(u.name || u.mail || u.user)}\t${clean(u.mail || u.user)}`;
+    return `${f.name ? clean(u.name || u.mail || u.user) : ''}\t${f.email ? clean(u.mail || u.user) : ''}`;
   };
   /** STATUS_ACCESS=signed-in: who opened it may see the status. @param {import('express').Response} res */
   const openerOf = (res) => {
@@ -1075,6 +1077,9 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     }
     await ev(req, res, 'receipt.viewed', { secret: refs, details: { state: r.state } });
     const signedIn = config.statusAccess === 'signed-in';
+    // RECEIPT_SHOW_VIEWER: names only for the creator and the responsible people,
+    // never for whoever only has the link or opened it.
+    const f = signedIn && (r.creator || r.responsible.length) && may.burn ? auth?.c.showViewer : null;
     res.json({
       state: r.state,
       secretPath: config.features.receiptShareLink && (r.state === 'new' || r.state === 'viewed') ? `/s/${r.secretId}` : null,
@@ -1086,10 +1091,10 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       burned: r.burned ? new Date(r.burned).toISOString() : null,
       recipients: r.recipients,
       views: config.features.viewLog ? r.views.map((t) => new Date(t).toISOString()) : [],
-      // RECEIPT_SHOW_VIEWER: who opened it (signed-in viewers), else null per view.
-      viewedBy: config.features.viewLog ? r.viewers.map((n) => (auth?.c.showViewer && n) || null) : [],
-      // With RECEIPT_SHOW_VIEWER also the address of each signed-in viewer.
-      viewedByUser: config.features.viewLog ? r.viewerUsers.map((u) => (auth?.c.showViewer && u) || null) : [],
+      // Who opened it (signed-in viewers), else null per view.
+      viewedBy: config.features.viewLog ? r.viewers.map((n) => (f?.name && n) || null) : [],
+      // And the address of each signed-in viewer.
+      viewedByUser: config.features.viewLog ? r.viewerUsers.map((u) => (f?.email && u) || null) : [],
       // STATUS_ACCESS=signed-in: who created it and who is responsible.
       creator: signedIn ? r.who?.creator || null : null,
       responsible: signedIn && r.who ? r.who.responsible : { users: [], groups: [] },
@@ -1325,6 +1330,8 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       // The log keeps recipients in plain text (listed groups by their name): they match the user's hashes as an address or a group.
       Auth.allowed(u, s.recipients.flatMap((/** @type {string} */ r) => [auth.hash('u', r), auth.hash('g', auth.c.groups.list.find((g) => g.name === r)?.id || r)]));
     const list = await audit.secrets({ status: secretStatus(req), from: f.from, to: f.to, limit: f.limit, match });
+    // Addresses and browsers of who opened it: only for admins.
+    for (const s of list) s.views = s.views.map((/** @type {any} */ { ip, userAgent, ...v }) => v);
     res.json({ count: list.length, secrets: list });
   });
 
@@ -1604,10 +1611,10 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       return void res.send(records.map((r) => JSON.stringify(r)).join('\n') + (records.length ? '\n' : ''));
     }
     if (format === 'csv') {
-      const cols = ['ts', 'type', 'outcome', 'reason', 'actor_type', 'actor', 'actor_name', 'token', 'on_behalf_of', 'recipients', 'comment', 'run_id', 'ip', 'route', 'secret_ref', 'instance', 'seq'];
+      const cols = ['ts', 'type', 'outcome', 'reason', 'actor_type', 'actor', 'actor_name', 'token', 'on_behalf_of', 'recipients', 'comment', 'run_id', 'ip', 'route', 'secret_ref', 'instance', 'seq', 'user_agent'];
       const rows = records.map((r) => {
         const n = normalize(r);
-        return [n.ts, n.type, n.outcome, n.reason, n.actor.type, n.actor.user, n.actor.name, n.actor.token, n.actor.onBehalfOf, n.recipients, n.comment, n.runId, n.ip, n.route, n.secretRef, n.instance, n.seq].map(csvCell).join(',');
+        return [n.ts, n.type, n.outcome, n.reason, n.actor.type, n.actor.user, n.actor.name, n.actor.token, n.actor.onBehalfOf, n.recipients, n.comment, n.runId, n.ip, n.route, n.secretRef, n.instance, n.seq, n.userAgent].map(csvCell).join(',');
       });
       res.set('Content-Disposition', `attachment; filename="vanishly-audit-${stamp}.csv"`).type('text/csv; charset=utf-8');
       return void res.send([cols.join(','), ...rows].join('\r\n') + '\r\n');

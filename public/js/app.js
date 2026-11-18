@@ -751,8 +751,8 @@ async function initReceipt() {
     log.replaceChildren(
       ...(data.views.length ? data.views : [null]).map((/** @type {string | null} */ v, /** @type {number} */ i) => {
         const li = document.createElement('li');
-        const by = data.viewedBy?.[i];
-        li.textContent = v ? (by ? t('receipt.viewedBy', { time: fmt(v), name: person(by, data.viewedByUser?.[i]) }) : fmt(v)) : t('receipt.none');
+        const by = person(data.viewedBy?.[i], data.viewedByUser?.[i]);
+        li.textContent = v ? (by ? t('receipt.viewedBy', { time: fmt(v), name: by }) : fmt(v)) : t('receipt.none');
         return li;
       }),
     );
@@ -965,7 +965,7 @@ function initAdmin() {
             b.textContent = e.reason ? `${e.outcome}: ${e.reason}` : e.outcome;
             what.append(' ', b);
           }
-          tr.append(cell(fmt(e.ts)), what, cell(e.actor.onBehalfOf ? `${who} → ${e.actor.onBehalfOf}` : who), cell(e.recipients.join(', ')), cell(e.comment), cell(e.runId, 'mono'), cell([e.ip, e.route].filter(Boolean).join(' · '), 'mono'));
+          tr.append(cell(fmt(e.ts)), what, cell(e.actor.onBehalfOf ? `${who} → ${e.actor.onBehalfOf}` : who), cell(e.recipients.join(', ')), cell(e.comment), cell(e.runId, 'mono'), cell([e.ip, e.route, e.userAgent].filter(Boolean).join(' · '), 'mono'));
           return tr;
         }),
       );
@@ -1040,7 +1040,7 @@ function initSecrets(url) {
         b.className = `badge badge-${s.status === 'open' || s.status === 'partly_opened' ? 'new' : 'burned'}`;
         b.textContent = t(`secrets.status.${s.status}`);
         st.append(b);
-        const opened = s.views.map((/** @type {any} */ v) => `${fmt(v.at)} · ${v.token ? `${v.by} (${v.token})` : person(v.name, v.by) || t('secrets.anonymous')} · ${t(`secrets.via.${v.via}`)}`).join('; ');
+        const opened = s.views.map((/** @type {any} */ v) => `${fmt(v.at)} · ${v.token ? `${v.by} (${v.token})` : person(v.name, v.by) || t('secrets.anonymous')} · ${t(`secrets.via.${v.via}`)}${v.ip ? ` · ${v.ip}` : ''}${v.userAgent ? ` · ${v.userAgent}` : ''}`).join('; ');
         const created = s.encrypted ? `${t(`secrets.via.${s.creator.token ? 'token' : s.encrypted === 'server' ? 'api' : 'browser'}`)}` : '';
         const act = document.createElement('td');
         if (canBurn && (s.status === 'open' || s.status === 'partly_opened')) {

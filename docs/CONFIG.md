@@ -225,7 +225,7 @@ the start.
 | `RECIPIENT_DOMAINS` | (any) | Allowed e-mail domains of recipients, e.g. `example.com,example.de` |
 | `RECIPIENTS_DIRECTORY_ONLY` | `false` | `true`: every recipient and responsible person must be a user in the directory. Entra with `ENTRA_GRAPH=true` (`User.Read.All`): looked up by UPN or mail when the secret is created; the UPN and the mail both count afterwards. Unknown addresses: `400 unknown_recipient`; Graph not reachable: `502 directory_unavailable` ([entra.md](providers/entra.md#who-is-who)) |
 | `AUTH_API_AUDIENCE` | (none) | Accept bearer tokens on the API with this audience, e.g. `api://<client id>` ([details](#api-with-sign-in)). Not with `API_TOKEN_REQUIRED=true` (the start stops) |
-| `RECEIPT_SHOW_VIEWER` | `false` | `true`: the status page shows the name and address of the signed-in person who opened the secret (stored with the view time); needs `ENABLE_RECEIPTS=true` (the start stops otherwise) |
+| `RECEIPT_SHOW_VIEWER` | `true` (with receipts) | What the creator and the responsible people see on the status page of each signed-in person who opened the secret: `name`, `email`, both (`name,email` or `true`) or `false` (nothing). Kept with the view time, only with `STATUS_ACCESS=signed-in`; never shown to who only has the link or opened it. IP address and browser are only in the admins' Secrets tab (from the audit log). Set, it needs `ENABLE_RECEIPTS=true` (the start stops otherwise) |
 | `RESPONSIBLE` | `off` | People or groups who look after a secret: `off`, `optional` or `required` (every secret must name one). In the form a folded "Responsible" section with the same picker as the recipients; on the API `responsible` and `responsibleGroups`. Checked like recipients, stored as keyed hashes |
 | `STATUS_ACCESS` | `signed-in` with sign-in, else `link` | Who may see the status page: `link` (whoever has the status link, as before) or `signed-in` (the creator, the responsible people and who opened the secret, after sign-in; only creator and responsible may burn it). See [Status page](#status-page) |
 
@@ -621,9 +621,11 @@ page asks for a sign-in and shows the status only to:
 | anybody else | no (`403 not_allowed`) | no |
 | not signed in | no (`401 login_required`, the page shows "Sign in") | no |
 
-The page then also shows who created it, who is responsible and, with
-`RECEIPT_SHOW_VIEWER=true`, the name and address of each person who opened
-it, as a history. These names and addresses are kept with the receipt
+The page then also shows who created it and who is responsible. Only the
+creator and the responsible people also see who opened it, with the fields
+of `RECEIPT_SHOW_VIEWER` (default: name and address), as a history; those
+who opened it see only the times. From where (IP address) and with what
+(browser, API, token) it was opened, admins see in the Secrets tab. These names and addresses are kept with the receipt
 (until `RECEIPT_KEEP` ends), the access rules as keyed hashes. A secret
 created without a sign-in (`AUTH_CREATE=anyone`) and without responsible
 people, or before this setting existed, keeps the link access.
@@ -635,7 +637,7 @@ AUTH_PROVIDER=entra            # or keycloak, oidc, ...
 RECIPIENTS=required            # every secret names who may open it
 RESPONSIBLE=required           # and who looks after it
 STATUS_ACCESS=signed-in        # status only for creator, responsible, openers
-RECEIPT_SHOW_VIEWER=true       # show who opened it, with name and address
+RECEIPT_SHOW_VIEWER=name,email # creator and responsible see who opened it
 # The API only creates and reveals; the pages keep working:
 ENABLE_SHARE_API=false
 ENABLE_OPEN_API=false
@@ -776,7 +778,7 @@ in the user menu (`/admin`), with tabs:
 | Tab | What | Needs |
 |---|---|---|
 | Audit log | filter, export (CSV, JSON lines), hash chain check | `AUDIT_LOG` with a file or `AUDIT_LOG_REDIS` |
-| Secrets | every secret with creator, recipients, comment, expiry, state (not opened, opened, expired, burned) and who opened it when and how (web page, API, token); never content or keys; burn a secret that is not opened yet (`ADMIN_BURN`) | `AUDIT_LOG_REDIS=true` |
+| Secrets | every secret with creator, recipients, comment, expiry, state (not opened, opened, expired, burned) and who opened it when and how (web page, API, token, IP address and browser as far as `AUDIT_LOG_IP` and `AUDIT_LOG_USER_AGENT` record them); never content or keys; burn a secret that is not opened yet (`ADMIN_BURN`) | `AUDIT_LOG_REDIS=true` |
 | API tokens | all tokens of all users and technical users: owner, scopes, created, last used, expiry, networks, state; revoke | `API_TOKENS` |
 | Technical users | API-only accounts: create, change, disable, delete (revokes their tokens); issue, rotate (with a grace period) and revoke their tokens | `API_SERVICE_ACCOUNTS` |
 | Token permissions | scopes and token limit per user and group | `API_TOKEN_ADMIN_POLICY` |

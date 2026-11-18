@@ -741,6 +741,7 @@ test('admin interface: tabs, Redis warnings, secrets overview from the audit str
   assert.equal(list.data.count, 2);
   const s = list.data.secrets.find((/** @type {any} */ x) => x.comment === 'reset a user pw');
   assert.deepEqual([s.status, s.recipients, s.creator.user, s.views[0].by, s.views[0].via], ['opened', ['bob@example.com'], 'alice@example.com', 'bob@example.com', 'api']);
+  assert.ok(s.views[0].ip && 'userAgent' in s.views[0], 'admins see from where and with what it was opened');
   for (const bad of [PLAIN, 'other', one.data.id, one.data.shareUrl.split('#')[1]]) assert.ok(!list.text.includes(bad), 'no content, id or key');
   assert.equal((await a.call('/api/v1/admin/secrets?status=opened', { cookie: alice })).data.count, 1);
   assert.equal((await a.call('/api/v1/admin/secrets?status=nope', { cookie: alice })).data.error, 'invalid_status');
@@ -777,6 +778,9 @@ test('MY_SECRETS: "My secrets" lists the own secrets and those for the user or t
   assert.equal((await a.call('/api/v1/me/secrets?status=opened', { cookie: alice })).data.count, 0);
   assert.equal((await a.call('/api/v1/me/secrets?status=nope', { cookie: alice })).data.error, 'invalid_status');
   assert.equal((await a.call('/api/v1/me/secrets')).status, 401);
+  await a.call('/api/v1/open', { cookie: bob, body: { link: (await a.call('/api/v1/share', { cookie: alice, body: { secret: PLAIN, ttl: 600, recipients: ['bob@example.com'], comment: 'opened' } })).data.shareUrl } });
+  const opened = (await a.call('/api/v1/me/secrets', { cookie: alice })).data.secrets.find((/** @type {any} */ x) => x.comment === 'opened');
+  assert.deepEqual([opened.views[0].by, 'ip' in opened.views[0], 'userAgent' in opened.views[0]], ['bob@example.com', false, false]); // addresses only for admins
   // The menu entry and the page, only for signed-in users.
   const page = await (await fetch(`${a.base}/secrets`, { headers: { Cookie: bob } })).text();
   assert.match(page, /href="\/secrets">My secrets</);

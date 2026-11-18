@@ -5270,7 +5270,7 @@
                 "null"
               ]
             },
-            "description": "Per view (same order as views): the name of the signed-in viewer with RECEIPT_SHOW_VIEWER, else null"
+            "description": "Per view (same order as views): the name of the signed-in viewer, only for the creator and the responsible people (STATUS_ACCESS=signed-in) and when RECEIPT_SHOW_VIEWER includes name; else null"
           },
           "viewedByUser": {
             "type": "array",
@@ -5280,7 +5280,7 @@
                 "null"
               ]
             },
-            "description": "Per view: the address of the signed-in viewer with RECEIPT_SHOW_VIEWER, else null"
+            "description": "Per view: the address of the signed-in viewer, only for the creator and the responsible people (STATUS_ACCESS=signed-in) and when RECEIPT_SHOW_VIEWER includes email; else null"
           },
           "creator": {
             "type": [
@@ -6207,6 +6207,14 @@
                     "api",
                     "token"
                   ]
+                },
+                "ip": {
+                  "type": "string",
+                  "description": "Source address as AUDIT_LOG_IP records it (full, hmac:..., or empty); only in /admin/secrets"
+                },
+                "userAgent": {
+                  "type": "string",
+                  "description": "Browser or client as AUDIT_LOG_USER_AGENT records it; only in /admin/secrets"
                 }
               }
             }

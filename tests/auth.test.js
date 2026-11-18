@@ -245,7 +245,7 @@ test('only a signed-in recipient gets the ciphertext; others use no view', opts,
   assert.equal(await decryptSecret(ok.data, c.key), 'for the chosen ones');
   const receipt = await call(`/api/v1/receipts/${c.data.receiptId}`);
   assert.equal(receipt.data.recipients, 1);
-  assert.deepEqual(receipt.data.viewedBy, ['Bob Example']);
+  assert.deepEqual(receipt.data.viewedBy, [null]); // STATUS_ACCESS=link: the link shows no names
 
   // A cross-site request does not carry the session (CSRF).
   const csrf = await call(`/api/v1/secrets/${id}/reveal`, { cookie: bob, body: {}, headers: { 'Sec-Fetch-Site': 'cross-site' } });
@@ -705,12 +705,14 @@ test('STATUS_ACCESS=signed-in: creator, responsible and openers see the status; 
   assert.deepEqual(ra.data.responsible, { users: [], groups: ['Finance'] });
   assert.equal(ra.data.mayBurn, true);
   assert.equal((await call(`/api/v1/receipts/${rid}`, { cookie: carol })).data.mayBurn, true);
-  // Bob opens it: now he sees the status (with his name and address), but may not burn.
+  // Bob opens it: now he sees the status, but no names (only creator and responsible) and may not burn.
   assert.equal((await call(`/api/v1/secrets/${c.data.id}/reveal`, { cookie: bob, body: {} })).status, 200);
   const rb = await call(`/api/v1/receipts/${rid}`, { cookie: bob });
   assert.equal(rb.status, 200);
   assert.equal(rb.data.mayBurn, false);
-  assert.deepEqual([rb.data.viewedBy[0], rb.data.viewedByUser[0]], ['Bob Example', 'bob@example.com']);
+  assert.deepEqual([rb.data.viewedBy, rb.data.viewedByUser], [[null], [null]]);
+  const ra2 = await call(`/api/v1/receipts/${rid}`, { cookie: alice });
+  assert.deepEqual([ra2.data.viewedBy[0], ra2.data.viewedByUser[0]], ['Bob Example', 'bob@example.com']);
   assert.equal((await call(`/api/v1/receipts/${rid}/burn`, { cookie: bob, body: {} })).data.error, 'not_allowed');
   assert.equal((await call(`/api/v1/receipts/${rid}/burn`, { cookie: dave, body: {} })).status, 403);
   assert.equal((await call(`/api/v1/receipts/${rid}/burn`, { body: {} })).status, 401);

@@ -251,7 +251,8 @@ test('WCAG 2.2 AA and flow: sign-in and recipients', async () => {
         assert.equal(await page.inputValue('#revealed-secret'), 'only for bob');
         await page.goto(receipt);
         await page.waitForFunction(() => !document.getElementById('receipt-facts')?.hidden);
-        assert.match(await page.textContent('#r-log') || '', /Bob Example/);
+        // Bob opened it: he sees the status, but the names only the creator and responsible.
+        assert.doesNotMatch(await page.textContent('#r-log') || '', /Bob Example/);
         assert.match(await page.textContent('#r-timeline') || '', /Opened/);
         problems.push(...(await scan(page, at('receipt'))));
         await page.click('.nav-menu summary');

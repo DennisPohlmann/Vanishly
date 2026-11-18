@@ -8,7 +8,7 @@
 //               the creator's receipt; kept RECEIPT_KEEP seconds longer;
 //               rc = number of recipients; cm = the comment (AUDIT_COMMENT)
 //   r:<rid>:v   list  times of the views (no IPs, no user agents); with
-//               RECEIPT_SHOW_VIEWER "time<TAB>name" of the signed-in viewer
+//               RECEIPT_SHOW_VIEWER "time<TAB>name<TAB>address" of the signed-in viewer
 //   rl:<bucket>:<ip-hmac>  counter for the rate limits
 // The server never sees the key of a secret, only the ciphertext.
 

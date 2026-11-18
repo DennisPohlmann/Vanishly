@@ -243,6 +243,20 @@ function named(name, fn) {
 }
 
 /**
+ * RECEIPT_SHOW_VIEWER: "name", "email" or both; true = both (the default),
+ * false/off = none.
+ * @param {string | undefined} v
+ * @returns {{ name: boolean, email: boolean } | null}
+ */
+export function viewerFields(v) {
+  if (v === undefined || v === '' || /^(1|true|yes|on)$/i.test(v)) return { name: true, email: true };
+  if (/^(0|false|no|off|none)$/i.test(v)) return null;
+  const list = v.toLowerCase().split(/[\s,;+]+/).filter(Boolean);
+  for (const x of list) if (x !== 'name' && x !== 'email') throw new Error(`"${x}" is not one of name, email (or true, false)`);
+  return { name: list.includes('name'), email: list.includes('email') };
+}
+
+/**
  * "upper,lower,digit,symbol" (any subset) to a list; "all" = all four.
  * @param {string} v
  */
@@ -750,7 +764,8 @@ function authConfig(env, baseUrl) {
     // A visitor who is not signed in is signed in silently (prompt=none) when
     // the provider still knows them; otherwise the page stays as it is.
     autoLogin: named('AUTH_AUTO_LOGIN', () => flag(env.AUTH_AUTO_LOGIN, false)),
-    showViewer: named('RECEIPT_SHOW_VIEWER', () => flag(env.RECEIPT_SHOW_VIEWER, false)),
+    // RECEIPT_SHOW_VIEWER: which fields of the signed-in viewer the creator sees (null: none).
+    showViewer: named('RECEIPT_SHOW_VIEWER', () => viewerFields(env.RECEIPT_SHOW_VIEWER)),
     admin,
     // MY_SECRETS: "My secrets" in the user menu (needs AUDIT_LOG_REDIS, checked below).
     mySecrets: sw('MY_SECRETS', true),
@@ -1198,7 +1213,10 @@ export function loadConfig(env = process.env) {
     if (!config.audit?.redis) throw new Error('ADMIN_BURN=true needs AUDIT_LOG=true with AUDIT_LOG_REDIS=true (admins find the secrets in the audit stream)');
   }
   if (auth && !config.features.burn) auth.admin.burn = false;
-  if (auth?.showViewer && !config.features.receipts) throw new Error('RECEIPT_SHOW_VIEWER=true needs ENABLE_RECEIPTS=true (it is shown on the status page)');
+  if (auth?.showViewer && !config.features.receipts) {
+    if (env.RECEIPT_SHOW_VIEWER) throw new Error('RECEIPT_SHOW_VIEWER needs ENABLE_RECEIPTS=true (it is shown on the status page)');
+    auth.showViewer = null;
+  }
   if (auth?.tokens?.required && auth.apiAudience) throw new Error('AUTH_API_AUDIENCE does not work with API_TOKEN_REQUIRED=true (the API then takes only Vanishly API tokens); set one of them');
   if (auth && env.MY_SECRETS && flag(env.MY_SECRETS, true) && !config.audit?.redis) throw new Error('MY_SECRETS needs AUDIT_LOG=true with AUDIT_LOG_REDIS=true (the overview reads the audit stream)');
   if (auth) auth.mySecrets = Boolean(auth.mySecrets && config.audit?.redis);

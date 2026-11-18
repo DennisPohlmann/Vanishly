@@ -33,7 +33,7 @@ and `rule` give the rule of the form's checkbox in the language of the request:
 | `GET /api/v1/receipts/{id}` | status for the sender (token scope `status`; `STATUS_ACCESS=signed-in`: creator, responsible, openers after sign-in; `ENABLE_RECEIPT_API`) |
 | `POST /api/v1/receipts/{id}/burn` | destroy the secret now (token scope `burn`; `STATUS_ACCESS=signed-in`: creator and responsible only) |
 | `GET /api/v1/me` | who is signed in (sign-in on; `ENABLE_ME_API`) |
-| `GET /api/v1/me/secrets?status=&from=&to=&limit=` | the signed-in user's secrets (created by them, or for them or one of their groups) from the audit stream, metadata only, same shape as `/admin/secrets` (`MY_SECRETS`, `AUDIT_LOG_REDIS`; session only) |
+| `GET /api/v1/me/secrets?status=&from=&to=&limit=` | the signed-in user's secrets (created by them, or for them or one of their groups) from the audit stream, metadata only, same shape as `/admin/secrets` without the `ip` and `userAgent` of the views (`MY_SECRETS`, `AUDIT_LOG_REDIS`; session only) |
 | `GET /api/v1/groups?q=` | search groups for recipients (`RECIPIENT_GROUPS`: the listed groups, with `*` the directory) |
 | `GET /api/v1/people?q=` | search people for recipients (`RECIPIENT_USER_GROUP`, in the provider's directory): `{ people: [{ name, user, mail }] }`, put `user` into `recipients` |
 | `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{id}/revoke` | personal API tokens (`API_TOKENS`; session only), see [API tokens](#api-tokens-and-admin-api) |
@@ -159,7 +159,7 @@ All keys start with `REDIS_PREFIX` (default `vanishly:`).
 | `s:<id>` | hash | `ct`, `iv`, `salt`, `it`, `vh` (verifier hash), `views` left, `attempts`, `rid`, `created`, `expires`, `to` (recipients as HMAC-SHA256 with `AUTH_SECRET`, only when restricted) | until expiry, last view or burn |
 | `r:<rid>` | hash | `sid`, `created`, `expires`, `maxViews`, `viewsLeft`, `state`, `pass`, `burned`, `rc` (number of recipients), `cm` (the comment, `AUDIT_COMMENT`), with `STATUS_ACCESS=signed-in` `cr` (creator), `rs` (responsible, HMAC-SHA256 like `to`) and `who` (names and addresses of creator and responsible, to show) | expiry + `RECEIPT_KEEP` |
 | `r:<rid>:o` | set | HMACs of who opened the secret signed in (`STATUS_ACCESS=signed-in`: they may see the status) | like `r:<rid>` |
-| `r:<rid>:v` | list | view times (ms); with `RECEIPT_SHOW_VIEWER` `time<TAB>name<TAB>address` of the signed-in viewer | like the receipt |
+| `r:<rid>:v` | list | view times (ms); with `RECEIPT_SHOW_VIEWER` and `STATUS_ACCESS=signed-in` `time<TAB>name<TAB>address` of the signed-in viewer (only the chosen fields) | like the receipt |
 | `sess:<hash>` | hash | a sign-in: `name`, `user`, `mail` (only with `ENTRA_SHOW_ADDRESS=mail` and a mail address other than `user`), `ids` (the recipient hashes of the user's addresses and groups), `created`, with `AUTH_LOGOUT=provider` `it` (the ID token, only sent back to the provider as `id_token_hint` at sign-out); the key is the SHA-256 of the cookie | `AUTH_SESSION_TTL` |
 | `oidc:<state>` | hash | a sign-in in progress: PKCE verifier, nonce, return path | 10 minutes, used once |
 | `oauth:req:<id>` | hash | an MCP client's sign-in in progress (`MCP_OAUTH`): `c` (client id), `r` (redirect URI), `ch` (PKCE challenge), `st` (state), `sc` (scopes asked) | 10 minutes, used once |
@@ -275,7 +275,7 @@ copy elsewhere (stdout shipping, syslog, OTLP, Redis, a checkpoint) and
 | `POST /api/v1/tokens/{id}/revoke` | session | revoke an own token |
 | `GET /api/v1/admin/tokens`, `POST /api/v1/admin/tokens/{id}/revoke` | admin session | all tokens |
 | `GET/POST /api/v1/admin/token-policies` | admin session | token permissions per user and group (`API_TOKEN_ADMIN_POLICY`) |
-| `GET /api/v1/admin/audit?type=&outcome=&actor=&recipient=&runId=&q=&from=&to=&limit=&format=json\|csv\|jsonl` | admin session | the audit log, newest first; CSV cells that start with `= + - @` are prefixed with `'` |
+| `GET /api/v1/admin/audit?type=&outcome=&actor=&recipient=&runId=&q=&from=&to=&limit=&format=json\|csv\|jsonl` | admin session | the audit log, newest first; CSV cells that start with `= + - @` are prefixed with `'`; the last CSV column is `user_agent` |
 | `GET /api/v1/admin/audit/verify` | admin session | the chain check of `AUDIT_LOG_FILE` |
 
 A token never manages tokens. Calls with a token:
@@ -298,7 +298,7 @@ technical user and token, the comment and the run id.
 |---|---|
 | `GET /admin/status` | what is on, Redis persistence, warnings |
 | `GET /admin/audit`, `GET /admin/audit/verify` | audit log (filter, `format=csv\|jsonl`), chain check |
-| `GET /admin/secrets?creator=&recipient=&status=&from=&to=&limit=` | secrets overview from the audit stream (metadata only; `AUDIT_LOG_REDIS`) |
+| `GET /admin/secrets?creator=&recipient=&status=&from=&to=&limit=` | secrets overview from the audit stream (metadata only; `AUDIT_LOG_REDIS`); each view with `at`, `by`, `name`, `via` (browser, api, token), `ip` and `userAgent` (as `AUDIT_LOG_IP`/`AUDIT_LOG_USER_AGENT` record them) |
 | `POST /admin/secrets/{ref}/burn` | burn a secret by its `ref` from the overview (`ADMIN_BURN`, `ENABLE_BURN`): `200 {state: "burned"}`, `409 gone` (already opened, expired or burned), `404` unknown |
 | `GET /admin/tokens`, `POST /admin/tokens/{id}/revoke` | all tokens |
 | `GET /admin/users`, `POST /admin/users` | `AUTH_PROVIDER=local`: the accounts (no hashes), `me` (the caller's own address), `minPasswordLength`; create `{user, password, name, role, groups, disabled}` |

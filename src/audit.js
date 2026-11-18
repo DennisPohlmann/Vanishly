@@ -329,6 +329,7 @@ export function normalize(r) {
       comment: at['vanishly.comment'] || '',
       runId: at['vanishly.run_id'] || '',
       ip: at['client.address'] || '',
+      userAgent: at['user_agent.original'] || '',
       route: [at['http.request.method'], at['http.route']].filter(Boolean).join(' '),
       secretRef: at['vanishly.secret.ref'] || '',
       receiptRef: at['vanishly.secret.receipt_ref'] || '',
@@ -350,7 +351,8 @@ export function normalize(r) {
     recipients: [...(v.recipients?.users || []), ...(v.recipients?.groups || [])],
     comment: v.comment || '',
     runId: v.run_id || '',
-    ip: c.format === 'ecs' ? r.source?.ip || '' : r.source?.ip || '',
+    ip: r.source?.ip || '',
+    userAgent: (c.format === 'ecs' ? r.user_agent?.original : r.source?.user_agent) || '',
     route: c.format === 'ecs' ? [r.http?.request?.method, r.url?.path].filter(Boolean).join(' ') : [r.http?.method, r.http?.route].filter(Boolean).join(' '),
     secretRef: v.secret?.ref || '',
     receiptRef: v.secret?.receipt_ref || '',
@@ -398,7 +400,7 @@ export function secretsOverview(events, f = {}, now = Date.now()) {
     }
     if (!s) continue; // created before the log began
     if (e.type === 'secret.revealed') {
-      s.views.push({ at: e.ts, by: e.actor.user || '', name: e.actor.name || '', type: e.actor.type, token: e.actor.token, via: e.actor.token ? 'token' : e.details.via === 'server' ? 'api' : 'browser' });
+      s.views.push({ at: e.ts, by: e.actor.user || '', name: e.actor.name || '', type: e.actor.type, token: e.actor.token, via: e.actor.token ? 'token' : e.details.via === 'server' ? 'api' : 'browser', ip: e.ip || '', userAgent: e.userAgent || '' });
     } else if (e.type === 'secret.reveal_denied') s.denied++;
     else if (e.type === 'secret.burned') s.burned = { at: e.ts, reason: e.reason, by: e.actor.user || '' };
   }

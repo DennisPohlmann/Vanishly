@@ -71,8 +71,8 @@ contains the key too, so it can show the share link again. With
 sign-in and shows the status only to you (the creator), the responsible
 people and those who opened the secret; only you and the responsible
 people may burn it. It then also shows who created it and who is
-responsible, and with `RECEIPT_SHOW_VIEWER=true` the name and address of
-each person who opened it. Details: [CONFIG.md](CONFIG.md#status-page).
+responsible, and to you and the responsible people the name and address
+of each person who opened it (`RECEIPT_SHOW_VIEWER`). Details: [CONFIG.md](CONFIG.md#status-page).
 
 ## Receipt states
 

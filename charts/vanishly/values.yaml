@@ -272,7 +272,7 @@ config:
   RECIPIENT_DOMAINS: ""
   # Entra ID with ENTRA_GRAPH: only addresses of users in the directory (false).
   RECIPIENTS_DIRECTORY_ONLY: ""
-  # Show on the status page who opened the secret (false).
+  # Who opened it, shown to creator and responsible: name, email, true (both) or false (true).
   RECEIPT_SHOW_VIEWER: ""
   # Responsible people/groups of a secret: off, optional or required (off).
   RESPONSIBLE: ""

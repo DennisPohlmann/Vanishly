@@ -264,7 +264,11 @@ test('sign-in settings: off by default, checked when on', () => {
   assert.equal(a.redirectUri, 'https://ots.example.com/auth/callback');
   assert.equal(a.createNeedsLogin, true);
   assert.equal(a.recipients, 'optional');
-  assert.equal(a.showViewer, false);
+  assert.deepEqual(a.showViewer, { name: true, email: true }); // default: name and address for the creator
+  assert.deepEqual(loadConfig({ ...entra, RECEIPT_SHOW_VIEWER: 'name' }).auth?.showViewer, { name: true, email: false });
+  assert.equal(loadConfig({ ...entra, RECEIPT_SHOW_VIEWER: 'false' }).auth?.showViewer, null);
+  assert.equal(loadConfig({ ...entra, ENABLE_RECEIPTS: 'false' }).auth?.showViewer, null); // the default follows the receipts
+  assert.throws(() => loadConfig({ ...entra, RECEIPT_SHOW_VIEWER: 'ip' }), /RECEIPT_SHOW_VIEWER: "ip" is not one of name, email/);
   assert.throws(() => loadConfig({ ...entra, BASE_URL: '' }), /BASE_URL is required/);
   assert.throws(() => loadConfig({ ...entra, ENTRA_TENANT_ID: 'contoso' }), /ENTRA_TENANT_ID/);
   assert.throws(() => loadConfig({ ...entra, AUTH_SECRET: 'short' }), /at least 32/);
@@ -443,7 +447,7 @@ test('contradictory combinations stop the start, naming both settings', () => {
     [{ ADMIN_BURN: 'true', ADMIN_UI: 'false' }, /ADMIN_BURN=true needs ADMIN_UI=true/],
     [{ ADMIN_BURN: 'true', ADMIN_USERS: '' }, /ADMIN_BURN=true needs admins/],
     [{ ADMIN_BURN: 'true', AUDIT_LOG_REDIS: 'false', AUDIT_LOG_STDOUT: 'true' }, /ADMIN_BURN=true needs AUDIT_LOG=true with AUDIT_LOG_REDIS=true/],
-    [{ RECEIPT_SHOW_VIEWER: 'true', ENABLE_RECEIPTS: 'false' }, /RECEIPT_SHOW_VIEWER=true needs ENABLE_RECEIPTS=true/],
+    [{ RECEIPT_SHOW_VIEWER: 'true', ENABLE_RECEIPTS: 'false' }, /RECEIPT_SHOW_VIEWER needs ENABLE_RECEIPTS=true/],
   ];
   for (const [env, re] of bad) assert.throws(() => loadConfig({ ...kc, ...env }), re, JSON.stringify(env));
   // Each alone, or with its prerequisites, is fine; ADMIN_BURN left empty still switches itself off quietly.
