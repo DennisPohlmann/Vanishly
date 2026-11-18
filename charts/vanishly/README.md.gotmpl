@@ -27,6 +27,11 @@ running release: `helm test vanishly -n vanishly`.
 
 From a checkout: `helm install vanishly ./charts/vanishly`.
 
+TLS ends at the ingress controller or gateway. Use one that offers the
+post-quantum key exchange `X25519MLKEM768` (built with OpenSSL 3.5 or
+Go 1.24 or newer); how to check it:
+[Reverse proxy](https://github.com/DennisPohlmann/Vanishly/blob/main/docs/INSTALLATION.md#5-reverse-proxy).
+
 Update: `helm upgrade vanishly oci://ghcr.io/dennispohlmann/charts/vanishly -n vanishly --reuse-values`.
 Uninstall: `helm uninstall vanishly -n vanishly`.
 

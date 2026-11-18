@@ -190,6 +190,20 @@ server {
 
 Caddy: `ots.example.com { reverse_proxy 127.0.0.1:3000 }`.
 
+**Post-quantum TLS.** Proxies built with OpenSSL 3.5 or newer (nginx) or
+Go 1.24 or newer (Caddy 2.10 and later, current Traefik) offer the hybrid
+key exchange `X25519MLKEM768` on their own; current browsers use it. It
+protects recorded traffic against later decryption by a quantum computer,
+see [SECURITY.md](SECURITY.md#quantum-computers). Check it with OpenSSL
+3.5 or newer:
+
+```bash
+openssl s_client -connect ots.example.com:443 -groups X25519MLKEM768 </dev/null 2>/dev/null | grep 'group'
+# Negotiated TLS1.3 group: X25519MLKEM768
+```
+
+No output or a handshake error means the proxy cannot do it yet.
+
 Set `TRUST_PROXY=1` (one proxy) so the rate limits see the client address;
 with `TRUST_PROXY=false` behind a proxy all clients share one limit.
 With several replicas also set the same `RATE_LIMIT_KEY` on all of them,

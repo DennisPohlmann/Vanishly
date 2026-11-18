@@ -184,6 +184,37 @@ trust the server and the TLS connection to it. Switch them off with
 `ENABLE_SHARE_API=false` and `ENABLE_OPEN_API=false` if all your users work
 in the browser. The web pages never use them.
 
+## Quantum computers
+
+A large quantum computer would break the asymmetric methods used today
+(RSA, elliptic curves such as X25519 and ECDSA), not the symmetric ones:
+AES-256, SHA-256 and HMAC keep about 128 bits of strength, which is still
+enough. The new standards for the asymmetric part are
+[FIPS 203](https://csrc.nist.gov/pubs/fips/203/final) (ML-KEM, key
+exchange), [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final) (ML-DSA)
+and [FIPS 205](https://csrc.nist.gov/pubs/fips/205/final) (SLH-DSA, both
+signatures). The BSI (TR-02102) recommends them only **hybrid**, together
+with a classic method.
+
+- **The secret itself** uses no asymmetric crypto: a random 256-bit key,
+  HKDF-SHA256 and AES-256-GCM. A quantum computer does not help to read it.
+- **TLS** is the weak spot. Someone who records the traffic today could
+  decrypt a classic key exchange later ("harvest now, decrypt later"). In
+  the browser that gets them the ciphertext but not the key, which is never
+  sent. With [`/v1/share` and `/v1/open`](#server-side-exceptions-v1share-and-v1open)
+  it gets them the plain text or the key. Use the hybrid TLS key exchange
+  `X25519MLKEM768` at the reverse proxy:
+  [INSTALLATION.md](INSTALLATION.md#5-reverse-proxy) shows how to check it.
+- **Outgoing connections** (sign-in provider, audit webhook, OTLP, syslog
+  over TLS, Redis over TLS) offer `X25519MLKEM768` when Node.js runs with
+  OpenSSL 3.5 or newer, as in the container image (Node.js 26). The other
+  side decides whether it is used.
+- **Signatures** (the sign-in provider's tokens, RS256/ES256) cannot be
+  recorded now and broken later; only a working quantum computer could
+  forge new ones. Post-quantum signatures for these tokens are not
+  standardized yet and no provider issues them; nothing to do in Vanishly
+  for now.
+
 ## The web pages
 
 - **Content Security Policy:** only scripts and styles from the server
