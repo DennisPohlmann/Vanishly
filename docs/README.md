@@ -20,5 +20,5 @@ Also in the repository root: [README.md](../README.md) (overview, quick
 start), [CHANGELOG.md](../CHANGELOG.md), [THIRD-PARTY-LICENSES.md](../THIRD-PARTY-LICENSES.md). In `.github/`:
 [CONTRIBUTING.md](../.github/CONTRIBUTING.md),
 [CODE_OF_CONDUCT.md](../.github/CODE_OF_CONDUCT.md),
-[SECURITY.md](../.github/SECURITY.md) (how to report a vulnerability),
+[security policy](../.github/SECURITY.md) (SECURITY.md: how to report a vulnerability),
 issue forms and the pull request template.
