@@ -114,13 +114,35 @@ export function receiptId(v) {
 }
 
 /**
+ * Hints that a secret holds more than one password (CONFIRM_CHECKBOX): the
+ * kinds found, never the matched text. Heuristics; they only warn.
+ * @param {string} v
+ * @returns {('url' | 'email' | 'user' | 'pair' | 'host' | 'lines')[]}
+ */
+export function secretHints(v) {
+  const url = /\b[a-z][a-z0-9+.-]*:\/\/\S+|\bwww\.\S+/gi;
+  const email = /[^\s@:]+@[^\s@]+\.[a-z]{2,}/gi;
+  const rest = v.replace(url, ' ').replace(email, ' ');
+  /** @type {('url' | 'email' | 'user' | 'pair' | 'host' | 'lines')[]} */
+  const found = [];
+  if (url.test(v)) found.push('url');
+  if (email.test(v)) found.push('email');
+  if (/\b(?:user(?:name)?|login|benutzer(?:name)?|account|konto|uid)\s*[:=]/i.test(v)) found.push('user');
+  if (/(?:^|\s)[\w.-]{1,64}:[^\s/:]\S*/.test(rest)) found.push('pair');
+  if (/\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}\b|\b\d{1,3}(?:\.\d{1,3}){3}\b/i.test(rest)) found.push('host');
+  if (v.split(/\r?\n/).filter((l) => l.trim()).length > 1) found.push('lines');
+  return found;
+}
+
+/**
  * The API token scopes the MCP tools of these features need: create
- * (create_secret), status (get_secret_status, burn_secret). Never read: no
- * tool opens a secret.
- * @param {{ shareApi: boolean, receipts: boolean, receiptApi: boolean }} f
+ * (create_secret), status (get_secret_status), burn (burn_secret). Never
+ * read: no tool opens a secret.
+ * @param {{ shareApi: boolean, receipts: boolean, receiptApi: boolean, burn: boolean }} f
  */
 export function toolScopes(f) {
-  return [...(f.shareApi ? ['create'] : []), ...(f.receipts && f.receiptApi ? ['status'] : [])];
+  const receipts = f.receipts && f.receiptApi;
+  return [...(f.shareApi ? ['create'] : []), ...(receipts ? ['status'] : []), ...(receipts && f.burn ? ['burn'] : [])];
 }
 
 /**
@@ -145,11 +167,14 @@ export function headerValue(h) {
  *   versions?: string[],
  *   ev?: (req: import('express').Request, res: import('express').Response, type: string, e?: any) => Promise<void>,
  *   challenge?: (req: import('express').Request, scope: string) => string,
+ *   confirm?: (res: import('express').Response) => { rule: string, t: (key: string) => string },
  * }} o
  *   versions: MCP_PROTOCOL_VERSIONS (default all); ev: the audit log;
- *   challenge: with MCP_OAUTH the WWW-Authenticate value for a missing scope (step-up sign-in)
+ *   challenge: with MCP_OAUTH the WWW-Authenticate value for a missing scope (step-up sign-in);
+ *   confirm: with CONFIRM_CHECKBOX the rule and the texts, in the language of the request:
+ *   create_secret then asks the person by elicitation every time
  */
-export function mcpRouter({ api, spec, features, version, origin, bodyLimit, versions = PROTOCOL_VERSIONS, ev = async () => {}, challenge }) {
+export function mcpRouter({ api, spec, features, version, origin, bodyLimit, versions = PROTOCOL_VERSIONS, ev = async () => {}, challenge, confirm }) {
   const legacy = versions.filter((v) => LEGACY.includes(v));
   const serverInfo = { name: 'vanishly', title: 'Vanishly', version };
   const instructions = 'Share secrets as one-time links: create_secret returns shareUrl for the recipient and receiptUrl for you; check or burn a secret with its receipt.';
@@ -157,11 +182,13 @@ export function mcpRouter({ api, spec, features, version, origin, bodyLimit, ver
   /** @type {{ name: string, description: string, inputSchema: any, scope: string, run: (a: any) => [string, string, any] }[]} */
   const tools = [];
   if (features.shareApi) {
+    // "confirmed" never comes from the model: with CONFIRM_CHECKBOX the person confirms by elicitation.
+    const { confirmed: _, ...share } = flatSchema(spec.paths['/v1/share'].post.requestBody.content['application/json'].schema, spec).properties;
     tools.push({
       name: 'create_secret',
       description:
         'Store a secret (password, key, note) on this Vanishly server and get a one-time link (shareUrl) to send to the recipient, and a receipt link (receiptUrl) to check or burn it. The secret is encrypted on the server; the key is only in the links.',
-      inputSchema: { ...flatSchema(spec.paths['/v1/share'].post.requestBody.content['application/json'].schema, spec), additionalProperties: false },
+      inputSchema: { ...flatSchema(spec.paths['/v1/share'].post.requestBody.content['application/json'].schema, spec), properties: share, additionalProperties: false },
       scope: 'create',
       run: (a) => ['POST', '/v1/share', a],
     });
@@ -184,7 +211,7 @@ export function mcpRouter({ api, spec, features, version, origin, bodyLimit, ver
           required: ['receipt'],
           additionalProperties: false,
         },
-        scope: 'status',
+        scope: 'burn',
         run: (a) => ['POST', `/v1/receipts/${receiptId(a.receipt)}/burn`, a.comment === undefined ? {} : { comment: a.comment }],
       });
     }
@@ -346,8 +373,43 @@ export function mcpRouter({ api, spec, features, version, origin, bodyLimit, ver
         };
         const bad = schemaError(args, tool.inputSchema) || ('receipt' in tool.inputSchema.properties && !receiptId(args.receipt) ? 'arguments.receipt: give the receipt id or the receipt link' : '');
         if (bad) return void (await toolError(bad.startsWith('arguments.receipt:') ? 'invalid_receipt' : 'invalid_arguments', bad));
+        let confirmed = false;
+        // CONFIRM_CHECKBOX: the person confirms every secret through the client (elicitation, form
+        // mode); only 2026-07-28 can ask without a stream. No way to ask: refused (fail closed).
+        if (confirm && tool.name === 'create_secret') {
+          const el = meta?.[`${META}clientCapabilities`]?.elicitation;
+          const form = el && typeof el === 'object' && (!('url' in el) || 'form' in el);
+          if (!modern || !form) {
+            return void (await toolError('confirmation_unavailable', 'This server needs the confirmation of a person for every secret (CONFIRM_CHECKBOX). Use an MCP client with protocol 2026-07-28 and elicitation in form mode. No secret was stored.'));
+          }
+          const answer = p.inputResponses && typeof p.inputResponses === 'object' ? p.inputResponses.confirm : undefined;
+          if (answer?.action === 'decline' || answer?.action === 'cancel') {
+            return void (await toolError('confirmation_declined', 'The person did not confirm. No secret was stored.'));
+          }
+          if (answer?.action !== 'accept' || answer.content?.confirm !== true) {
+            const { rule, t } = confirm(res);
+            const hints = secretHints(args.secret);
+            const warn = hints.length ? `${t('mcp.warn').replace('{found}', hints.map((h) => t(`mcp.found.${h}`)).join(', '))}\n\n` : '';
+            // The audit log keeps no trace of the content: only whether a warning was shown.
+            await audit({ details: { tool: tool.name, scope: tool.scope, confirmation: 'requested', warned: hints.length > 0 } });
+            return void res.json(ok(id, result({
+              resultType: 'input_required',
+              inputRequests: {
+                confirm: {
+                  method: 'elicitation/create',
+                  params: {
+                    mode: 'form',
+                    message: `${warn}${rule}`,
+                    requestedSchema: { type: 'object', properties: { confirm: { type: 'boolean', title: t('mcp.confirm'), description: rule } }, required: ['confirm'] },
+                  },
+                },
+              },
+            })));
+          }
+          confirmed = true;
+        }
         try {
-          const [method, url, body] = tool.run(args);
+          const [method, url, body] = tool.run(confirmed ? { ...args, confirmed: true } : args);
           const r = await call(req, res, method, url, body);
           if (r.status >= 400) {
             const code = String(r.body?.error || 'error');
@@ -359,7 +421,7 @@ export function mcpRouter({ api, spec, features, version, origin, bodyLimit, ver
             }
             return void (await toolError(code, r.body?.message || `HTTP ${r.status}`, r.status >= 500 ? 'error' : 'denied'));
           }
-          await audit({ details: { tool: tool.name, scope: tool.scope } });
+          await audit({ details: { tool: tool.name, scope: tool.scope, ...(confirmed ? { confirmation: 'accepted' } : {}) } });
           return void res.json(ok(id, result({ content: [{ type: 'text', text: JSON.stringify(r.body, null, 2) }], structuredContent: r.body })));
         } catch (err) {
           console.error(`mcp error: ${/** @type {Error} */ (err)?.message || err}`);

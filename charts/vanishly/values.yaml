@@ -362,9 +362,9 @@ config:
   API_TOKEN_RATE_LIMIT: ""
   # Comment required on every POST with a token: optional or required (optional).
   API_TOKEN_COMMENT: ""
-  # What tokens may do: create, read, status, or none (create,read,status).
+  # What tokens may do: create, read, status, burn, or none (create,read,status,burn).
   API_TOKEN_ALLOWED_SCOPES: ""
-  # Preselected scopes, within the allowed ones (create,status).
+  # Preselected scopes, within the allowed ones (create,status,burn).
   API_TOKEN_DEFAULT_SCOPES: ""
   # Other scopes per group: <group>=<scopes>;... e.g. /support=read (none).
   API_TOKEN_SCOPES_BY_GROUP: ""

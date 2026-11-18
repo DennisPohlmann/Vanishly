@@ -509,7 +509,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     });
   }
   /**
-   * A token needs the scope for this call (create, read, status); a refusal
+   * A token needs the scope for this call (create, read, status, burn); a refusal
    * is logged as "api.scope_denied" (the token lacks it, or the owner's
    * policy took it away since).
    * @param {import('express').Request} req @param {import('express').Response} res @param {string} scope
@@ -1093,7 +1093,8 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       // STATUS_ACCESS=signed-in: who created it and who is responsible.
       creator: signedIn ? r.who?.creator || null : null,
       responsible: signedIn && r.who ? r.who.responsible : { users: [], groups: [] },
-      mayBurn: config.features.burn && may.burn,
+      // A token also needs the scope "burn".
+      mayBurn: config.features.burn && may.burn && (userOf(res)?.token?.scopes.includes('burn') ?? true),
       ...(config.comment.mode !== 'off' && r.comment ? { comment: r.comment } : {}),
     });
   });
@@ -1101,7 +1102,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   api.post('/v1/receipts/:id/burn', receiptsOn, limit('read'), async (req, res) => {
     pagesOnly(config.features.receiptApi, req);
     if (!config.features.burn) throw disabled();
-    await needScope(req, res, 'status');
+    await needScope(req, res, 'burn');
     const id = String(req.params.id);
     const rec = validId(id) ? await store.receipt(id) : null;
     if (!rec) throw new ApiError(404, 'not_found', 'Unknown or too old');
@@ -1741,6 +1742,14 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         ev,
         // MCP_OAUTH: a missing scope is a 403 the client answers by signing in again (step-up).
         challenge: config.mcpOauth ? (req, scope) => `Bearer error="insufficient_scope", scope="${scope}", resource_metadata="${prmUrl(req)}"` : undefined,
+        // CONFIRM_CHECKBOX: create_secret asks the person (elicitation) with the rule of the form.
+        confirm: config.confirmCheckbox
+          ? (res) => {
+              const l = /** @type {string} */ (res.locals.lang);
+              const t = theme.strings[l] || theme.strings[theme.defaultLang];
+              return { rule: confirmRule(l), t: (k) => t[k] || theme.strings[theme.defaultLang][k] || theme.strings.en[k] };
+            }
+          : undefined,
       }),
     );
   } else {
@@ -2267,7 +2276,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       .map((o) => `<option value="${escapeHtml(o)}"${o === c.defaultExpiry ? ' selected' : ''}>${escapeHtml(o === 'never' ? t['tokens.never'] : (t[`tokens.unit.${o.slice(-1)}.${o.slice(0, -1) === '1' ? 1 : 'n'}`] || o).replace('{n}', o.slice(0, -1)))}</option>`)
       .join('');
     // What this user may give a token: "only create", "only read (pull)",
-    // "both" as far as the policy allows, and "status" as a box of its own.
+    // "both" as far as the policy allows, and "status" and "burn" as boxes of their own.
     const policy = await tokens.policy(u.user, u.ids);
     const def = tokens.defaultScopes(policy);
     const may = (/** @type {string} */ sc) => policy.scopes.includes(sc);
@@ -2279,7 +2288,10 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     const preset = def.includes('create') && def.includes('read') ? 'both' : def.includes('read') ? 'read' : access[0];
     const scopeBoxes =
       access.map((v) => `<div class="check"><input type="radio" id="access-${v}" name="access" value="${v}"${v === preset ? ' checked' : ''}><label for="access-${v}">${escapeHtml(t[`tokens.access.${v}`])}</label></div>`).join('') +
-      (may('status') ? `<div class="check"><input type="checkbox" id="scope-status" name="scopes" value="status"${def.includes('status') ? ' checked' : ''}><label for="scope-status">${escapeHtml(t['tokens.scope.status'])}</label></div>` : '');
+      ['status', 'burn']
+        .filter(may)
+        .map((sc) => `<div class="check"><input type="checkbox" id="scope-${sc}" name="scopes" value="${sc}"${def.includes(sc) ? ' checked' : ''}><label for="scope-${sc}">${escapeHtml(t[`tokens.scope.${sc}`])}</label></div>`)
+        .join('');
     res.type('html').send(
       page('tokens', req, res, {
         page: 'tokens',

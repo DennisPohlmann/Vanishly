@@ -1234,7 +1234,7 @@ function initServices() {
   $('svc-token-form').addEventListener('submit', async (/** @type {Event} */ e) => {
     e.preventDefault();
     const access = /** @type {HTMLInputElement | null} */ (document.querySelector('input[name="svc-access"]:checked'))?.value || 'create';
-    const scopes = [...(access === 'both' ? ['create', 'read'] : [access]), ...($('svc-scope-status').checked ? ['status'] : []), ...($('svc-scope-admin').checked ? ['admin'] : [])];
+    const scopes = [...(access === 'both' ? ['create', 'read'] : [access]), ...['status', 'burn'].filter((s) => $(`svc-scope-${s}`).checked), ...($('svc-scope-admin').checked ? ['admin'] : [])];
     const r = await post(`/api/v1/admin/service-accounts/${encodeURIComponent(current)}/tokens`, {
       name: $('svc-token-name').value.trim() || current,
       expires: $('svc-token-expires').value,

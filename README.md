@@ -76,7 +76,9 @@ Vanishly runs as a small Node.js container next to Redis.
 - **Rules for your organisation (optional):** minimum secret length,
   required passphrase with minimum length and character classes, a
   confirmation checkbox with your own text ("only one password, no user
-  name..."), and the expiry choices of the form.
+  name..."), and the expiry choices of the form. Over MCP the person
+  confirms each secret in the AI client, warned about links, user names
+  or host names found in it.
 - **Mobile friendly and accessible:** WCAG 2.2 AA (BITV 2.0) as the target,
   every page checked automatically with axe-core in all templates, light and
   dark, down to 320 px; keyboard and screen reader support. English, German, Spanish, French,

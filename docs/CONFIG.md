@@ -48,7 +48,7 @@ The container then does not come up (`docker compose logs vanishly`).
 | `MIN_PASSPHRASE_LENGTH` | `0` | Shortest passphrase in characters; `0` = any ([details](#minimum-lengths-and-passphrase-rules)) |
 | `PASSPHRASE_COMPLEXITY` | (none) | Character classes the passphrase must contain, comma-separated: `upper`, `lower`, `digit`, `symbol`, or `all` ([details](#minimum-lengths-and-passphrase-rules)) |
 | `REQUIRE_PASSPHRASE` | `false` | `true`: every secret needs a passphrase. `unless-recipients`: every secret without recipients needs one; with recipients (sign-in) it is optional. The form shows the field as required until a recipient is chosen; the API answers `passphrase_required` ("A passphrase is required when no recipients are given"). Without sign-in this means: always |
-| `CONFIRM_CHECKBOX` | `false` | `true`: the sender must tick a confirmation before creating the link; the API then needs `"confirmed": true` and otherwise answers `confirmation_required` with the same text as the checkbox |
+| `CONFIRM_CHECKBOX` | `false` | `true`: the sender must tick a confirmation before creating the link; the API then needs `"confirmed": true` and otherwise answers `confirmation_required` with the same text as the checkbox. Over MCP the person confirms each secret in the AI client, never the model ([details](#confirmation-over-mcp-confirm_checkbox)) |
 | `CONFIRM_TEXT_<CODE>`, e.g. `CONFIRM_TEXT_EN`, `CONFIRM_TEXT_DE`, `CONFIRM_TEXT_PL` | (built-in text) | Own text of the confirmation in one language. Works for every language code, also for one added in `TRANSLATIONS_DIR` (`sv.json` → `CONFIRM_TEXT_SV`); a code without a translation stops the start. `CONFIRM_TEXT` is the text for all languages without their own. Default: "I confirm that this secret contains only one password: not several passwords, no user name and no links that together give access to a whole system." |
 | `PASSPHRASE_ATTEMPTS` | `5` | Wrong passphrases before the secret is destroyed |
 | `GENERATOR_LENGTH` | `20` | Length of the password of the "Generate" button (8 to 128) |
@@ -243,9 +243,9 @@ Need sign-in. See [API tokens](#api-tokens) below.
 | `API_TOKEN_MAX_PER_USER` | `10` | Active tokens per user, 0 to 1000 (`0`: no limit). Only active tokens count; revoked and expired ones do not. At the limit the API tokens page shows "10 of 10 active tokens" and a notice instead of the form, and the API refuses with `400 too_many_tokens` (logged as `api.token_create_denied`, reason `limit_reached`) |
 | `API_TOKEN_RATE_LIMIT` | `0` (off) | Calls per token per `RATE_LIMIT_WINDOW` |
 | `API_TOKEN_COMMENT` | `optional` | `required`: every POST with a token needs a comment (`X-Audit-Comment` or `comment`); needs `AUDIT_LOG` |
-| `API_TOKEN_ALLOWED_SCOPES` | `create,read,status` | What users may give their tokens: `create` (create secrets), `read` (retrieve/open them), `status` (status page and burn), or `none`. The form then offers only "only create", "only retrieve", "both" and the status box as far as allowed |
-| `API_TOKEN_DEFAULT_SCOPES` | `create,status` (within the allowed ones) | Preselected in the form and used when the API call names no `scopes`; must be within `API_TOKEN_ALLOWED_SCOPES` |
-| `API_TOKEN_SCOPES_BY_GROUP` | (none) | Other scopes for the members of groups, wins over `API_TOKEN_ALLOWED_SCOPES` (several groups add up): `<group>=<scopes>;...`, e.g. `/support=read;/it=create,read,status` (Entra: object ids). For GitOps |
+| `API_TOKEN_ALLOWED_SCOPES` | `create,read,status,burn` | What users may give their tokens: `create` (create secrets), `read` (retrieve/open them), `status` (status page), `burn` (destroy a secret by its receipt), or `none`. The form then offers only "only create", "only retrieve", "both" and the status and burn boxes as far as allowed. Tokens and admin policies made while `status` still included burn keep both; a value set here or in `API_TOKEN_SCOPES_BY_GROUP` with `status` but without `burn` no longer allows burn |
+| `API_TOKEN_DEFAULT_SCOPES` | `create,status,burn` (within the allowed ones) | Preselected in the form and used when the API call names no `scopes`; must be within `API_TOKEN_ALLOWED_SCOPES` |
+| `API_TOKEN_SCOPES_BY_GROUP` | (none) | Other scopes for the members of groups, wins over `API_TOKEN_ALLOWED_SCOPES` (several groups add up): `<group>=<scopes>;...`, e.g. `/support=read;/it=create,read,status,burn` (Entra: object ids). For GitOps |
 | `API_TOKEN_ADMIN_POLICY` | `true` (with admins) | Admins set the scopes and the token limit per user and per group on `/admin` ("Token permissions", stored in Redis). Order: user > group > `API_TOKEN_SCOPES_BY_GROUP` > `API_TOKEN_ALLOWED_SCOPES` / `API_TOKEN_MAX_PER_USER`. Needs `ADMIN_USERS` or `ADMIN_GROUPS` and `ADMIN_UI`: unset it is off without them, an explicit `true` is an error |
 | `ADMIN_USERS`, `ADMIN_GROUPS` | (none) | Admins get the whole admin interface (`/admin`, "Administration" in the user menu) and the admin API. `ADMIN_GROUPS` as in the groups claim, like `RECIPIENT_GROUPS` (Keycloak: `/vanishly-admins`; Entra: the object id); see [Admin interface](#admin-interface) |
 | `ADMIN_UI` | `true` | The admin interface and the admin API at all (`false`: neither) |
@@ -406,7 +406,7 @@ a refusal comes back as a tool error with the API's `error` code.
   see or burn them.
 - **With sign-in** the client sends `Authorization: Bearer vnly_...` (an
   [API token](#api-tokens)) and acts as its owner, with the token's scopes
-  (`create`, `status`); `API_TOKEN_REQUIRED` applies as on the API. With
+  (`create`, `status`, `burn`); `API_TOKEN_REQUIRED` applies as on the API. With
   `API_TOKENS=true` the client gets that token itself by a sign-in in the
   browser ([below](#sign-in-of-mcp-clients-mcp_oauth)).
 - A browser `Origin` other than this server is refused (403).
@@ -417,6 +417,27 @@ a refusal comes back as a tool error with the API's `error` code.
   besides the API's own events.
 - The plaintext of `create_secret` passes through the AI client and its
   provider. Keep that in mind for what you let an assistant share.
+
+### Confirmation over MCP (`CONFIRM_CHECKBOX`)
+
+With `CONFIRM_CHECKBOX=true`, `create_secret` asks the person every time,
+through the AI client (MCP [elicitation](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation),
+form mode): a yes/no question with the rule of the form's checkbox
+(`CONFIRM_TEXT...`), in the language of the request. Before it Vanishly
+looks at the secret and warns when it seems to hold more than one
+password: a link, an email address, a user name (`user:`, `login=`, ...),
+a `name:password` pair, a host name or IP address, or several lines. The
+warning names only the kind, never the text. Only after the person's yes
+does the server create the secret with `"confirmed": true`; the tool has
+no `confirmed` argument, so the model cannot confirm. No yes (declined,
+cancelled): tool error `confirmation_declined`, nothing stored.
+
+This needs protocol `2026-07-28` and a client that declares elicitation
+(form mode); the question goes as an `input_required` result and the
+client retries with the answer (multi round-trip, no session). Older
+protocol versions and clients without elicitation cannot be asked: the
+tool refuses with `confirmation_unavailable` and stores nothing (fail
+closed). `get_secret_status` and `burn_secret` are not affected.
 
 ```json
 { "mcpServers": { "vanishly": { "type": "http", "url": "https://ots.example.com/mcp",
@@ -447,7 +468,7 @@ claude mcp add --transport http vanishly https://ots.example.com/mcp
 
 - `/mcp` then needs a signed-in person: without a token (or with an
   unknown, revoked or expired one) it answers `401` with
-  `WWW-Authenticate: Bearer resource_metadata=".../.well-known/oauth-protected-resource/mcp", scope="create status"`,
+  `WWW-Authenticate: Bearer resource_metadata=".../.well-known/oauth-protected-resource/mcp", scope="create status burn"`,
   which starts the sign-in.
 - The client gets a normal [API token](#api-tokens) of the person, named
   `MCP: <client name>`: on the "API tokens" page, revocable there and on
@@ -457,7 +478,7 @@ claude mcp add --transport http vanishly https://ots.example.com/mcp
   token: when it expires, the client signs in again. The token is bound to
   `/mcp` (audience, RFC 8707): on `/api/v1/*` it is refused (`401
   invalid_token`, logged as `api.token_audience_denied`). Its scopes are
-  only those the tools need (`create`, `status`; never `read`); a tool
+  only those the tools need (`create`, `status`, `burn`; never `read`); a tool
   call without the needed scope answers `403` with
   `WWW-Authenticate: Bearer error="insufficient_scope"`. With
   `API_TOKEN_IP_BINDING=required` it is bound to the address the client
@@ -669,14 +690,16 @@ ADMIN_GROUPS=/vanishly-admins
 With `API_TOKENS=true` every signed-in user (or only `API_TOKEN_USERS` /
 `API_TOKEN_GROUPS`) opens "API tokens" in the user menu and makes a token:
 name (e.g. `api_aap`), lifetime, allowed addresses, scopes (create secrets,
-open secrets, status and burn). The token (`vnly_<id>_<secret>`) is shown
+open secrets, see the status, burn). The token (`vnly_<id>_<secret>`) is shown
 once; Redis keeps only an HMAC of it. The list shows each token with its
 expiry, last use, addresses and state; a click revokes it. A user may have
 `API_TOKEN_MAX_PER_USER` active tokens (default 10; revoked and expired ones
 do not count); the page shows how many are in use.
 
 **What a token may do** is chosen per token: "only create" (secrets),
-"only retrieve" (open/pull secrets), "both", plus "status and burn". Which
+"only retrieve" (open/pull secrets), "both", plus "see the status" and
+"burn" (each on its own: a burn-only token learns only whether the secret
+was still there, never its status). Which
 of these a user may pick: `API_TOKEN_ALLOWED_SCOPES` for everyone,
 `API_TOKEN_SCOPES_BY_GROUP` per group, and with `API_TOKEN_ADMIN_POLICY=true`
 per user or group on `/admin` (also the token limit), in this order: user,

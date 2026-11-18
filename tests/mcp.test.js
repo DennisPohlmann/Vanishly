@@ -5,7 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import express from 'express';
-import { flatSchema, headerValue, mcpRouter, PROTOCOL_VERSIONS, receiptId, schemaError } from '../src/mcp.js';
+import { flatSchema, headerValue, mcpRouter, PROTOCOL_VERSIONS, receiptId, schemaError, secretHints } from '../src/mcp.js';
 
 const spec = JSON.parse(readFileSync(new URL('../openapi/openapi.json', import.meta.url), 'utf8'));
 const ID = 'A'.repeat(22);
@@ -296,6 +296,67 @@ test('tools/call: arguments checked against the input schema before the API runs
   }
 });
 
+test('secretHints: the kinds of extra access data, never the text', () => {
+  assert.deepEqual(secretHints('hunter22'), []);
+  assert.deepEqual(secretHints('correct horse battery staple'), []);
+  assert.deepEqual(secretHints('Tr0ub4dor&3!'), []);
+  assert.deepEqual(secretHints('https://db.example.com/admin'), ['url']);
+  assert.deepEqual(secretHints('admin@example.com'), ['email']);
+  assert.deepEqual(secretHints('admin:hunter22'), ['pair']);
+  assert.deepEqual(secretHints('User: admin'), ['user']);
+  assert.deepEqual(secretHints('db01.corp.example.com'), ['host']);
+  assert.deepEqual(secretHints('203.0.113.10'), ['host']);
+  assert.deepEqual(secretHints('one\ntwo'), ['lines']);
+  assert.deepEqual(secretHints('Login = root\nhunter22 @ srv.example.org'), ['user', 'host', 'lines']);
+});
+
+test('CONFIRM_CHECKBOX: the person confirms every create_secret by elicitation; the model cannot', async () => {
+  const f = await fake(ON, { confirm: () => ({ rule: 'Only one password.', t: (/** @type {string} */ k) => `<${k}>` }) });
+  const EL = { 'io.modelcontextprotocol/clientCapabilities': { elicitation: {} } };
+  const call = (/** @type {any} */ params, id = 1) => modern(f.base, 'tools/call', { name: 'create_secret', ...params }, {}, id);
+  try {
+    // "confirmed" is no argument of the tool: the model cannot confirm.
+    const listed = (await modern(f.base, 'tools/list')).body.result.tools.find((/** @type {any} */ t) => t.name === 'create_secret');
+    assert.equal(listed.inputSchema.properties.confirmed, undefined);
+    let r = await call({ arguments: { secret: 'x', confirmed: true }, _meta: EL });
+    assert.match(r.body.result.content[0].text, /^invalid_arguments: arguments\.confirmed is not a known argument/);
+    // No elicitation, or an older protocol: refused, nothing stored (fail closed).
+    r = await call({ arguments: { secret: 'hunter22' } });
+    assert.match(r.body.result.content[0].text, /^confirmation_unavailable: /);
+    r = await call({ arguments: { secret: 'hunter22' }, _meta: { 'io.modelcontextprotocol/clientCapabilities': { elicitation: { url: {} } } } });
+    assert.match(r.body.result.content[0].text, /^confirmation_unavailable: /);
+    r = await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'create_secret', arguments: { secret: 'hunter22' }, inputResponses: { confirm: { action: 'accept', content: { confirm: true } } } } }, LEGACY);
+    assert.match(r.body.result.content[0].text, /^confirmation_unavailable: /);
+    // First call: the question, with the warnings by kind and never the secret.
+    const secret = 'admin:Sup3rS3cret https://db.example.com';
+    r = await call({ arguments: { secret }, _meta: EL });
+    assert.equal(r.body.result.resultType, 'input_required');
+    const q = r.body.result.inputRequests.confirm;
+    assert.equal(q.method, 'elicitation/create');
+    assert.equal(q.params.mode, 'form');
+    assert.equal(q.params.message, '<mcp.warn>\n\nOnly one password.');
+    assert.deepEqual(q.params.requestedSchema.properties.confirm, { type: 'boolean', title: '<mcp.confirm>', description: 'Only one password.' });
+    assert.ok(!JSON.stringify(r.body).includes('Sup3rS3cret'));
+    // Declined, cancelled, or no real yes: nothing stored.
+    for (const answer of [{ action: 'decline' }, { action: 'cancel' }]) {
+      r = await call({ arguments: { secret }, inputResponses: { confirm: answer }, _meta: EL }, 2);
+      assert.match(r.body.result.content[0].text, /^confirmation_declined: /);
+    }
+    r = await call({ arguments: { secret }, inputResponses: { confirm: { action: 'accept', content: { confirm: false } } }, _meta: EL }, 3);
+    assert.equal(r.body.result.resultType, 'input_required');
+    assert.equal(f.seen.length, 0);
+    // The retry with the person's yes: stored, with "confirmed": true set by the server.
+    r = await call({ arguments: { secret }, inputResponses: { confirm: { action: 'accept', content: { confirm: true } } }, _meta: EL }, 4);
+    assert.equal(r.body.result.resultType, 'complete');
+    assert.deepEqual(f.seen[0].body, { secret, confirmed: true });
+    const calls = f.events.filter((e) => e.type === 'mcp.tool_called');
+    assert.equal(calls.find((e) => e.details.confirmation === 'requested').details.warned, true);
+    assert.equal(calls.at(-1).details.confirmation, 'accepted');
+  } finally {
+    f.close();
+  }
+});
+
 test('schemaError covers the keywords of the tool schemas', () => {
   const s = { type: 'object', properties: { a: { type: 'string', enum: ['x'] }, n: { type: 'number', maximum: 2 }, l: { type: 'array', maxItems: 1 } }, additionalProperties: false };
   assert.equal(schemaError({ a: 'x', n: 2, l: [1] }, s), '');
@@ -393,6 +454,17 @@ test('standalone: create, status and burn over MCP, like the open API', opts, as
   assert.equal(r.body.result.isError, true);
   // The answers of the API still work after MCP calls on the same app.
   assert.equal((await fetch(`${base}/api/v1/receipts/${made.receiptId}`)).status, 200);
+});
+
+test('CONFIRM_CHECKBOX over MCP: the rule of the form in the question, the API gets the yes', opts, async () => {
+  const base = await vanishly({ CONFIRM_CHECKBOX: 'true', CONFIRM_TEXT_DE: 'Nur ein Passwort.' });
+  const _meta = { 'io.modelcontextprotocol/clientCapabilities': { elicitation: { form: {} } } };
+  const params = { name: 'create_secret', arguments: { secret: 'root@srv.example.com' }, _meta };
+  let r = await modern(base, 'tools/call', params, { 'Accept-Language': 'de' });
+  assert.equal(r.body.result.inputRequests.confirm.params.message, 'Achtung: Das Geheimnis scheint eine E-Mail-Adresse zu enthalten. Teilen Sie nur ein Passwort pro Link.\n\nNur ein Passwort.');
+  r = await modern(base, 'tools/call', { ...params, inputResponses: { confirm: { action: 'accept', content: { confirm: true } } } }, { 'Accept-Language': 'de' }, 2);
+  assert.equal(r.body.result.isError, undefined, JSON.stringify(r.body));
+  assert.match(r.body.result.structuredContent.shareUrl, /\/s\/[A-Za-z0-9_-]{22}#/);
 });
 
 test('ENABLE_MCP=false: /mcp is gone, the API stays', opts, async () => {

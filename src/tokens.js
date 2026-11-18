@@ -8,14 +8,15 @@
 // only HMAC-SHA256(pepper, token), the pepper derived from AUTH_SECRET.
 //
 // Keys (below REDIS_PREFIX):
-//   tok:<id>          hash  h own nm ids name created expires ips scopes revoked used by aud
+//   tok:<id>          hash  h own nm ids name created expires ips scopes revoked used by aud v
 //                           (h: the HMAC; own/nm: owner address and name; ids: the
 //                           owner's recipient hashes, renewed at each sign-in; aud: "mcp"
-//                           for a token an MCP client got by signing in, valid only at /mcp);
+//                           for a token an MCP client got by signing in, valid only at /mcp;
+//                           v: "2" since burn is a scope of its own, see scopesOf);
 //                           kept 30 days after expiry or revocation
 //   tok:u:<owner>     set   the token ids of a user (owner = HMAC of the address)
 //   tok:all           set   all token ids (admin list)
-//   tokpol:<hash>     hash  type (user|group) subject scopes max by at: a token policy set by
+//   tokpol:<hash>     hash  type (user|group) subject scopes max by at v: a token policy set by
 //                           an admin (API_TOKEN_ADMIN_POLICY); hash = the recipient hash of
 //                           the address or group (src/auth.js), so it matches the user's ids
 //   tokpol:all        set   the hashes of all policies
@@ -27,6 +28,16 @@ import { expiryAt, parseNetworks, parseScopes, SCOPES } from './config.js';
 export { parseNetworks };
 
 export { SCOPES };
+
+/**
+ * The scopes of a stored token or policy. Before v2 "status" also allowed
+ * burn: such records keep both.
+ * @param {Record<string, string>} h
+ */
+const scopesOf = (h) => {
+  const s = (h.scopes || '').split(' ').filter(Boolean);
+  return h.v || s.includes('burn') ? s : s.flatMap((x) => (x === 'status' ? ['status', 'burn'] : [x]));
+};
 // Admin functions over the API: only for technical users' tokens, given by an admin (API_ADMIN_TOKENS).
 export const ADMIN_SCOPE = 'admin';
 const SVC_NAME = /^[a-z0-9][a-z0-9_.-]{1,63}$/;
@@ -128,7 +139,7 @@ export class Tokens {
       created: Number(h.created || 0),
       expires: Number(h.expires || 0),
       ips: (h.ips || '').split(' ').filter(Boolean),
-      scopes: (h.scopes || '').split(' ').filter(Boolean),
+      scopes: scopesOf(h),
       revoked: Number(h.revoked || 0),
       revokedBy: h.by || '',
       used: Number(h.used || 0),
@@ -231,6 +242,7 @@ export class Tokens {
       expires: String(expires),
       ips: ips.join(' '),
       scopes: valid.filter((s) => scopes.includes(s)).join(' '),
+      v: '2',
       ...(who.svc ? { svc: who.svc } : {}),
       ...(rules.aud ? { aud: rules.aud } : {}),
     });
@@ -381,7 +393,7 @@ export class Tokens {
   defaultScopes(policy) {
     const d = this.c.defaultScopes.filter((s) => policy.scopes.includes(s));
     if (d.length) return d;
-    const core = policy.scopes.filter((s) => s !== 'status');
+    const core = policy.scopes.filter((s) => s !== 'status' && s !== 'burn');
     return core.length ? core : policy.scopes;
   }
 
@@ -390,7 +402,7 @@ export class Tokens {
     return {
       type: h.type === 'group' ? 'group' : 'user',
       subject: h.subject || '',
-      scopes: (h.scopes || '').split(' ').filter((s) => SCOPES.includes(s)),
+      scopes: scopesOf(h).filter((s) => SCOPES.includes(s)),
       max: h.max === undefined || h.max === '' ? null : Number(h.max),
       by: h.by || '',
       at: Number(h.at || 0),
@@ -438,7 +450,7 @@ export class Tokens {
     const now = { type: b.type, subject: b.subject, scopes, max, by, at: Date.now() };
     await this.redis
       .multi()
-      .hSet(k, { type: now.type, subject: now.subject, scopes: scopes.join(' '), max: max === null ? '' : String(max), by, at: String(now.at) })
+      .hSet(k, { type: now.type, subject: now.subject, scopes: scopes.join(' '), max: max === null ? '' : String(max), by, at: String(now.at), v: '2' })
       .sAdd(`${this.p}tokpol:all`, key)
       .exec();
     return { old, new: now };

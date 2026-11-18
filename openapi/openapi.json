@@ -797,6 +797,7 @@
         ],
         "operationId": "getReceipt",
         "summary": "Status of a secret for its sender",
+        "description": "An API token needs the scope `status`.",
         "parameters": [
           {
             "name": "id",
@@ -914,6 +915,7 @@
         ],
         "operationId": "burnSecret",
         "summary": "Destroy the secret now",
+        "description": "An API token needs the scope `burn` (not `status`). The answer tells only whether the secret was still there: 200 burned now, 409 already gone (opened, burned or expired, not told apart), 404 unknown receipt.",
         "parameters": [
           {
             "name": "id",
@@ -2716,7 +2718,8 @@
                       "enum": [
                         "create",
                         "read",
-                        "status"
+                        "status",
+                        "burn"
                       ]
                     }
                   },
@@ -3804,7 +3807,7 @@
         ],
         "operationId": "issueServiceAccountToken",
         "summary": "Issue a token for a technical user",
-        "description": "Scopes `create`, `read`, `status` and (API_ADMIN_TOKENS, given by a signed-in admin or with API_ADMIN_TOKEN_CAN_ISSUE_ADMIN) `admin`. `ips` default to the technical user's networks; admin tokens need networks (API_ADMIN_TOKEN_REQUIRE_IP) and live at most API_ADMIN_TOKEN_MAX_EXPIRY. Logged as `admin.service_token_issued`. Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged with the caller.",
+        "description": "Scopes `create`, `read`, `status`, `burn` and (API_ADMIN_TOKENS, given by a signed-in admin or with API_ADMIN_TOKEN_CAN_ISSUE_ADMIN) `admin`. `ips` default to the technical user's networks; admin tokens need networks (API_ADMIN_TOKEN_REQUIRE_IP) and live at most API_ADMIN_TOKEN_MAX_EXPIRY. Logged as `admin.service_token_issued`. Admins only: a signed-in admin, or a technical user's token with the scope `admin` (API_ADMIN_TOKENS; with `X-Audit-Comment` unless API_ADMIN_COMMENT=optional). Logged with the caller.",
         "security": [
           {
             "sessionCookie": []
@@ -3952,6 +3955,7 @@
                         "create",
                         "read",
                         "status",
+                        "burn",
                         "admin"
                       ]
                     }
@@ -5317,7 +5321,7 @@
           },
           "mayBurn": {
             "type": "boolean",
-            "description": "Whether the caller may burn it (STATUS_ACCESS=signed-in: the creator and the responsible people)"
+            "description": "Whether the caller may burn it (STATUS_ACCESS=signed-in: the creator and the responsible people; an API token also needs the scope `burn`)"
           },
           "comment": {
             "type": "string",
@@ -5685,7 +5689,8 @@
               "enum": [
                 "create",
                 "read",
-                "status"
+                "status",
+                "burn"
               ]
             }
           },
@@ -5755,7 +5760,8 @@
               "enum": [
                 "create",
                 "read",
-                "status"
+                "status",
+                "burn"
               ]
             },
             "description": "create: create secrets (POST /v1/secrets, /v1/share); read: retrieve/open them (reveal, /v1/open, GET /v1/secrets/{id}); status: receipts and burn. \"Only create\" = [create], \"only retrieve\" = [read], \"both\" = [create, read]. Must be within the caller's allowedScopes; default: defaultScopes."
@@ -5812,7 +5818,8 @@
               "enum": [
                 "create",
                 "read",
-                "status"
+                "status",
+                "burn"
               ]
             },
             "description": "What this user may give a token (API_TOKEN_ALLOWED_SCOPES, by group, admin policy)"
@@ -5999,7 +6006,8 @@
               "enum": [
                 "create",
                 "read",
-                "status"
+                "status",
+                "burn"
               ]
             }
           },
@@ -6289,7 +6297,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "vnly_<id>_<secret>",
-        "description": "Personal API token (API_TOKENS=true), made on the API tokens page (`/settings/tokens`). Acts as its owner, only from its IP networks, with its scopes (create, read, status), until it expires or is revoked. With API_TOKEN_REQUIRED=true the only way to call the API outside the server's own pages. Technical users' tokens (made by admins) may also have the scope `admin` for the admin API (API_ADMIN_TOKENS)."
+        "description": "Personal API token (API_TOKENS=true), made on the API tokens page (`/settings/tokens`). Acts as its owner, only from its IP networks, with its scopes (create, read, status, burn), until it expires or is revoked. With API_TOKEN_REQUIRED=true the only way to call the API outside the server's own pages. Technical users' tokens (made by admins) may also have the scope `admin` for the admin API (API_ADMIN_TOKENS)."
       }
     },
     "parameters": {

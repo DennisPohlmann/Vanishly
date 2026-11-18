@@ -128,9 +128,10 @@ export function expiryAt(opt, now) {
 
 /**
  * What an API token may do: create secrets (POST /v1/secrets, /v1/share),
- * read (open/pull them: reveal, /v1/open, meta), status (receipts and burn).
+ * read (open/pull them: reveal, /v1/open, meta), status (receipts), burn
+ * (destroy a secret by its receipt).
  */
-export const SCOPES = ['create', 'read', 'status'];
+export const SCOPES = ['create', 'read', 'status', 'burn'];
 
 /**
  * "create,read" to a checked, ordered list of SCOPES ("none" = empty).
@@ -785,9 +786,9 @@ function tokenScopes(env, h) {
     const extra = defaultScopes.filter((s) => !allowedScopes.includes(s));
     if (extra.length) throw new Error(`API_TOKEN_DEFAULT_SCOPES: ${extra.join(', ')} is not in API_TOKEN_ALLOWED_SCOPES`);
   } else {
-    defaultScopes = ['create', 'status'].filter((s) => allowedScopes.includes(s));
+    defaultScopes = ['create', 'status', 'burn'].filter((s) => allowedScopes.includes(s));
   }
-  // "/finance=read;/it=create,read,status": the scopes of a group's members.
+  // "/finance=read;/it=create,read,status,burn": the scopes of a group's members.
   const scopesByGroup = named('API_TOKEN_SCOPES_BY_GROUP', () =>
     (env.API_TOKEN_SCOPES_BY_GROUP || '')
       .split(';')

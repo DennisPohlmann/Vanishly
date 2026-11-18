@@ -2,7 +2,7 @@
 
 Vanishly holds other people's secrets, so a security problem is taken
 seriously and fixed first. How a secret is protected, and the limits of
-that protection, is described in [docs/SECURITY.md](../docs/SECURITY.md).
+that protection, is described in [docs/SECURITY.md](https://github.com/DennisPohlmann/Vanishly/blob/main/docs/SECURITY.md).
 
 ## Supported versions
 

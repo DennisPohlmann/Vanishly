@@ -1512,7 +1512,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^$|^(?i:none|(create|read|status)([\\s,+]+(create|read|status))*)$"
+              "pattern": "^$|^(?i:none|(create|read|status|burn)([\\s,+]+(create|read|status|burn))*)$"
             }
           ]
         },
@@ -1520,7 +1520,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^$|^(?i:none|(create|read|status)([\\s,+]+(create|read|status))*)$"
+              "pattern": "^$|^(?i:none|(create|read|status|burn)([\\s,+]+(create|read|status|burn))*)$"
             }
           ]
         },

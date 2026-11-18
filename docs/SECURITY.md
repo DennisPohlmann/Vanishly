@@ -294,8 +294,8 @@ Benchmark v1.0.0 where it applies to a remote Streamable HTTP server with
 tools only. **Pass**: met by Vanishly itself. **Operator**: depends on the
 deployment. **Deviation**: deliberately not met, with the reason.
 **n.a.**: Vanishly has no such feature (stdio, Resources, Prompts, Tasks,
-Sampling, Elicitation, MCP Apps, files) or it is about MCP clients or
-third-party servers (sections 4 and 8).
+Sampling, MCP Apps, files; Elicitation only for the confirmation below) or it is about MCP clients or
+third-party servers (sections 4 and 8, except the server side of 4.1.3).
 
 | Recommendation | Status | How |
 |---|---|---|
@@ -307,14 +307,15 @@ third-party servers (sections 4 and 8).
 | 2.4 Metadata headers match the body | Pass | `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name` (also in Base64 form) checked against the body, `-32020` |
 | 2.5 Origin validated | Pass | a foreign `Origin` gets `403` and `mcp.request_denied` (`origin_not_allowed`) |
 | 3.1.2 OAuth 2.1 or short-lived tokens | Pass | `MCP_OAUTH` (OAuth 2.1, PKCE S256); token lifetime `MCP_OAUTH_TOKEN_EXPIRY` (`1d`), no refresh tokens. Hand-made API tokens follow `API_TOKEN_MAX_EXPIRY` (set it, e.g. `90d`) |
-| 3.2.1 Per-tool authorization | Pass | each tool needs one scope (`create_secret`: `create`; status and burn: `status`), checked by the API with the owner's current policy; every call logged as `mcp.tool_called` |
+| 3.2.1 Per-tool authorization | Pass | each tool needs one scope (`create_secret`: `create`; `get_secret_status`: `status`; `burn_secret`: `burn`), checked by the API with the owner's current policy; every call logged as `mcp.tool_called` |
 | 3.2.2 No token passthrough | Pass | the token is checked by Vanishly and never sent on; tools call the in-process API |
 | 3.2.3 Annotations not used for authorization | Pass | authorization comes only from token scopes and policy |
 | 3.3.1 Audience-bound tokens (RFC 8707) | Pass | `resource` must be `<BASE_URL>/mcp` (else `invalid_target`); the token gets audience `mcp` and is refused on `/api/v1/*` (`api.token_audience_denied`) |
 | 3.3.2 Discovery metadata over TLS, approved issuer | Pass / Operator | Vanishly is its own authorization server, named in the protected resource metadata; TLS by the proxy |
 | 3.3.3 No shared downstream service accounts | n.a. | no downstream services |
-| 3.3.4 Minimal scopes, step-up | Pass | OAuth offers only `create` and `status` (never `read`); a missing scope answers `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` |
+| 3.3.4 Minimal scopes, step-up | Pass | OAuth offers only `create`, `status` and `burn` (never `read`); a missing scope answers `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` |
 | 3.3.5 Confused deputy, static client ids | Pass / Deviation | no static client ids, no third-party authorization server; consent page per client; only `native` clients with loopback redirects. Any port on the loopback address is accepted, as RFC 8252 section 7.3 requires |
+| 4.1.3 Elicitation consented, redacted, identity-bound (server side) | Pass / limit | only with `CONFIRM_CHECKBOX=true`: every `create_secret` asks the person (form mode, a yes/no only; no secret asked for or shown, warnings name only the kind of access data found). The model cannot confirm (no `confirmed` argument); without elicitation or on an older protocol the tool refuses (`confirmation_unavailable`). Logged as `mcp.tool_called` (`confirmation` `requested` / `accepted`, reason `confirmation_declined`), own rate limit counter. No `requestState`, no URL mode: nothing to bind or tamper with. Limit: the yes is what the MCP client reports; a compromised client can forge it, as any client input. Consent UI, decline buttons and the client-side records are the client's |
 | 5.1.1 Tool argument validation | Pass | arguments checked against the tool's input schema (types, lengths, ranges, enums, no unknown fields) before the API, refusals as tool errors (`invalid_arguments`) |
 | 5.2.2, 5.2.3 Sessions, legacy streams | Pass | no `Mcp-Session-Id`, no SSE stream, `GET`/`DELETE` `405`, `Last-Event-ID` ignored |
 | 5.6.1 Idempotency keys | Deviation | a replay would have to store the answer, and the answer of `create_secret` holds the link with its key: the server would keep the key. Each call creates a new secret; `burn_secret` is idempotent |
@@ -343,10 +344,10 @@ a SIEM, `API_TOKEN_MAX_EXPIRY` set, TLS with `HSTS=true`, and
 | Anyone | create secrets (`/v1/secrets`, `/v1/share`); `GET /v1/config`, the index, the OpenAPI document | `AUTH_CREATE=anyone` or no sign-in |
 | Signed-in user | create; open secrets addressed to them or their groups; `/v1/me`, people and group search; with `STATUS_ACCESS=signed-in` the status of secrets they created, are responsible for or opened, and burn the ones they created or are responsible for | a session or a provider token (`AUTH_API_AUDIENCE`) |
 | Signed-in user, session only | own API tokens (`/v1/tokens`), "My secrets" (`/v1/me/secrets`) | the session cookie; a token cannot manage tokens |
-| API token | what its owner may, limited to its scopes: `create` (create), `read` (meta, reveal, open), `status` (status, burn) | `vnly_` token, from its networks, re-checked against the owner's current policy on every call |
+| API token | what its owner may, limited to its scopes: `create` (create), `read` (meta, reveal, open), `status` (status), `burn` (burn; learns only whether the secret was still there) | `vnly_` token, from its networks, re-checked against the owner's current policy on every call |
 | Admin | the admin interface and `/v1/admin/*`: audit log, all tokens, token policies, secrets' metadata (never content), burn, local accounts, technical users | `ADMIN_USERS` / `ADMIN_GROUPS` and a session |
 | Technical user | what its tokens' scopes allow; scope `admin` only with `API_ADMIN_TOKENS`, IP-bound, with a comment on every call | tokens issued by an admin; no sign-in |
-| MCP client | the MCP tools of its person (`create`, `status`) at `/mcp` only | an OAuth token with audience `mcp` |
+| MCP client | the MCP tools of its person (`create`, `status`, `burn`) at `/mcp` only | an OAuth token with audience `mcp` |
 
 ### Mapping
 

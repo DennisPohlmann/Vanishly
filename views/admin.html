@@ -90,6 +90,7 @@
         <div class="check"><input type="checkbox" id="pol-create" name="pol-scope" value="create"><label for="pol-create">{{ t:tokens.scope.create }}</label></div>
         <div class="check"><input type="checkbox" id="pol-read" name="pol-scope" value="read"><label for="pol-read">{{ t:tokens.scope.read }}</label></div>
         <div class="check"><input type="checkbox" id="pol-status" name="pol-scope" value="status"><label for="pol-status">{{ t:tokens.scope.status }}</label></div>
+        <div class="check"><input type="checkbox" id="pol-burn" name="pol-scope" value="burn"><label for="pol-burn">{{ t:tokens.scope.burn }}</label></div>
       </fieldset>
       <div class="field">
         <label for="policy-max">{{ t:policy.max }}</label>
@@ -178,6 +179,7 @@
         <div class="check"><input type="radio" id="svc-access-read" name="svc-access" value="read"><label for="svc-access-read">{{ t:tokens.access.read }}</label></div>
         <div class="check"><input type="radio" id="svc-access-both" name="svc-access" value="both"><label for="svc-access-both">{{ t:tokens.access.both }}</label></div>
         <div class="check"><input type="checkbox" id="svc-scope-status" value="status"><label for="svc-scope-status">{{ t:tokens.scope.status }}</label></div>
+        <div class="check"><input type="checkbox" id="svc-scope-burn" value="burn"><label for="svc-scope-burn">{{ t:tokens.scope.burn }}</label></div>
         <div class="check" id="svc-scope-admin-wrap" hidden><input type="checkbox" id="svc-scope-admin" value="admin"><label for="svc-scope-admin">{{ t:svc.scopeAdmin }}</label></div>
       </fieldset>
       <div class="field"><label for="svc-token-ips">{{ t:tokens.ips }}</label><textarea id="svc-token-ips" rows="2" spellcheck="false" aria-describedby="svc-token-ips-hint"></textarea><div class="hint" id="svc-token-ips-hint">{{ t:svc.tokenIpsHint }}</div></div>
