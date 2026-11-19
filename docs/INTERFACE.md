@@ -36,6 +36,7 @@ and `rule` give the rule of the form's checkbox in the language of the request:
 | `GET /api/v1/me/secrets?status=&from=&to=&limit=` | the signed-in user's secrets (created by them, or for them or one of their groups) from the audit stream, metadata only, same shape as `/admin/secrets` without the `ip` and `userAgent` of the views (`MY_SECRETS`, `AUDIT_LOG_REDIS`; session only) |
 | `GET /api/v1/me/secrets/{ref}` | the status of a secret the signed-in user created, by its ref from `/me/secrets`: the answer of `GET /api/v1/receipts/{id}` for its creator, without `secretPath` (`SECRET_DETAILS`, `MY_SECRETS`, `ENABLE_RECEIPTS`; session only) |
 | `POST /api/v1/me/secrets/{ref}/burn` | burns it (same rules, `ENABLE_BURN`); `409 gone` when already gone |
+| `GET /api/v1/admin/secrets/{ref}` | admins: the status of any secret by its ref from `/admin/secrets`, as its creator sees it, without `secretPath`; `mayBurn` with `ADMIN_BURN` (burn: `POST /api/v1/admin/secrets/{ref}/burn`) (`SECRET_DETAILS`, `AUDIT_LOG_REDIS`, `ENABLE_RECEIPTS`) |
 | `GET /api/v1/groups?q=` | search groups for recipients (`RECIPIENT_GROUPS`: the listed groups, with `*` the directory) |
 | `GET /api/v1/people?q=` | search people for recipients (`RECIPIENT_USER_GROUP`, in the provider's directory): `{ people: [{ name, user, mail }] }`, put `user` into `recipients` |
 | `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{id}/revoke` | personal API tokens (`API_TOKENS`; session only), see [API tokens](#api-tokens-and-admin-api) |

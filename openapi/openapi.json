@@ -3250,6 +3250,10 @@
                     "count": {
                       "type": "integer"
                     },
+                    "details": {
+                      "type": "boolean",
+                      "description": "SECRET_DETAILS: the refs open the status page (`/admin/secrets/{ref}`)"
+                    },
                     "secrets": {
                       "type": "array",
                       "items": {
@@ -3293,6 +3297,113 @@
           },
           "429": {
             "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/secrets/{ref}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "adminSecretStatus",
+        "summary": "Status of any secret (admins)",
+        "description": "Admins: the status page of any secret by its ref from `GET /api/v1/admin/secrets`, the answer of `GET /api/v1/receipts/{id}` as its creator sees it (RECEIPT_SHOW_VIEWER applies), without `secretPath`; `mayBurn` is true with ADMIN_BURN and ENABLE_BURN (burn with `POST /api/v1/admin/secrets/{ref}/burn`). The page `/admin/secrets/{ref}` uses it. Needs SECRET_DETAILS (default true), AUDIT_LOG_REDIS=true and ENABLE_RECEIPTS. Logged as `receipt.viewed` with `via: admin`.",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "description": "The secret's ref from `GET /api/v1/admin/secrets`",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{22}$"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`not_admin`, `insufficient_scope` (a token without the scope admin); `ip_denied` (ADMIN_ALLOWED_IPS / ADMIN_DENIED_IPS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: unknown ref, or its receipt is gone (RECEIPT_KEEP); `endpoint_disabled`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
             "headers": {
               "Retry-After": {
                 "schema": {

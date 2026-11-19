@@ -834,6 +834,41 @@ test('SECRET_DETAILS: the creator opens the status page from "My secrets" by ref
   assert.equal((await b.call(`/api/v1/me/secrets/${l2.secrets[0].ref}`, { cookie: c })).data.error, 'endpoint_disabled');
 });
 
+test('SECRET_DETAILS: admins open the status page of any secret from the Secrets tab and burn it there', opts, async () => {
+  const a = await adminApp();
+  const alice = await a.login(ALICE);
+  const bob = await a.login(BOB);
+  // Bob's secret, opened by alice: the admin sees it as bob would (RECEIPT_SHOW_VIEWER), without link.
+  const one = await a.call('/api/v1/share', { cookie: bob, body: { secret: PLAIN, ttl: 600, views: 2, recipients: ['alice@example.com'] } });
+  await a.call('/api/v1/open', { cookie: alice, body: { link: one.data.shareUrl } });
+  const list = (await a.call('/api/v1/admin/secrets', { cookie: alice })).data;
+  assert.equal(list.details, true);
+  const ref = list.secrets[0].ref;
+  const st = await a.call(`/api/v1/admin/secrets/${ref}`, { cookie: alice });
+  assert.deepEqual([st.data.state, st.data.viewedByUser, st.data.secretPath, st.data.mayBurn, st.data.creator?.user], ['viewed', ['alice@example.com'], null, true, 'bob@example.com']);
+  assert.ok(!st.text.includes(one.data.id), 'no secret id');
+  assert.ok((await a.events()).some((e) => e.type === 'receipt.viewed' && e.details?.via === 'admin'));
+  assert.equal((await a.call(`/api/v1/admin/secrets/${ref}`, { cookie: bob })).data.error, 'not_admin');
+  assert.equal((await a.call('/api/v1/admin/secrets/0123456789abcdefghijkl', { cookie: alice })).status, 404);
+  // The page: for admins only.
+  assert.match(await (await fetch(`${a.base}/admin/secrets/${ref}`, { headers: { Cookie: alice } })).text(), /data-page="receipt"/);
+  assert.equal((await fetch(`${a.base}/admin/secrets/${ref}`, { headers: { Cookie: bob } })).status, 403);
+  // Burn with the admin endpoint, then the page shows it burned.
+  assert.equal((await a.call(`/api/v1/admin/secrets/${ref}/burn`, { cookie: alice, body: {} })).data.state, 'burned');
+  assert.equal((await a.call(`/api/v1/admin/secrets/${ref}`, { cookie: alice })).data.state, 'burned');
+  // ADMIN_BURN=false: no burn button; SECRET_DETAILS=false: plain refs, 404.
+  const nb = await adminApp({ ADMIN_BURN: 'false' });
+  const c = await nb.login(ALICE);
+  await nb.call('/api/v1/share', { cookie: c, body: { secret: PLAIN, ttl: 600 } });
+  const r2 = (await nb.call('/api/v1/admin/secrets', { cookie: c })).data.secrets[0].ref;
+  assert.equal((await nb.call(`/api/v1/admin/secrets/${r2}`, { cookie: c })).data.mayBurn, false);
+  const off = await adminApp({ SECRET_DETAILS: 'false' });
+  const c2 = await off.login(ALICE);
+  assert.equal((await off.call('/api/v1/admin/secrets', { cookie: c2 })).data.details, false);
+  assert.equal((await off.call('/api/v1/admin/secrets/0123456789abcdefghijkl', { cookie: c2 })).data.error, 'endpoint_disabled');
+  assert.equal((await fetch(`${off.base}/admin/secrets/0123456789abcdefghijkl`, { headers: { Cookie: c2 } })).status, 404);
+});
+
 test('technical users: create, tokens act as the technical user, disable/delete revoke, rotate with grace', opts, async () => {
   const a = await adminApp();
   const alice = await a.login(ALICE);
@@ -920,7 +955,7 @@ test('admin API with an admin token: IP binding, comment, max expiry, no admin f
     ['GET', '/api/v1/admin/tokens'], ['POST', '/api/v1/admin/tokens/0123456789abcdef/revoke'], ['GET', '/api/v1/admin/token-policies'], ['POST', '/api/v1/admin/token-policies'],
     ['GET', '/api/v1/admin/service-accounts'], ['POST', '/api/v1/admin/service-accounts'], ['POST', '/api/v1/admin/service-accounts/ops'], ['POST', '/api/v1/admin/service-accounts/ops/delete'],
     ['GET', '/api/v1/admin/service-accounts/ops/tokens'], ['POST', '/api/v1/admin/service-accounts/ops/tokens'], ['POST', '/api/v1/admin/service-accounts/ops/tokens/0123456789abcdef/rotate'],
-    ['POST', '/api/v1/admin/secrets/0123456789abcdefghijkl/burn'],
+    ['POST', '/api/v1/admin/secrets/0123456789abcdefghijkl/burn'], ['GET', '/api/v1/admin/secrets/0123456789abcdefghijkl'],
   ];
   for (const [method, path] of routes) {
     for (const [who, auth] of /** @type {const} */ ([['personal token', { bearer: personal }], ['technical user without admin', { bearer: svcPlain }], ['non-admin session', { cookie: bob }]])) {

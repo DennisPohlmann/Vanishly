@@ -331,6 +331,8 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   const mySecretsOn = Boolean(auth?.c.mySecrets && audit?.c.redis);
   // SECRET_DETAILS: the status page of the user's own secrets from "My secrets" (needs receipts).
   const myDetailsOn = Boolean(mySecretsOn && auth?.c.secretDetails && config.features.receipts);
+  // SECRET_DETAILS: the same status page from the admins' Secrets tab (any secret).
+  const adminDetailsOn = Boolean(auth?.c.admin.ui && auth.c.secretDetails && audit?.c.redis && config.features.receipts);
   // AUTH_PROVIDER=local: the "Users" tab and its admin API.
   const usersOn = Boolean(users && auth?.c.admin.ui);
   // The endpoints switched on (ENABLE_*, sign-in features): the /api index
@@ -350,6 +352,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     [mySecretsOn, 'GET', '/v1/me/secrets'],
     [myDetailsOn, 'GET', '/v1/me/secrets/{ref}'],
     [myDetailsOn && f.burn, 'POST', '/v1/me/secrets/{ref}/burn'],
+    [adminDetailsOn, 'GET', '/v1/admin/secrets/{ref}'],
     [Boolean(auth?.c.groups.any || auth?.c.groups.list.length), 'GET', '/v1/groups'],
     [Boolean(auth?.c.userGroup), 'GET', '/v1/people'],
     [Boolean(tokens), 'GET', '/v1/tokens'],
@@ -1357,10 +1360,16 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
    */
   const myReceipt = async (req, res) => {
     if (!myDetailsOn || !audit || !auth) throw disabled();
-    const u = sessionUser(res);
-    const ref = String(req.params.ref);
-    const me = u.user.toLowerCase();
-    const [s] = validId(ref) ? await audit.secrets({ limit: 1, match: (x) => x.ref === ref && String(x.creator.user || '').toLowerCase() === me }) : [];
+    const me = sessionUser(res).user.toLowerCase();
+    return receiptByRef(String(req.params.ref), (x) => String(x.creator.user || '').toLowerCase() === me);
+  };
+  /**
+   * The receipt of the secret with this audit ref, when match(its audit entry).
+   * @param {string} ref @param {(s: any) => boolean} match
+   */
+  const receiptByRef = async (ref, match) => {
+    if (!audit) throw disabled();
+    const [s] = validId(ref) ? await audit.secrets({ limit: 1, match: (x) => x.ref === ref && match(x) }) : [];
     const rid = s?.receiptRef ? await store.findReceipt((id) => audit.ref('r', id) === s.receiptRef) : null;
     const r = rid ? await store.receipt(rid) : null;
     if (!rid || !r) throw new ApiError(404, 'not_found', 'Unknown or too old');
@@ -1391,7 +1400,17 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     const status = secretStatus(req);
     await ev(req, res, 'admin.secrets_viewed', { details: { filter: { creator: f.actor, recipient: f.recipient, status } } }, true);
     const list = await audit.secrets({ creator: f.actor || (typeof req.query.creator === 'string' ? sanitizeText(req.query.creator, 200) : ''), recipient: f.recipient, status, from: f.from, to: f.to, limit: f.limit });
-    res.json({ count: list.length, secrets: list });
+    res.json({ count: list.length, details: adminDetailsOn, secrets: list });
+  });
+
+  // SECRET_DETAILS: an admin opens the status page of any secret, by its ref, as its creator sees it.
+  api.get('/v1/admin/secrets/:ref', limit('read'), async (req, res) => {
+    if (!adminDetailsOn || !auth) throw disabled();
+    const u = await adminActor(req, res);
+    const { r, refs } = await receiptByRef(String(req.params.ref), () => true);
+    await ev(req, res, 'receipt.viewed', { secret: refs, details: { state: r.state, via: 'admin', admin: u.name || u.user } }, true);
+    // Burn with POST /v1/admin/secrets/{ref}/burn (ADMIN_BURN).
+    res.json({ ...receiptBody(r, { view: true, burn: true }, res, false), mayBurn: Boolean(config.features.burn && auth.c.admin.burn) });
   });
 
   // ADMIN_BURN: an admin destroys a secret, found by its ref from the list above.
@@ -2379,6 +2398,21 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   });
 
   // Admins: the audit log (filter, export, chain check) and all API tokens.
+  // SECRET_DETAILS: the status page of any secret from the admins' Secrets tab.
+  app.get('/admin/secrets/:ref', async (req, res, next) => {
+    if (!adminDetailsOn || !auth) return next();
+    const ref = String(req.params.ref);
+    const t = theme.strings[lang(res)];
+    if (!validId(ref)) return errorPage(req, res, 404, t['receipt.notfound']);
+    const u = userOf(res);
+    if (!u) return void res.type('html').send(page('login', req, res, { page: 'login', title: t['admin.title'], heading: t['admin.title'], text: t['admin.loginText'], returnTo: `/admin/secrets/${ref}` }));
+    if (!auth.isAdmin(u)) {
+      await ev(req, res, 'admin.denied', { outcome: 'denied', reason: 'not_admin' });
+      return errorPage(req, res, 403, t['admin.notAllowed']);
+    }
+    res.type('html').send(page('receipt', req, res, { page: 'receipt', title: t['receipt.title'], id: ref }));
+  });
+
   app.get('/admin', async (req, res, next) => {
     if (!auth?.c.admin.ui || !auth.c.admin.any) return next();
     const t = theme.strings[lang(res)];

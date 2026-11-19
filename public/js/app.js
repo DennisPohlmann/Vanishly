@@ -707,8 +707,8 @@ async function initReceipt() {
   } catch {}
   const key = location.hash.slice(1);
   const err = $('receipt-error');
-  // SECRET_DETAILS: the same page from "My secrets" (/secrets/<ref>), without link and key.
-  const base = location.pathname.startsWith('/secrets/') ? '/api/v1/me/secrets' : '/api/v1/receipts';
+  // SECRET_DETAILS: the same page from "My secrets" (/secrets/<ref>) and the admins' Secrets tab (/admin/secrets/<ref>), without link and key.
+  const base = location.pathname.startsWith('/secrets/') ? '/api/v1/me/secrets' : location.pathname.startsWith('/admin/secrets/') ? '/api/v1/admin/secrets' : '/api/v1/receipts';
   const load = async () => {
     const { status, data } = await api(`${base}/${id}`);
     $('r-locked').hidden = true;
@@ -1079,7 +1079,7 @@ function initSecrets(url) {
           });
           act.append(btn);
         }
-        tr.append(cell(fmt(s.created)), cell(`${who(s)}${created ? ` · ${created}` : ''}`), cell(s.recipients.join(', ') || t('secrets.anyone')), cell(s.comment), cell(s.expires ? fmt(s.expires) : ''), st, cell(opened || (s.denied ? t('secrets.denied', { n: s.denied }) : '')), refCell(s, data.details && s.receiptRef ? `/secrets/${encodeURIComponent(s.ref)}` : ''), ...(admin ? [act] : []));
+        tr.append(cell(fmt(s.created)), cell(`${who(s)}${created ? ` · ${created}` : ''}`), cell(s.recipients.join(', ') || t('secrets.anyone')), cell(s.comment), cell(s.expires ? fmt(s.expires) : ''), st, cell(opened || (s.denied ? t('secrets.denied', { n: s.denied }) : '')), refCell(s, data.details && s.receiptRef ? `${admin ? '/admin' : ''}/secrets/${encodeURIComponent(s.ref)}` : ''), ...(admin ? [act] : []));
         return tr;
       }),
     );
