@@ -76,7 +76,7 @@ jobs:
         env:
           REDIS_URL: redis://localhost:6379
       - name: OpenAPI document
-        run: npx --yes @redocly/cli@2.79.0 lint --extends=minimal openapi/openapi.json
+        run: npx --yes @redocly/cli@2.81.0 lint --extends=minimal openapi/openapi.json
       # WCAG 2.2 AA (axe-core) of every page and state, all built-in
       # templates, light and dark, desktop and 320 px phone.
       - name: accessibility
@@ -157,11 +157,11 @@ jobs:
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: >-
           npx --yes
-          -p semantic-release@25.0.9
+          -p semantic-release@26.0.1
           -p @semantic-release/changelog@7.0.0
           -p @semantic-release/exec@7.1.0
           -p @semantic-release/git@11.0.1
-          -p conventional-changelog-conventionalcommits@9.3.1
+          -p conventional-changelog-conventionalcommits@10.4.1
           semantic-release
 
   # Runs on every run, after the release job if there is one, and builds the
