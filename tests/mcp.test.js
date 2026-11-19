@@ -308,6 +308,13 @@ test('secretHints: the kinds of extra access data, never the text', () => {
   assert.deepEqual(secretHints('203.0.113.10'), ['host']);
   assert.deepEqual(secretHints('one\ntwo'), ['lines']);
   assert.deepEqual(secretHints('Login = root\nhunter22 @ srv.example.org'), ['user', 'host', 'lines']);
+  assert.deepEqual(secretHints('!-https://x.example.com _dmarc.example.com'), ['url', 'host']);
+  // Linear time: MAX_SECRET_CHARS allows a million characters (CodeQL js/polynomial-redos).
+  for (const p of ['!', 'a@!', 'a-', 'a.', 'a+', '1.']) {
+    const t = Date.now();
+    secretHints(p.repeat(300000));
+    assert.ok(Date.now() - t < 1000, p);
+  }
 });
 
 test('CONFIRM_CHECKBOX: the person confirms every create_secret by elicitation; the model cannot', async () => {

@@ -120,8 +120,8 @@ export function receiptId(v) {
  * @returns {('url' | 'email' | 'user' | 'pair' | 'host' | 'lines')[]}
  */
 export function secretHints(v) {
-  const url = /\b[a-z][a-z0-9+.-]*:\/\/\S+|\bwww\.\S+/gi;
-  const email = /[^\s@:]+@[^\s@]+\.[a-z]{2,}/gi;
+  const url = /(?<![a-z0-9]|[a-z0-9][+.-])[a-z][a-z0-9+.-]*:\/\/\S+|\bwww\.\S+/gi;
+  const email = /(?<![^\s@:])[^\s@:]+@[^\s@]+\.[a-z]{2,}/gi;
   const rest = v.replace(url, ' ').replace(email, ' ');
   /** @type {('url' | 'email' | 'user' | 'pair' | 'host' | 'lines')[]} */
   const found = [];
@@ -129,7 +129,7 @@ export function secretHints(v) {
   if (email.test(v)) found.push('email');
   if (/\b(?:user(?:name)?|login|benutzer(?:name)?|account|konto|uid)\s*[:=]/i.test(v)) found.push('user');
   if (/(?:^|\s)[\w.-]{1,64}:[^\s/:]\S*/.test(rest)) found.push('pair');
-  if (/\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}\b|\b\d{1,3}(?:\.\d{1,3}){3}\b/i.test(rest)) found.push('host');
+  if (/(?<![a-z0-9]|[a-z0-9][.-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}\b|\b\d{1,3}(?:\.\d{1,3}){3}\b/i.test(rest)) found.push('host');
   if (v.split(/\r?\n/).filter((l) => l.trim()).length > 1) found.push('lines');
   return found;
 }
