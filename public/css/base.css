@@ -353,6 +353,29 @@ fieldset.scopes legend { font-weight: 600; margin: 0 0 .35rem; padding: 0; }
   table.data td:has(> button) { grid-template-columns: 1fr; }
   table.data td[data-label]:has(> button)::before { content: none; }
 }
+/* Desktop: compact data tables. One line per row; only the columns with long
+   free text wrap (nth-child follows the <thead> in admin.html, tokens.html, mysecrets.html). */
+@media (min-width: 48rem) {
+  body[data-page="admin"] .site-main { max-width: 100rem; }
+  table.data { font-size: .8125rem; line-height: 1.35; }
+  table.data th, table.data td { padding: .3rem .5rem; vertical-align: top; white-space: nowrap; }
+  table.data th { font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; border-bottom-color: var(--border); }
+  table.data td.mono, table.data code { font-size: .95em; overflow-wrap: normal; }
+  table.data tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+  table.data tbody tr:hover td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  table.data .badge { font-size: .72rem; padding: 0 .45rem; white-space: nowrap; }
+  table.data .btn-small { min-height: 1.6rem; padding: .1rem .55rem; font-size: .75rem; }
+  table.data td:has(> .btn) { width: 1%; text-align: right; }
+  :is(#audit-rows) > tr > td:is(:nth-child(4), :nth-child(5), :nth-child(7)),
+  :is(#secrets-rows) > tr > td:is(:nth-child(3), :nth-child(4), :nth-child(7)),
+  :is(#admin-token-rows) > tr > td:is(:nth-child(6), :nth-child(7)),
+  :is(#token-rows, #svc-token-rows) > tr > td:is(:nth-child(5), :nth-child(6)),
+  :is(#svc-rows) > tr > td:is(:nth-child(2), :nth-child(4)),
+  :is(#policy-rows) > tr > td:nth-child(2),
+  :is(#users-rows) > tr > td:nth-child(4) { white-space: normal; overflow-wrap: break-word; }
+  /* Where the address, route and browser go: wide enough for a few lines, not one word per line. */
+  #audit-rows > tr > td:nth-child(7):not(:empty), #secrets-rows > tr > td:nth-child(7):not(:empty) { min-width: 18rem; }
+}
 /* Admin: tabs */
 .admin-head h1 { margin-bottom: .75rem; }
 .tabs { display: flex; flex-wrap: wrap; gap: .25rem .5rem; border-bottom: 1px solid var(--border); margin: 0 0 1rem; }
