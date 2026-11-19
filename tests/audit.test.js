@@ -796,6 +796,44 @@ test('MY_SECRETS: "My secrets" lists the own secrets and those for the user or t
   }
 });
 
+test('SECRET_DETAILS: the creator opens the status page from "My secrets" by ref and burns it; recipients and others cannot', opts, async () => {
+  const a = await startApp({});
+  const alice = await a.login(ALICE);
+  const bob = await a.login(BOB);
+  const opened = await a.call('/api/v1/share', { cookie: alice, body: { secret: PLAIN, ttl: 600, recipients: ['bob@example.com'], comment: 'opened' } });
+  await a.call('/api/v1/open', { cookie: bob, body: { link: opened.data.shareUrl } });
+  await a.call('/api/v1/share', { cookie: alice, body: { secret: PLAIN, ttl: 600, recipients: ['bob@example.com'], comment: 'live' } });
+  const list = (await a.call('/api/v1/me/secrets', { cookie: alice })).data;
+  assert.equal(list.details, true);
+  /** @param {string} c */ const refOf = (c) => list.secrets.find((/** @type {any} */ x) => x.comment === c).ref;
+  // Opened: the receipt outlives the secret; the creator sees who opened it (RECEIPT_SHOW_VIEWER), no link.
+  const st = await a.call(`/api/v1/me/secrets/${refOf('opened')}`, { cookie: alice });
+  assert.equal(st.status, 200);
+  assert.deepEqual([st.data.state, st.data.viewedByUser, st.data.secretPath, st.data.mayBurn], ['received', ['bob@example.com'], null, true]);
+  assert.ok(!st.text.includes(opened.data.id), 'no secret id');
+  // Only the creator: the recipient (who has the row in their list) and strangers get 404.
+  assert.equal((await a.call(`/api/v1/me/secrets/${refOf('live')}`, { cookie: bob })).status, 404);
+  assert.equal((await a.call(`/api/v1/me/secrets/${refOf('live')}/burn`, { cookie: bob, body: {} })).status, 404);
+  assert.equal((await a.call(`/api/v1/me/secrets/${refOf('live')}`)).status, 401);
+  assert.equal((await a.call('/api/v1/me/secrets/not-a-ref', { cookie: alice })).status, 404);
+  // Burn: once, then gone; the audit log has it.
+  assert.equal((await a.call(`/api/v1/me/secrets/${refOf('live')}/burn`, { cookie: alice, body: {} })).data.state, 'burned');
+  assert.equal((await a.call(`/api/v1/me/secrets/${refOf('live')}/burn`, { cookie: alice, body: {} })).data.error, 'gone');
+  assert.equal((await a.call(`/api/v1/me/secrets/${refOf('live')}`, { cookie: alice })).data.state, 'burned');
+  assert.ok((await a.events()).some((e) => e.type === 'secret.burned' && e.details?.via === 'my_secrets'));
+  // The page: the status page for signed-in users, the sign-in page otherwise.
+  assert.match(await (await fetch(`${a.base}/secrets/${refOf('live')}`, { headers: { Cookie: alice } })).text(), /data-page="receipt"/);
+  assert.match(await (await fetch(`${a.base}/secrets/${refOf('live')}`)).text(), /data-page="login"/);
+  // SECRET_DETAILS=false: plain refs, page 404, API endpoint_disabled.
+  const b = await startApp({ SECRET_DETAILS: 'false' });
+  const c = await b.login(ALICE);
+  await b.call('/api/v1/share', { cookie: c, body: { secret: PLAIN, ttl: 600 } });
+  const l2 = (await b.call('/api/v1/me/secrets', { cookie: c })).data;
+  assert.equal(l2.details, false);
+  assert.equal((await fetch(`${b.base}/secrets/${l2.secrets[0].ref}`, { headers: { Cookie: c } })).status, 404);
+  assert.equal((await b.call(`/api/v1/me/secrets/${l2.secrets[0].ref}`, { cookie: c })).data.error, 'endpoint_disabled');
+});
+
 test('technical users: create, tokens act as the technical user, disable/delete revoke, rotate with grace', opts, async () => {
   const a = await adminApp();
   const alice = await a.login(ALICE);

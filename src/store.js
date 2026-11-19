@@ -322,6 +322,25 @@ export class Store {
     return null;
   }
 
+  /**
+   * The receipt id for which match(rid) is true, else null (SECRET_DETAILS:
+   * "My secrets" knows receipts only by audit refs). Receipts outlive their
+   * secret (RECEIPT_KEEP), so opened and expired ones are found too.
+   * shortcut: a SCAN over all receipts like findSecret(); an index ref -> id if it ever gets slow.
+   * @param {(rid: string) => boolean} match
+   */
+  async findReceipt(match) {
+    const pattern = `${this.p.replace(/[*?[\]\\]/g, '\\$&')}r:*`;
+    for await (const batch of this.redis.scanIterator({ MATCH: pattern, COUNT: 500 })) {
+      for (const key of /** @type {string[]} */ ([]).concat(batch)) {
+        // validId() also skips the view lists and opener sets (r:<rid>:v, r:<rid>:o).
+        const rid = key.slice(this.p.length + 2);
+        if (validId(rid) && match(rid)) return rid;
+      }
+    }
+    return null;
+  }
+
   /** @param {string} rid */
   async receipt(rid) {
     const r = `${this.p}r:${rid}`;

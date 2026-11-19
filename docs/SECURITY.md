@@ -374,7 +374,7 @@ a SIEM, `API_TOKEN_MAX_EXPIRY` set, TLS with `HSTS=true`, and
 | Anyone with the link | open a secret without recipients (`/s`, `reveal`, `/v1/open`); with `STATUS_ACCESS=link` see its status and burn it | the full link (and the passphrase, if set) |
 | Anyone | create secrets (`/v1/secrets`, `/v1/share`); `GET /v1/config`, the index, the OpenAPI document | `AUTH_CREATE=anyone` or no sign-in |
 | Signed-in user | create; open secrets addressed to them or their groups; `/v1/me`, people and group search; with `STATUS_ACCESS=signed-in` the status of secrets they created, are responsible for or opened, and burn the ones they created or are responsible for | a session or a provider token (`AUTH_API_AUDIENCE`) |
-| Signed-in user, session only | own API tokens (`/v1/tokens`), "My secrets" (`/v1/me/secrets`) | the session cookie; a token cannot manage tokens |
+| Signed-in user, session only | own API tokens (`/v1/tokens`), "My secrets" (`/v1/me/secrets`; status and burn of their own secrets by ref, `/v1/me/secrets/{ref}`, `SECRET_DETAILS`) | the session cookie; a token cannot manage tokens |
 | API token | what its owner may, limited to its scopes: `create` (create), `read` (meta, reveal, open), `status` (status), `burn` (burn; learns only whether the secret was still there) | `vnly_` token, from its networks, re-checked against the owner's current policy on every call |
 | Admin | the admin interface and `/v1/admin/*`: audit log, all tokens, token policies, secrets' metadata (never content), burn, local accounts, technical users | `ADMIN_USERS` / `ADMIN_GROUPS` and a session |
 | Technical user | what its tokens' scopes allow; scope `admin` only with `API_ADMIN_TOKENS`, IP-bound, with a comment on every call | tokens issued by an admin; no sign-in |

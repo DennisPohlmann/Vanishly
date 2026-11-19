@@ -1412,6 +1412,10 @@
                     "count": {
                       "type": "integer"
                     },
+                    "details": {
+                      "type": "boolean",
+                      "description": "SECRET_DETAILS: the refs open the status page (`/secrets/{ref}`) of the user's own secrets"
+                    },
                     "secrets": {
                       "type": "array",
                       "items": {
@@ -1465,6 +1469,234 @@
           },
           "429": {
             "description": "`rate_limited`: rate limit hit (RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP, or API_TOKEN_RATE_LIMIT per token)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/secrets/{ref}": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "operationId": "mySecretStatus",
+        "summary": "Status of one of my secrets",
+        "description": "The status page of a secret the signed-in user created, by its ref from `GET /api/v1/me/secrets`: the same answer as `GET /api/v1/receipts/{id}` for its creator (RECEIPT_SHOW_VIEWER applies), but without `secretPath` (the key is not on the server). The page `/secrets/{ref}` uses it. Only for the creator, not for recipients. Needs SECRET_DETAILS (default true), MY_SECRETS and ENABLE_RECEIPTS. Session only, no API tokens.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "description": "The secret's ref from `GET /api/v1/me/secrets`",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{22}$"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`session_required` (called with an API token); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: not a secret of this user, or its receipt is gone (RECEIPT_KEEP); `endpoint_disabled`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the window resets"
+              },
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/secrets/{ref}/burn": {
+      "post": {
+        "tags": [
+          "meta"
+        ],
+        "operationId": "burnMySecret",
+        "summary": "Destroy one of my secrets now",
+        "description": "Burns a secret the signed-in user created, by its ref, from its status page (`/secrets/{ref}`). Same rules as `GET /api/v1/me/secrets/{ref}`, and needs ENABLE_BURN. Session only, no API tokens.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "description": "The secret's ref from `GET /api/v1/me/secrets`",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{22}$"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/AuditComment"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Burned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "const": "burned"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`session_required` (called with an API token); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: not a secret of this user, or its receipt is gone (RECEIPT_KEEP); `endpoint_disabled` (also ENABLE_BURN=false)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already viewed, burned or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit hit (RATE_LIMIT_CREATE / RATE_LIMIT_READ per RATE_LIMIT_WINDOW and client IP)",
             "headers": {
               "Retry-After": {
                 "schema": {

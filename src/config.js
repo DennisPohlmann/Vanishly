@@ -311,7 +311,7 @@ export const SETTINGS = [
   'API_TOKEN_EXPIRY_OPTIONS', 'API_TOKEN_DEFAULT_EXPIRY', 'API_TOKEN_MAX_EXPIRY', 'API_TOKEN_MAX_PER_USER',
   'API_TOKEN_RATE_LIMIT', 'API_TOKEN_COMMENT', 'API_TOKEN_ALLOWED_SCOPES', 'API_TOKEN_DEFAULT_SCOPES',
   'API_TOKEN_SCOPES_BY_GROUP', 'API_TOKEN_ADMIN_POLICY', 'API_SERVICE_ACCOUNTS', 'API_ADMIN_TOKENS',
-  'API_ADMIN_TOKEN_REQUIRE_IP', 'API_ADMIN_TOKEN_MAX_EXPIRY', 'API_ADMIN_TOKEN_CAN_ISSUE_ADMIN', 'API_ADMIN_COMMENT', 'ADMIN_UI', 'MY_SECRETS',
+  'API_ADMIN_TOKEN_REQUIRE_IP', 'API_ADMIN_TOKEN_MAX_EXPIRY', 'API_ADMIN_TOKEN_CAN_ISSUE_ADMIN', 'API_ADMIN_COMMENT', 'ADMIN_UI', 'MY_SECRETS', 'SECRET_DETAILS',
 ];
 const AUTH_SETTINGS = SETTINGS.slice(SETTINGS.indexOf('ENTRA_TENANT_ID'));
 /**
@@ -818,6 +818,8 @@ function authConfig(env, baseUrl) {
     admin,
     // MY_SECRETS: "My secrets" in the user menu (needs AUDIT_LOG_REDIS, checked below).
     mySecrets: sw('MY_SECRETS', true),
+    // SECRET_DETAILS: the creator opens the status page of a secret from "My secrets" (no link needed) and may burn it there.
+    secretDetails: sw('SECRET_DETAILS', true),
     tokens,
     local: local ? localConfig(env, num) : null,
     // Groups the identity must keep besides RECIPIENT_GROUPS (admins, token makers).

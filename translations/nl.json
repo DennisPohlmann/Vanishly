@@ -325,6 +325,7 @@
   "secrets.denied": "{n} geweigerde poging(en)",
   "secrets.burn": "Vernietigen",
   "secrets.burnConfirm": "Het geheim {ref} nu vernietigen? Daarna kan niemand het meer openen.",
+  "secrets.details": "Status van geheim {ref}",
   "secrets.via.browser": "webpagina",
   "secrets.via.api": "API",
   "secrets.via.token": "API-token",

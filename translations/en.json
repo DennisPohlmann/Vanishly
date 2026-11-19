@@ -325,6 +325,7 @@
   "secrets.denied": "{n} refused attempt(s)",
   "secrets.burn": "Burn",
   "secrets.burnConfirm": "Burn the secret {ref} now? Nobody can open it afterwards.",
+  "secrets.details": "Status of secret {ref}",
   "secrets.via.browser": "web page",
   "secrets.via.api": "API",
   "secrets.via.token": "API token",

@@ -306,14 +306,15 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   const apiIpKind = (p) => {
     if (/^\/v1\/admin(\/|$)/.test(p)) return 'admin';
     if (/^\/v1\/(secrets\/[^/]+(\/reveal)?|open)$/.test(p)) return 'read';
-    if (/^\/v1\/(secrets|share|groups|people)$/.test(p) || p.startsWith('/v1/receipts/')) return 'create';
+    if (/^\/v1\/(secrets|share|groups|people)$/.test(p) || p.startsWith('/v1/receipts/') || p.startsWith('/v1/me/secrets/')) return 'create';
     return '';
   };
   /** @param {string} p @returns {'create' | 'read' | 'admin' | ''} */
   const pageIpKind = (p) => {
     if (p === '/') return 'create';
     if (p.startsWith('/s/')) return 'read';
-    if (p.startsWith('/r/')) return 'create';
+    // The status pages: by the receipt link, or from "My secrets" (SECRET_DETAILS).
+    if (p.startsWith('/r/') || p.startsWith('/secrets/')) return 'create';
     if (p === '/admin' || p.startsWith('/admin/')) return 'admin';
     return '';
   };
@@ -328,6 +329,8 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   const disabled = () => new ApiError(404, 'endpoint_disabled', 'This endpoint is disabled on this server');
   // MY_SECRETS: "My secrets" (page, menu entry, API) only with sign-in and the audit stream in Redis.
   const mySecretsOn = Boolean(auth?.c.mySecrets && audit?.c.redis);
+  // SECRET_DETAILS: the status page of the user's own secrets from "My secrets" (needs receipts).
+  const myDetailsOn = Boolean(mySecretsOn && auth?.c.secretDetails && config.features.receipts);
   // AUTH_PROVIDER=local: the "Users" tab and its admin API.
   const usersOn = Boolean(users && auth?.c.admin.ui);
   // The endpoints switched on (ENABLE_*, sign-in features): the /api index
@@ -345,6 +348,8 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     [f.receipts && f.burn && f.receiptApi, 'POST', '/v1/receipts/{id}/burn'],
     [Boolean(auth) && f.meApi, 'GET', '/v1/me'],
     [mySecretsOn, 'GET', '/v1/me/secrets'],
+    [myDetailsOn, 'GET', '/v1/me/secrets/{ref}'],
+    [myDetailsOn && f.burn, 'POST', '/v1/me/secrets/{ref}/burn'],
     [Boolean(auth?.c.groups.any || auth?.c.groups.list.length), 'GET', '/v1/groups'],
     [Boolean(auth?.c.userGroup), 'GET', '/v1/people'],
     [Boolean(tokens), 'GET', '/v1/tokens'],
@@ -1061,28 +1066,19 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     res.json({ secret, viewsLeft: r.viewsLeft });
   });
 
-  api.get('/v1/receipts/:id', receiptsOn, limit('read'), async (req, res) => {
-    pagesOnly(config.features.receiptApi, req);
-    await needScope(req, res, 'status');
-    const id = String(req.params.id);
-    const r = validId(id) ? await store.receipt(id) : null;
-    if (!r) throw new ApiError(404, 'not_found', 'Unknown or too old');
-    const refs = { ref: audit?.ref('s', r.secretId), receiptRef: audit?.ref('r', id) };
-    let may;
-    try {
-      may = statusAccessOf(r, res, 'view');
-    } catch (err) {
-      await ev(req, res, 'receipt.denied', { outcome: 'denied', reason: /** @type {ApiError} */ (err).code, secret: refs });
-      throw err;
-    }
-    await ev(req, res, 'receipt.viewed', { secret: refs, details: { state: r.state } });
+  /**
+   * The status of a receipt as the status page shows it (GET /v1/receipts/{id},
+   * GET /v1/me/secrets/{ref}). share: the link to the secret (the page adds the key).
+   * @param {any} r from store.receipt() @param {{ view: boolean, burn: boolean }} may @param {import('express').Response} res @param {boolean} share
+   */
+  const receiptBody = (r, may, res, share) => {
     const signedIn = config.statusAccess === 'signed-in';
     // RECEIPT_SHOW_VIEWER: names only for the creator and the responsible people,
     // never for whoever only has the link or opened it.
     const f = signedIn && (r.creator || r.responsible.length) && may.burn ? auth?.c.showViewer : null;
-    res.json({
+    return {
       state: r.state,
-      secretPath: config.features.receiptShareLink && (r.state === 'new' || r.state === 'viewed') ? `/s/${r.secretId}` : null,
+      secretPath: share && config.features.receiptShareLink && (r.state === 'new' || r.state === 'viewed') ? `/s/${r.secretId}` : null,
       created: new Date(r.created).toISOString(),
       expires: new Date(r.expires).toISOString(),
       maxViews: r.maxViews,
@@ -1101,7 +1097,25 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       // A token also needs the scope "burn".
       mayBurn: config.features.burn && may.burn && (userOf(res)?.token?.scopes.includes('burn') ?? true),
       ...(config.comment.mode !== 'off' && r.comment ? { comment: r.comment } : {}),
-    });
+    };
+  };
+
+  api.get('/v1/receipts/:id', receiptsOn, limit('read'), async (req, res) => {
+    pagesOnly(config.features.receiptApi, req);
+    await needScope(req, res, 'status');
+    const id = String(req.params.id);
+    const r = validId(id) ? await store.receipt(id) : null;
+    if (!r) throw new ApiError(404, 'not_found', 'Unknown or too old');
+    const refs = { ref: audit?.ref('s', r.secretId), receiptRef: audit?.ref('r', id) };
+    let may;
+    try {
+      may = statusAccessOf(r, res, 'view');
+    } catch (err) {
+      await ev(req, res, 'receipt.denied', { outcome: 'denied', reason: /** @type {ApiError} */ (err).code, secret: refs });
+      throw err;
+    }
+    await ev(req, res, 'receipt.viewed', { secret: refs, details: { state: r.state } });
+    res.json(receiptBody(r, may, res, true));
   });
 
   api.post('/v1/receipts/:id/burn', receiptsOn, limit('read'), async (req, res) => {
@@ -1332,7 +1346,42 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     const list = await audit.secrets({ status: secretStatus(req), from: f.from, to: f.to, limit: f.limit, match });
     // Addresses and browsers of who opened it: only for admins.
     for (const s of list) s.views = s.views.map((/** @type {any} */ { ip, userAgent, ...v }) => v);
-    res.json({ count: list.length, secrets: list });
+    res.json({ count: list.length, details: myDetailsOn, secrets: list });
+  });
+
+  /**
+   * SECRET_DETAILS: the receipt of a secret the signed-in user created, by
+   * its audit ref (no link needed). Only the creator: recipients see the list
+   * row, not the status page.
+   * @param {import('express').Request} req @param {import('express').Response} res
+   */
+  const myReceipt = async (req, res) => {
+    if (!myDetailsOn || !audit || !auth) throw disabled();
+    const u = sessionUser(res);
+    const ref = String(req.params.ref);
+    const me = u.user.toLowerCase();
+    const [s] = validId(ref) ? await audit.secrets({ limit: 1, match: (x) => x.ref === ref && String(x.creator.user || '').toLowerCase() === me }) : [];
+    const rid = s?.receiptRef ? await store.findReceipt((id) => audit.ref('r', id) === s.receiptRef) : null;
+    const r = rid ? await store.receipt(rid) : null;
+    if (!rid || !r) throw new ApiError(404, 'not_found', 'Unknown or too old');
+    return { rid, r, refs: { ref, receiptRef: s.receiptRef } };
+  };
+
+  api.get('/v1/me/secrets/:ref', limit('read'), async (req, res) => {
+    const { r, refs } = await myReceipt(req, res);
+    await ev(req, res, 'receipt.viewed', { secret: refs, details: { state: r.state, via: 'my_secrets' } });
+    // The creator: all they would see with the link, but no link (the key is not on the server).
+    res.json(receiptBody(r, { view: true, burn: true }, res, false));
+  });
+
+  api.post('/v1/me/secrets/:ref/burn', limit('read'), async (req, res) => {
+    if (!config.features.burn) throw disabled();
+    const { rid, refs } = await myReceipt(req, res);
+    const r = await store.burn(rid);
+    if (r === null) throw new ApiError(404, 'not_found', 'Unknown or too old');
+    if (!r) throw new ApiError(409, 'gone', 'The secret is already gone');
+    await ev(req, res, 'secret.burned', { reason: 'manual', secret: refs, details: { via: 'my_secrets' }, comment: commentOf(req, req.body) });
+    res.json({ state: 'burned' });
   });
 
   api.get('/v1/admin/secrets', limit('read'), async (req, res) => {
@@ -2370,6 +2419,16 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         passwordHint: users ? theme.strings[lang(res)]['local.passwordHint'].replace('{n}', String(users.c.minLength)) : '',
       }),
     );
+  });
+
+  // SECRET_DETAILS: the status page of an own secret, by its ref from "My secrets".
+  app.get('/secrets/:ref', (req, res, next) => {
+    if (!myDetailsOn) return next();
+    const ref = String(req.params.ref);
+    const t = theme.strings[lang(res)];
+    if (!validId(ref)) return errorPage(req, res, 404, t['receipt.notfound']);
+    if (!userOf(res)) return void res.type('html').send(page('login', req, res, { page: 'login', title: t['mine.title'], heading: t['mine.title'], text: t['mine.loginText'], returnTo: `/secrets/${ref}` }));
+    res.type('html').send(page('receipt', req, res, { page: 'receipt', title: t['receipt.title'], id: ref }));
   });
 
   app.get('/r/:id', (req, res, next) => {

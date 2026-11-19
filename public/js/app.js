@@ -707,8 +707,10 @@ async function initReceipt() {
   } catch {}
   const key = location.hash.slice(1);
   const err = $('receipt-error');
+  // SECRET_DETAILS: the same page from "My secrets" (/secrets/<ref>), without link and key.
+  const base = location.pathname.startsWith('/secrets/') ? '/api/v1/me/secrets' : '/api/v1/receipts';
   const load = async () => {
-    const { status, data } = await api(`/api/v1/receipts/${id}`);
+    const { status, data } = await api(`${base}/${id}`);
     $('r-locked').hidden = true;
     if (status !== 200) {
       $('receipt-facts').hidden = true;
@@ -790,7 +792,7 @@ async function initReceipt() {
   };
   $('burn').addEventListener('click', async () => {
     if (!confirm(t('receipt.burnConfirm'))) return;
-    const { status } = await api(`/api/v1/receipts/${id}/burn`, {});
+    const { status } = await api(`${base}/${id}/burn`, {});
     if (status !== 200 && status !== 409) showError(err, errorText(status));
     await load();
   });
@@ -1011,6 +1013,22 @@ function initAdmin() {
 }
 
 /**
+ * The short ref of a secret; a link to its status page when there is one (SECRET_DETAILS).
+ * @param {any} s @param {string} href
+ */
+function refCell(s, href) {
+  const td = cell(href ? '' : s.ref.slice(0, 10), 'mono');
+  if (href) {
+    const a = document.createElement('a');
+    a.href = href;
+    a.textContent = s.ref.slice(0, 10);
+    a.setAttribute('aria-label', t('secrets.details', { ref: s.ref.slice(0, 10) }));
+    td.append(a);
+  }
+  return td;
+}
+
+/**
  * The secrets as the audit log knows them (metadata only): all of them for
  * admins, the user's own and those for their groups on "My secrets".
  * @param {string} url
@@ -1061,7 +1079,7 @@ function initSecrets(url) {
           });
           act.append(btn);
         }
-        tr.append(cell(fmt(s.created)), cell(`${who(s)}${created ? ` · ${created}` : ''}`), cell(s.recipients.join(', ') || t('secrets.anyone')), cell(s.comment), cell(s.expires ? fmt(s.expires) : ''), st, cell(opened || (s.denied ? t('secrets.denied', { n: s.denied }) : '')), cell(s.ref.slice(0, 10), 'mono'), ...(admin ? [act] : []));
+        tr.append(cell(fmt(s.created)), cell(`${who(s)}${created ? ` · ${created}` : ''}`), cell(s.recipients.join(', ') || t('secrets.anyone')), cell(s.comment), cell(s.expires ? fmt(s.expires) : ''), st, cell(opened || (s.denied ? t('secrets.denied', { n: s.denied }) : '')), refCell(s, data.details && s.receiptRef ? `/secrets/${encodeURIComponent(s.ref)}` : ''), ...(admin ? [act] : []));
         return tr;
       }),
     );
