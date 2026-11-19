@@ -897,7 +897,7 @@ test('OpenAPI: every rate-limited operation documents 429', async () => {
   const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
   for (const [, m, p] of src.matchAll(/api\.(get|post)\('(\/v1[^']*)',\s*(?:\w+,\s*)?(\w+)/g)) {
     const key = `${m} ${p.replace(/:(\w+)/g, '{$1}')}`;
-    if (!unlimited.has(key)) assert.match(src, new RegExp(`api\\.${m}\\('${p.replace(/[/]/g, '\\/')}',\\s*(?:\\w+,\\s*)?limit\\(`), key);
+    if (!unlimited.has(key)) assert.match(src, new RegExp(`api\\.${m}\\('${p.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}',\\s*(?:\\w+,\\s*)?limit\\(`), key);
   }
 });
 
