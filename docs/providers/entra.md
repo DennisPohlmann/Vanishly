@@ -9,7 +9,9 @@ other tenants. Entra uses its own settings (`ENTRA_*`), not `OIDC_*`.
 1. Entra admin center → **App registrations** → **New registration**:
    name `Vanishly`, "Accounts in this organizational directory only",
    redirect URI **Web** `https://ots.example.com/auth/callback`.
-2. **Certificates & secrets** → new client secret; note its value.
+2. **Certificates & secrets** → new client secret; note its value. Or,
+   instead of a secret, upload a certificate (**Certificates** tab, see
+   [Certificate instead of a client secret](#certificate-instead-of-a-client-secret)).
 3. Optional, to sign out of Microsoft too (`AUTH_LOGOUT=provider`): add
    `https://ots.example.com/auth/logged-out` as a second **Web** redirect
    URI (Authentication). By default (`local`) only Vanishly signs out, as
@@ -27,7 +29,9 @@ outside the tenant away, the built-in sign-in decides per secret.
 |---|---|---|
 | `ENTRA_TENANT_ID` | (required) | Directory (tenant) id, a GUID; tokens of other tenants are refused |
 | `ENTRA_CLIENT_ID` | (required) | Application (client) id of the app registration |
-| `ENTRA_CLIENT_SECRET` | (required) | Client secret; or `ENTRA_CLIENT_SECRET_FILE` with a file that holds it (Docker secrets) |
+| `ENTRA_CLIENT_SECRET` | (required) | Client secret; or `ENTRA_CLIENT_SECRET_FILE` with a file that holds it (Docker secrets). Not needed with a certificate |
+| `ENTRA_CLIENT_CERTIFICATE_FILE` | | Instead of the client secret: PEM file with the certificate uploaded to the app registration ([below](#certificate-instead-of-a-client-secret)) |
+| `ENTRA_CLIENT_KEY_FILE` | | The unencrypted RSA private key of that certificate (PEM; may be the same file) |
 | `ENTRA_AUTHORITY` | `https://login.microsoftonline.com` | Only for national clouds, e.g. `https://login.microsoftonline.us` |
 | `ENTRA_GRAPH` | `false` | `true`: use Microsoft Graph for the group and people search and for users in more than 200 groups (see below) |
 | `ENTRA_GRAPH_URL` | `https://graph.microsoft.com` | Only for national clouds |
@@ -36,6 +40,33 @@ outside the tenant away, the built-in sign-in decides per secret.
 Plus `BASE_URL` and `AUTH_SECRET`, and the general sign-in settings in
 [CONFIG.md](../CONFIG.md#sign-in-and-recipients-auth_-entra_-oidc_-directory_-recipient).
 `DIRECTORY_*` does not apply to Entra; it uses `ENTRA_GRAPH`.
+
+## Certificate instead of a client secret
+
+Vanishly can sign in to Entra with a certificate instead of a client
+secret (a client assertion, `private_key_jwt`): the key never leaves the
+server, and no secret value has to be copied around. The sign-in and
+Microsoft Graph both use it.
+
+```bash
+openssl req -x509 -newkey rsa:3072 -nodes -days 730 -subj "/CN=Vanishly" \
+  -keyout entra-key.pem -out entra-cert.pem
+```
+
+Upload `entra-cert.pem` in the app registration (**Certificates &
+secrets** → **Certificates** → **Upload certificate**), then:
+
+```bash
+ENTRA_CLIENT_SECRET=
+ENTRA_CLIENT_CERTIFICATE_FILE=/run/secrets/entra-cert.pem
+ENTRA_CLIENT_KEY_FILE=/run/secrets/entra-key.pem
+```
+
+The key must be RSA and unencrypted (Vanishly reads it at the start and
+stops when it does not fit the certificate); keep the file readable only
+by Vanishly. A certificate and a client secret at the same time stop the
+start. Before the certificate expires, upload the next one, switch the
+files and restart.
 
 ## Who is who
 
@@ -123,6 +154,7 @@ AUTH_SECRET_FILE=/run/secrets/auth_secret
 |---|---|
 | Microsoft shows `AADSTS50011` (redirect URI mismatch) | The redirect URI is not exactly `<BASE_URL>/auth/callback`; check `BASE_URL` and the **Web** platform (not SPA) |
 | Microsoft shows `AADSTS7000215` (invalid client secret) | The value of the secret, not its id, belongs into `ENTRA_CLIENT_SECRET`; or it expired |
+| Microsoft shows `AADSTS700027` (client assertion failed) | The certificate of `ENTRA_CLIENT_CERTIFICATE_FILE` is not uploaded to this app registration, or it expired |
 | Log `auth: sign-in failed: token from another tenant` | `ENTRA_TENANT_ID` is not the tenant the account belongs to |
 | A group member gets "not shared with your account" | No groups claim (step "Groups"), or the user is in more than 200 groups and `ENTRA_GRAPH` is off |
 | Log `auth: people search failed: Graph answered 403` | Admin consent for `User.Read.All` / `GroupMember.Read.All` missing |

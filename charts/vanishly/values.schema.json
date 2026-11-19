@@ -817,6 +817,20 @@
             }
           ]
         },
+        "ENTRA_CLIENT_CERTIFICATE_FILE": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "ENTRA_CLIENT_KEY_FILE": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
         "ENTRA_GRAPH": {
           "anyOf": [
             {

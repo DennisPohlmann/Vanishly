@@ -201,6 +201,10 @@ config:
   # ENTRA_CLIENT_SECRET is a credential: set it through secretConfig or existingSecret, not here.
   # Entra ID: file with the client secret instead (e.g. from extraVolumes).
   ENTRA_CLIENT_SECRET_FILE: ""
+  # Entra ID: instead of the client secret, the certificate of the app registration (PEM file, e.g. from extraVolumes).
+  ENTRA_CLIENT_CERTIFICATE_FILE: ""
+  # Entra ID: the unencrypted RSA key of that certificate (PEM file; may be the same file).
+  ENTRA_CLIENT_KEY_FILE: ""
   # Entra ID: group search and large group lists via Microsoft Graph, needs GroupMember.Read.All (false).
   ENTRA_GRAPH: ""
   # Entra ID, national clouds only: sign-in host (https://login.microsoftonline.com).

@@ -1,5 +1,6 @@
 // Vanishly - settings from the environment (see .env.example and docs/CONFIG.md).
 
+import { createHash, createPrivateKey, X509Certificate } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 
@@ -298,6 +299,7 @@ export const SETTINGS = [
   'AUDIT_LOG_WEBHOOK_URL', 'AUDIT_LOG_WEBHOOK_AUTH', 'AUDIT_LOG_WEBHOOK_AUTH_FILE', 'AUDIT_LOG_WEBHOOK_FORMAT',
   'AUDIT_COMMENT', 'AUDIT_COMMENT_MAX',
   'AUTH_PROVIDER', 'ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET', 'ENTRA_CLIENT_SECRET_FILE',
+  'ENTRA_CLIENT_CERTIFICATE_FILE', 'ENTRA_CLIENT_KEY_FILE',
   'ENTRA_AUTHORITY', 'ENTRA_GRAPH', 'ENTRA_GRAPH_URL', 'ENTRA_SHOW_ADDRESS', 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET',
   'OIDC_CLIENT_SECRET_FILE', 'OIDC_SCOPES', 'OIDC_GROUPS_CLAIM', 'AUTH_ALLOWED_DOMAINS', 'DIRECTORY_API', 'DIRECTORY_URL',
   'DIRECTORY_CLIENT_ID', 'DIRECTORY_CLIENT_SECRET', 'DIRECTORY_CLIENT_SECRET_FILE', 'DIRECTORY_API_TOKEN',
@@ -346,6 +348,45 @@ function secretValue(env, name) {
   } catch (err) {
     throw new Error(`${name}_FILE: cannot read ${file} (${/** @type {NodeJS.ErrnoException} */ (err).code || 'error'})`);
   }
+}
+
+/**
+ * ENTRA_CLIENT_CERTIFICATE_FILE + ENTRA_CLIENT_KEY_FILE: the certificate
+ * uploaded to the app registration and its RSA key (PEM, both may be one file).
+ * @param {NodeJS.ProcessEnv} env
+ */
+function entraCertificate(env) {
+  /** @param {string} name */
+  const read = (name) => {
+    const file = env[name];
+    if (!file) throw new Error('ENTRA_CLIENT_CERTIFICATE_FILE and ENTRA_CLIENT_KEY_FILE go together');
+    try {
+      return readFileSync(file);
+    } catch (err) {
+      throw new Error(`${name}: cannot read ${file} (${/** @type {NodeJS.ErrnoException} */ (err).code || 'error'})`);
+    }
+  };
+  const certPem = read('ENTRA_CLIENT_CERTIFICATE_FILE');
+  const keyPem = read('ENTRA_CLIENT_KEY_FILE');
+  const pem = /-----BEGIN CERTIFICATE-----[^-]+-----END CERTIFICATE-----/.exec(certPem.toString('utf8'))?.[0];
+  if (!pem) throw new Error('ENTRA_CLIENT_CERTIFICATE_FILE: no PEM certificate (-----BEGIN CERTIFICATE-----)');
+  let cert;
+  try {
+    cert = new X509Certificate(pem);
+  } catch {
+    throw new Error('ENTRA_CLIENT_CERTIFICATE_FILE: the certificate cannot be read');
+  }
+  let key;
+  try {
+    key = createPrivateKey(keyPem);
+  } catch {
+    throw new Error('ENTRA_CLIENT_KEY_FILE: no unencrypted PEM private key');
+  }
+  if (key.asymmetricKeyType !== 'rsa') throw new Error('ENTRA_CLIENT_KEY_FILE: Entra needs an RSA key');
+  if (!cert.checkPrivateKey(key)) throw new Error('ENTRA_CLIENT_KEY_FILE: the key does not belong to ENTRA_CLIENT_CERTIFICATE_FILE');
+  // Entra finds the certificate by its thumbprint (x5t#S256; x5t, SHA-1, for older tenants).
+  const thumb = (/** @type {string} */ alg) => createHash(alg).update(cert.raw).digest('base64url');
+  return { key, x5t: thumb('sha1'), x5tS256: thumb('sha256') };
 }
 
 /**
@@ -585,6 +626,8 @@ function authConfig(env, baseUrl) {
   let authority = '';
   let clientId = '';
   let clientSecret = '';
+  /** @type {{ key: import('node:crypto').KeyObject, x5t: string, x5tS256: string } | null} */
+  let clientCertificate = null;
   if (local) {
     // No provider: src/users.js checks the passwords.
   } else if (entra) {
@@ -605,7 +648,12 @@ function authConfig(env, baseUrl) {
     if (entra && !GUID.test(clientId)) throw new Error('ENTRA_CLIENT_ID: the application (client) id, a GUID');
     if (!/^[\w.:@/-]{1,200}$/.test(clientId)) throw new Error(`${prefix}_CLIENT_ID: letters, digits and _ . : @ / -`);
     clientSecret = named(`${prefix}_CLIENT_SECRET`, () => secretValue(env, `${prefix}_CLIENT_SECRET`));
-    if (!clientSecret) throw new Error(`${prefix}_CLIENT_SECRET (or ${prefix}_CLIENT_SECRET_FILE) is required with AUTH_PROVIDER=${provider}`);
+    if (entra && (env.ENTRA_CLIENT_CERTIFICATE_FILE || env.ENTRA_CLIENT_KEY_FILE)) {
+      if (clientSecret) throw new Error('ENTRA_CLIENT_SECRET and ENTRA_CLIENT_CERTIFICATE_FILE are both set; use one');
+      clientCertificate = entraCertificate(env);
+    } else if (!clientSecret) {
+      throw new Error(`${prefix}_CLIENT_SECRET (or ${prefix}_CLIENT_SECRET_FILE${entra ? ', or ENTRA_CLIENT_CERTIFICATE_FILE with ENTRA_CLIENT_KEY_FILE' : ''}) is required with AUTH_PROVIDER=${provider}`);
+    }
   }
   const secret = named('AUTH_SECRET', () => secretValue(env, 'AUTH_SECRET'));
   if (secret.length < 32) throw new Error('AUTH_SECRET: at least 32 characters (e.g. openssl rand -base64 48)');
@@ -740,6 +788,7 @@ function authConfig(env, baseUrl) {
     issuer,
     clientId,
     clientSecret,
+    clientCertificate,
     secret,
     scopes,
     redirectUri: `${baseUrl}/auth/callback`,

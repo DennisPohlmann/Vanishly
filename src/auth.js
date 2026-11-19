@@ -80,12 +80,31 @@ export class Auth {
     this.users = cfg.local ? new Users(cfg, store, (k, v) => this.hash(k, v)) : null;
   }
 
+  /**
+   * Entra with a certificate: a signed client assertion (private_key_jwt)
+   * instead of the client secret; undefined = client secret.
+   */
+  clientAuth() {
+    const cert = this.c.clientCertificate;
+    if (!cert) return undefined;
+    // Entra wants its token endpoint as audience (openid-client puts the issuer there).
+    const aud = this.c.issuer.replace(/\/v2\.0$/, '/oauth2/v2.0/token');
+    const key = /** @type {CryptoKey} */ (/** @type {unknown} */ (cert.key.toCryptoKey({ name: 'RSA-PSS', hash: 'SHA-256' }, false, ['sign'])));
+    return client.PrivateKeyJwt(key, {
+      [client.modifyAssertion]: (header, payload) => {
+        header.x5t = cert.x5t;
+        header['x5t#S256'] = cert.x5tS256;
+        payload.aud = aud;
+      },
+    });
+  }
+
   /** The provider's settings, fetched once (again after a failure). */
   oidc() {
     if (!this.discovered) {
       const insecure = this.c.issuer.startsWith('http:') ? { execute: [client.allowInsecureRequests] } : undefined;
       this.discovered = client
-        .discovery(new URL(this.c.issuer), this.c.clientId, this.c.clientSecret, undefined, { timeout: 10, ...insecure })
+        .discovery(new URL(this.c.issuer), this.c.clientId, this.c.clientCertificate ? undefined : this.c.clientSecret, this.clientAuth(), { timeout: 10, ...insecure })
         .catch((err) => {
           this.discovered = null;
           throw err;

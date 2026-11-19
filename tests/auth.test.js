@@ -2,7 +2,7 @@
 // provider stand-in in oidc-mock.js.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, X509Certificate } from 'node:crypto';
 import { createServer } from 'node:http';
 import { after, before, test } from 'node:test';
 import { createApp } from '../src/app.js';
@@ -10,7 +10,7 @@ import { loadConfig } from '../src/config.js';
 import { Store } from '../src/store.js';
 import { loadTheme } from '../src/theme.js';
 import { encryptSecret, unlockKey, verifierFor, decryptSecret } from '../public/js/vanishly-crypto.js';
-import { startMock } from './oidc-mock.js';
+import { makeCertificate, startMock } from './oidc-mock.js';
 
 const haveRedis = Boolean(process.env.REDIS_URL) || spawnSync('redis-server', ['--version']).status === 0;
 const opts = { skip: !haveRedis && 'no Redis (set REDIS_URL or install redis-server)' };
@@ -389,6 +389,25 @@ test('RECIPIENT_GROUPS=*: group search and overage via Graph', opts, async () =>
   const carol = (await login({ ...CAROL, _claim_names: { groups: 'src1' } })).cookie;
   assert.ok(mock.graphCalls > before);
   assert.equal((await call(`/api/v1/secrets/${c.data.id}/reveal`, { cookie: carol, body: {} })).status, 200);
+});
+
+test('ENTRA_CLIENT_CERTIFICATE_FILE: sign-in and Graph with a client assertion instead of the secret', opts, async () => {
+  const c = makeCertificate();
+  mock.clientCert = c.pem;
+  try {
+    const { call, login } = await startApp({ ENTRA_CLIENT_SECRET: '', ENTRA_CLIENT_CERTIFICATE_FILE: c.cert, ENTRA_CLIENT_KEY_FILE: c.key, RECIPIENT_GROUPS: '*', ENTRA_GRAPH: 'true' });
+    mock.groups = [{ id: IT, displayName: 'IT Admins' }];
+    const alice = (await login(ALICE)).cookie;
+    assert.ok(alice);
+    assert.equal(mock.lastAssertion?.alg, 'PS256');
+    const thumb = (/** @type {string} */ alg) => createHash(alg).update(new X509Certificate(c.pem).raw).digest('base64url');
+    assert.equal(mock.lastAssertion?.['x5t#S256'], thumb('sha256'));
+    assert.equal(mock.lastAssertion?.x5t, thumb('sha1'));
+    // Graph: its app token (client credentials) came with the assertion too, there is no secret.
+    assert.deepEqual((await call('/api/v1/groups?q=it', { cookie: alice })).data.groups, [{ id: IT, name: 'IT Admins' }]);
+  } finally {
+    mock.clientCert = '';
+  }
 });
 
 test('RECIPIENT_USER_GROUP: people search from one group, picked person can open', opts, async () => {

@@ -1,9 +1,26 @@
 // A small stand-in for Microsoft Entra ID / an OpenID provider in tests:
 // discovery, authorize (signs in `mock.user` at once), token (code with
 // PKCE, client credentials), keys, and the two Graph calls Vanishly uses.
+import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { exportJWK, generateKeyPair, SignJWT } from 'jose';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { decodeProtectedHeader, exportJWK, generateKeyPair, importX509, jwtVerify, SignJWT } from 'jose';
+
+/**
+ * A self-signed certificate and its key (openssl), as for an Entra app registration.
+ * @param {string[]} [key] openssl -newkey argument (and -pkeyopt)
+ */
+export function makeCertificate(key = ['rsa:2048']) {
+  const dir = mkdtempSync(join(tmpdir(), 'vanishly-cert-'));
+  const cert = join(dir, 'cert.pem');
+  const keyFile = join(dir, 'key.pem');
+  const r = spawnSync('openssl', ['req', '-x509', '-newkey', ...key, '-nodes', '-subj', '/CN=vanishly-test', '-days', '1', '-keyout', keyFile, '-out', cert], { encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`openssl: ${r.stderr}`);
+  return { cert, key: keyFile, pem: readFileSync(cert, 'utf8') };
+}
 
 /**
  * @param {{ tenant?: string, clientId: string, clientSecret: string, path?: string, logout?: boolean }} opts
@@ -17,6 +34,10 @@ export async function startMock(opts) {
   const mock = {
     base: '',
     issuer: '',
+    /** @type {string} PEM certificate: a client assertion signed with its key counts as the client secret */
+    clientCert: '',
+    /** @type {Record<string, any> | null} header of the last client assertion */
+    lastAssertion: null,
     /** @type {Record<string, any>} claims of the next sign-in */
     user: {},
     /** @type {Record<string, string[]>} Graph: oid -> group ids */
@@ -112,7 +133,14 @@ export async function startMock(opts) {
       const f = new URLSearchParams(body);
       const basic = Buffer.from(String(req.headers.authorization || '').replace(/^Basic /, ''), 'base64').toString();
       const [id, secret] = basic.split(':').map(decodeURIComponent);
-      if ((id || f.get('client_id')) !== opts.clientId || (secret || f.get('client_secret')) !== opts.clientSecret) {
+      const assertion = f.get('client_assertion');
+      if (assertion && mock.clientCert && f.get('client_assertion_type') === 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer') {
+        // Like Entra: signed by the certificate's key, audience the token endpoint.
+        const aud = mock.issuer.replace(/\/v2\.0$/, '/oauth2/v2.0/token');
+        const ok = await jwtVerify(assertion, await importX509(mock.clientCert, 'PS256'), { issuer: opts.clientId, subject: opts.clientId, audience: aud }).catch(() => null);
+        if (!ok) return json(res, 401, { error: 'invalid_client' });
+        mock.lastAssertion = decodeProtectedHeader(assertion);
+      } else if ((id || f.get('client_id')) !== opts.clientId || (secret || f.get('client_secret')) !== opts.clientSecret) {
         return json(res, 401, { error: 'invalid_client' });
       }
       if (f.get('grant_type') === 'client_credentials') {

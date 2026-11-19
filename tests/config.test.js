@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { duration } from '../src/app.js';
 import { SETTINGS, loadConfig, parseDuration, parseDurations } from '../src/config.js';
+import { makeCertificate } from './oidc-mock.js';
 
 test('TTL_OPTIONS: units, order, duplicates, limits', () => {
   assert.deepEqual(parseDurations('1d, 15m,1h 2w,1d,3600'), [900, 3600, 86400, 1209600]);
@@ -280,6 +281,22 @@ test('sign-in settings: off by default, checked when on', () => {
   assert.throws(() => loadConfig({ ...entra, RECIPIENT_DOMAINS: 'not a domain' }), /RECIPIENT_DOMAINS/);
   assert.throws(() => loadConfig({ ...entra, ENTRA_CLIENT_SECRET_FILE: '/nope' }), /both set/);
   assert.throws(() => loadConfig({ ...entra, ENTRA_CLIENT_SECRET: '', ENTRA_CLIENT_SECRET_FILE: '/nonexistent/x' }), /cannot read/);
+  // A certificate instead of the client secret.
+  const crt = makeCertificate();
+  const withCert = { ...entra, ENTRA_CLIENT_SECRET: '', ENTRA_CLIENT_CERTIFICATE_FILE: crt.cert, ENTRA_CLIENT_KEY_FILE: crt.key };
+  const ca = loadConfig(withCert).auth;
+  assert.equal(ca?.clientSecret, '');
+  assert.equal(ca?.clientCertificate?.key.asymmetricKeyType, 'rsa');
+  assert.match(String(ca?.clientCertificate?.x5tS256), /^[\w-]{43}$/);
+  assert.equal(loadConfig(entra).auth?.clientCertificate, null);
+  assert.throws(() => loadConfig({ ...withCert, ENTRA_CLIENT_SECRET: 'x' }), /both set/);
+  assert.throws(() => loadConfig({ ...withCert, ENTRA_CLIENT_KEY_FILE: '' }), /go together/);
+  assert.throws(() => loadConfig({ ...withCert, ENTRA_CLIENT_KEY_FILE: '/nonexistent/x' }), /ENTRA_CLIENT_KEY_FILE: cannot read/);
+  assert.throws(() => loadConfig({ ...withCert, ENTRA_CLIENT_CERTIFICATE_FILE: crt.key }), /no PEM certificate/);
+  assert.throws(() => loadConfig({ ...withCert, ENTRA_CLIENT_KEY_FILE: crt.cert }), /no unencrypted PEM private key/);
+  assert.throws(() => loadConfig({ ...withCert, ENTRA_CLIENT_KEY_FILE: makeCertificate().key }), /does not belong/);
+  const ec = makeCertificate(['ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1']);
+  assert.throws(() => loadConfig({ ...withCert, ENTRA_CLIENT_CERTIFICATE_FILE: ec.cert, ENTRA_CLIENT_KEY_FILE: ec.key }), /RSA key/);
   const g = loadConfig({ ...entra, ENTRA_GRAPH: 'true', RECIPIENT_GROUPS: 'IT Admins=0F0F0F0F-1111-2222-3333-444444444444' }).auth;
   assert.deepEqual(g?.groups.list, [{ name: 'IT Admins', id: '0f0f0f0f-1111-2222-3333-444444444444' }]);
   assert.throws(() => loadConfig({ ...entra, ENTRA_GRAPH: 'true', RECIPIENTS: 'off', RECIPIENT_GROUPS: '*' }), /RECIPIENT_GROUPS needs/);

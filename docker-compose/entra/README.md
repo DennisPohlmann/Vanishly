@@ -16,7 +16,8 @@ each are in [docs/providers/entra.md](../../docs/providers/entra.md) and
 2. **Overview**: note the **Directory (tenant) ID** and the **Application
    (client) ID**.
 3. **Certificates & secrets** → **New client secret**: note its **value**
-   (not its id).
+   (not its id). Or upload a certificate instead
+   ([providers/entra.md](../../docs/providers/entra.md#certificate-instead-of-a-client-secret)).
 4. **Token configuration** → **Add groups claim** → "Security groups" (ID
    token: "Group ID"), so that secrets for groups and `ADMIN_GROUPS` work.
 5. **API permissions** → **Add a permission** → Microsoft Graph →
@@ -47,6 +48,7 @@ In `.env` set at least:
 | `ENTRA_TENANT_ID` | Directory (tenant) ID |
 | `ENTRA_CLIENT_ID` | Application (client) ID |
 | `ENTRA_CLIENT_SECRET` | value of the client secret (or `ENTRA_CLIENT_SECRET_FILE`) |
+| `ENTRA_CLIENT_CERTIFICATE_FILE`, `ENTRA_CLIENT_KEY_FILE` | instead of the secret: certificate and key as PEM files, mounted into the container |
 
 Optional, all with group **object ids** from Entra:
 
