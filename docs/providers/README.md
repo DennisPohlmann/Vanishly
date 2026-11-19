@@ -64,7 +64,7 @@ AUTH_SECRET_FILE=/run/secrets/auth_secret
 # RECIPIENT_USER_GROUP=...          # whose members the form suggests
 ```
 
-All settings: [CONFIG.md](../CONFIG.md#sign-in-and-recipients-auth_-entra_-oidc_-directory_-recipient);
+All settings: [CONFIG.md](../CONFIG.md#sign-in-and-recipients-auth_-entra_-oidc_-directory_-local_-recipient);
 what sign-in changes for senders, recipients and the status page:
 [CONFIG.md](../CONFIG.md#sign-in-and-recipients).
 

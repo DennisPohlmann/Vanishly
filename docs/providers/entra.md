@@ -38,7 +38,7 @@ outside the tenant away, the built-in sign-in decides per secret.
 | `ENTRA_SHOW_ADDRESS` | `upn` | The address shown for a person in the header, the people search, the status page and the view log: `upn` (the sign-in name, e.g. `jdoe@example.com`) or `mail` (the mail address, e.g. `john.doe@example.com`; see [Who is who](#who-is-who)) |
 
 Plus `BASE_URL` and `AUTH_SECRET`, and the general sign-in settings in
-[CONFIG.md](../CONFIG.md#sign-in-and-recipients-auth_-entra_-oidc_-directory_-recipient).
+[CONFIG.md](../CONFIG.md#sign-in-and-recipients-auth_-entra_-oidc_-directory_-local_-recipient).
 `DIRECTORY_*` does not apply to Entra; it uses `ENTRA_GRAPH`.
 
 ## Certificate instead of a client secret

@@ -25,7 +25,7 @@ add the directory search.
 `AUTH_PROVIDER=oidc`, `BASE_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
 `OIDC_CLIENT_SECRET` (or `OIDC_CLIENT_SECRET_FILE`) and `AUTH_SECRET` (or
 `AUTH_SECRET_FILE`). All others:
-[CONFIG.md](../CONFIG.md#sign-in-and-recipients-auth_-entra_-oidc_-directory_-recipient).
+[CONFIG.md](../CONFIG.md#sign-in-and-recipients-auth_-entra_-oidc_-directory_-local_-recipient).
 
 ## Groups
 
