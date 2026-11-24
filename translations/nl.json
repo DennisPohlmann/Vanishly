@@ -434,6 +434,7 @@
   "downloads.librariesText": "Dezelfde end-to-end-versleuteling en de hele API voor je eigen programma's:",
   "downloads.docs": "Documentatie van de clients",
   "downloads.allChecksums": "alle controlesommen",
+  "downloads.download": "Downloaden",
   "downloads.col.language": "Taal",
   "downloads.col.install": "Installatie"
 }

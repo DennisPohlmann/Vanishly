@@ -319,29 +319,38 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible, .mode-toggle:focu
 body[data-page="tokens"] .site-main, body[data-page="admin"] .site-main, body[data-page="mysecrets"] .site-main, body[data-page="downloads"] .site-main { max-width: 72rem; }
 /* Download page: commands and checksums */
 .downloads pre.code { margin: 0 0 1rem; padding: .75rem; border: 1px solid var(--border); border-radius: calc(var(--radius) / 1.5); background: var(--surface-2); font-family: var(--font-mono); font-size: .82rem; white-space: pre-wrap; overflow-wrap: anywhere; }
-/* The files, grouped by operating system; each checksum in its own box that scrolls sideways on its own. */
+/* The files, grouped by operating system. Every file is one grid of three columns
+   (name | content | button) that all its rows share, so everything lines up; a checksum
+   longer than its box scrolls sideways inside the box, never the page. */
 .dl-groups { display: grid; gap: 1rem; margin: 0 0 1.5rem; }
 .dl-os { min-width: 0; border: 1px solid var(--border); border-radius: calc(var(--radius) / 1.5); overflow: hidden; }
 .dl-os h3 { margin: 0; padding: .55rem 1rem; font-size: .95rem; background: var(--surface-2); border-bottom: 1px solid var(--border); }
 .dl-list { list-style: none; margin: 0; padding: 0; }
-.dl-item { display: grid; gap: .45rem; padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
+.dl-item, .dl-rest { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr) 8.5rem; align-items: center; gap: .5rem .9rem; padding: .8rem 1rem; border-bottom: 1px solid var(--border); }
 .dl-item:last-child { border-bottom: 0; }
-.dl-main { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .75rem; }
-.dl-arch { width: 8.5rem; font-weight: 600; }
-.dl-file { font-family: var(--font-mono); font-size: .8rem; text-decoration: none; }
-.dl-size { margin-left: auto; color: var(--muted); font-size: .82rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.dl-sum { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; align-items: center; gap: .6rem; }
+.dl-main, .dl-sum { display: contents; }
+.dl-arch { font-weight: 600; }
+.dl-name { display: flex; align-items: baseline; gap: .75rem; min-width: 0; }
+.dl-name code { font-family: var(--font-mono); font-size: .85rem; overflow-wrap: anywhere; }
+.dl-size { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dl-item .btn-small { width: 100%; justify-content: center; }
+.dl-get { display: inline-flex; align-items: center; gap: .4rem; text-decoration: none; }
+.dl-icon { flex: none; }
 .dl-algo { color: var(--muted); font-size: .78rem; }
-.dl-hash { min-width: 0; overflow-x: auto; white-space: nowrap; padding: .3rem .55rem; border: 1px solid var(--border); border-radius: calc(var(--radius) / 2); background: var(--surface-2); scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.dl-hash { min-width: 0; overflow-x: auto; white-space: nowrap; padding: .3rem .55rem; border: 1px solid var(--border); border-radius: calc(var(--radius) / 2); background: var(--surface-2); scrollbar-width: thin; scrollbar-color: var(--muted) transparent; }
 .dl-hash::-webkit-scrollbar { height: 6px; }
-.dl-hash::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.dl-hash::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 3px; }
 .dl-hash code { font-family: var(--font-mono); font-size: .78rem; }
 .dl-hash:focus-visible, .dl-sums summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.dl-sum .btn-small { min-height: 1.75rem; padding: .1rem .6rem; font-size: .78rem; }
-.dl-sums { display: grid; gap: .45rem; font-size: .8rem; }
-.dl-sums summary { cursor: pointer; color: var(--muted); width: max-content; }
-.dl-sums[open] summary { margin-bottom: .1rem; }
-@media (max-width: 30rem) { .dl-arch { width: auto; } .dl-sum { grid-template-columns: minmax(0, 1fr) auto; } .dl-algo { grid-column: 1 / -1; } }
+.dl-rest { padding: 0; border: 0; margin-top: .5rem; }
+.dl-sums { grid-column: 1 / -1; font-size: .8rem; }
+.dl-sums summary { margin-left: calc(8.5rem + .9rem); cursor: pointer; color: var(--muted); width: max-content; }
+@media (max-width: 40rem) {
+  .dl-item, .dl-rest { grid-template-columns: minmax(0, 1fr) auto; }
+  .dl-arch, .dl-algo { grid-column: 1 / -1; }
+  .dl-sums summary { margin-left: 0; }
+  .dl-item .btn-small { width: auto; }
+}
 .downloads pre.code:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .downloads p.sums a { margin-right: .75rem; }
 .card-wide h2 { margin-top: 0; }

@@ -434,6 +434,7 @@
   "downloads.librariesText": "El mismo cifrado de extremo a extremo y toda la API para tus propios programas:",
   "downloads.docs": "Documentación de los clientes",
   "downloads.allChecksums": "todas las sumas de comprobación",
+  "downloads.download": "Descargar",
   "downloads.col.language": "Lenguaje",
   "downloads.col.install": "Instalación"
 }

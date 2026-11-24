@@ -2366,6 +2366,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       // One group per operating system, the common architectures first; each file with its
       // SHA-256 and the other checksums behind a <details>, each in a box that scrolls on its own
       // when the hash is longer than the box, with a copy button.
+      const DOWNLOAD_ICON = '<svg class="dl-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M8 1.5v8.5M4.5 6.5 8 10l3.5-3.5M2.5 13.5h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       const archOrder = ['amd64', 'arm64', '386', 'armv7', 'armv6'];
       const groups = Object.entries(OS)
         .map(([os, osName]) => {
@@ -2380,12 +2381,13 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
                   `<button type="button" class="btn btn-small" data-copy="${id}">${escapeHtml(t['created.copy'])}</button></div>`;
               };
               const [first, ...rest] = ALGORITHMS;
+              // One grid per file: name | content | button, the same three columns in every row.
               return `<li class="dl-item"><div class="dl-main">` +
                 `<span class="dl-arch">${escapeHtml(ARCH[/** @type {keyof typeof ARCH} */ (d.arch)])}</span>` +
-                `<a class="btn btn-small dl-file" href="/downloads/${escapeHtml(d.name)}" download>${escapeHtml(d.name)}</a>` +
-                `<span class="dl-size">${(d.size / 1048576).toFixed(1)} MB</span></div>` +
+                `<span class="dl-name"><code>${escapeHtml(d.name)}</code><span class="dl-size">${(d.size / 1048576).toFixed(1)} MB</span></span>` +
+                `<a class="btn btn-primary btn-small dl-get" href="/downloads/${escapeHtml(d.name)}" download>${DOWNLOAD_ICON}${escapeHtml(t['downloads.download'])}</a></div>` +
                 sum(first) +
-                `<details class="dl-sums"><summary>${escapeHtml(t['downloads.allChecksums'])}</summary>${rest.map(sum).join('')}</details></li>`;
+                `<details class="dl-sums"><summary>${escapeHtml(t['downloads.allChecksums'])}</summary><div class="dl-rest">${rest.map(sum).join('')}</div></details></li>`;
             })
             .join('');
           return items ? `<section class="dl-os"><h3>${osName}</h3><ul class="dl-list">${items}</ul></section>` : '';

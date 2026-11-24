@@ -434,6 +434,7 @@
   "downloads.librariesText": "Dieselbe Ende-zu-Ende-Verschlüsselung und die ganze API für eigene Programme:",
   "downloads.docs": "Dokumentation der Clients",
   "downloads.allChecksums": "alle Prüfsummen",
+  "downloads.download": "Herunterladen",
   "downloads.col.language": "Sprache",
   "downloads.col.install": "Installation"
 }

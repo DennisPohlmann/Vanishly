@@ -434,6 +434,7 @@
   "downloads.librariesText": "La stessa cifratura end-to-end e tutta l’API per i tuoi programmi:",
   "downloads.docs": "Documentazione dei client",
   "downloads.allChecksums": "tutti i checksum",
+  "downloads.download": "Scarica",
   "downloads.col.language": "Linguaggio",
   "downloads.col.install": "Installazione"
 }
