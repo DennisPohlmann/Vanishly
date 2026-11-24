@@ -2366,6 +2366,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       // One group per operating system, the common architectures first; each file with its
       // SHA-256 and the other checksums behind a <details>, each in a box that scrolls on its own
       // when the hash is longer than the box, with a copy button.
+      const MONITOR_ICON = '<svg class="dl-os-icon" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path d="M2 3h12v8H2zM6 14h4M8 11v3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       const DOWNLOAD_ICON = '<svg class="dl-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M8 1.5v8.5M4.5 6.5 8 10l3.5-3.5M2.5 13.5h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       const archOrder = ['amd64', 'arm64', '386', 'armv7', 'armv6'];
       const groups = Object.entries(OS)
@@ -2390,7 +2391,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
                 `<details class="dl-sums"><summary>${escapeHtml(t['downloads.allChecksums'])}</summary><div class="dl-rest">${rest.map(sum).join('')}</div></details></li>`;
             })
             .join('');
-          return items ? `<section class="dl-os"><h3>${osName}</h3><ul class="dl-list">${items}</ul></section>` : '';
+          return items ? `<section class="dl-os"><h3>${MONITOR_ICON}${osName}</h3><ul class="dl-list">${items}</ul></section>` : '';
         })
         .join('');
       const fileTable = groups ? `<div class="dl-groups">${groups}</div>` : `<p class="notice">${escapeHtml(t['downloads.none'])}</p>`;

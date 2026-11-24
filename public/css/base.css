@@ -324,7 +324,8 @@ body[data-page="tokens"] .site-main, body[data-page="admin"] .site-main, body[da
    longer than its box scrolls sideways inside the box, never the page. */
 .dl-groups { display: grid; gap: 1rem; margin: 0 0 1.5rem; }
 .dl-os { min-width: 0; border: 1px solid var(--border); border-radius: calc(var(--radius) / 1.5); overflow: hidden; }
-.dl-os h3 { margin: 0; padding: .55rem 1rem; font-size: .95rem; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.dl-os h3 { display: flex; align-items: center; gap: .55rem; margin: 0; padding: .75rem 1rem; font-size: 1.2rem; font-weight: 700; background: var(--surface-2); border-bottom: 1px solid var(--border); border-left: 4px solid var(--accent); }
+.dl-os-icon { flex: none; color: var(--accent); }
 .dl-list { list-style: none; margin: 0; padding: 0; }
 .dl-item, .dl-rest { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr) 8.5rem; align-items: center; gap: .5rem .9rem; padding: .8rem 1rem; border-bottom: 1px solid var(--border); }
 .dl-item:last-child { border-bottom: 0; }

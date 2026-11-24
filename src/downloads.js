@@ -23,7 +23,8 @@ export const ALGORITHMS = /** @type {const} */ ([
 ]);
 
 const NAME = /^vanishly-(linux|windows|macos|freebsd)-(amd64|386|arm64|armv7|armv6)(\.exe)?$/;
-export const OS = { linux: 'Linux', windows: 'Windows', macos: 'macOS', freebsd: 'FreeBSD' };
+// In the order of the download page: the most used first.
+export const OS = { windows: 'Windows', macos: 'macOS', linux: 'Linux', freebsd: 'FreeBSD' };
 export const ARCH = { amd64: 'x86-64', 386: 'x86 (32-bit)', arm64: 'ARM64', armv7: 'ARMv7 (32-bit)', armv6: 'ARMv6 (32-bit)' };
 
 /**
