@@ -1374,9 +1374,20 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   // MY_SECRETS: the signed-in user's secrets as the audit log knows them: made
   // by them, or for them or one of their groups (metadata only, like /v1/admin/secrets).
+  /**
+   * The signed-in user for "My secrets": a session, or an API token of the
+   * user with this scope (list and status: status; burn: burn).
+   * @param {import('express').Request} req @param {import('express').Response} res @param {'status' | 'burn'} scope
+   */
+  const myUser = async (req, res, scope) => {
+    const u = userOf(res);
+    if (!u || u.app || !u.user) throw new ApiError(401, 'login_required', 'Sign in first');
+    await needScope(req, res, scope);
+    return u;
+  };
   api.get('/v1/me/secrets', limit('read'), async (req, res) => {
     if (!mySecretsOn || !audit || !auth) throw disabled();
-    const u = sessionUser(res);
+    const u = await myUser(req, res, 'status');
     const f = auditFilter(req);
     const me = u.user.toLowerCase();
     /** @param {any} s */
@@ -1394,11 +1405,11 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
    * SECRET_DETAILS: the receipt of a secret the signed-in user created, by
    * its audit ref (no link needed). Only the creator: recipients see the list
    * row, not the status page.
-   * @param {import('express').Request} req @param {import('express').Response} res
+   * @param {import('express').Request} req @param {import('express').Response} res @param {'status' | 'burn'} scope
    */
-  const myReceipt = async (req, res) => {
+  const myReceipt = async (req, res, scope) => {
     if (!myDetailsOn || !audit || !auth) throw disabled();
-    const me = sessionUser(res).user.toLowerCase();
+    const me = (await myUser(req, res, scope)).user.toLowerCase();
     return receiptByRef(String(req.params.ref), (x) => String(x.creator.user || '').toLowerCase() === me);
   };
   /**
@@ -1415,7 +1426,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   };
 
   api.get('/v1/me/secrets/:ref', limit('read'), async (req, res) => {
-    const { r, refs } = await myReceipt(req, res);
+    const { r, refs } = await myReceipt(req, res, 'status');
     await ev(req, res, 'receipt.viewed', { secret: refs, details: { state: r.state, via: 'my_secrets' } });
     // The creator: all they would see with the link, but no link (the key is not on the server).
     res.json(receiptBody(r, { view: true, burn: true }, res, false));
@@ -1423,7 +1434,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   api.post('/v1/me/secrets/:ref/burn', limit('read'), async (req, res) => {
     if (!config.features.burn) throw disabled();
-    const { rid, refs } = await myReceipt(req, res);
+    const { rid, refs } = await myReceipt(req, res, 'burn');
     const r = await store.burn(rid);
     if (r === null) throw new ApiError(404, 'not_found', 'Unknown or too old');
     if (!r) throw new ApiError(409, 'gone', 'The secret is already gone');

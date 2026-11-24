@@ -835,6 +835,25 @@ test('SECRET_DETAILS: the creator opens the status page from "My secrets" by ref
   assert.equal((await b.call(`/api/v1/me/secrets/${l2.secrets[0].ref}`, { cookie: c })).data.error, 'endpoint_disabled');
 });
 
+test('"My secrets" with an API token of the user: list and status need the scope status, burn needs burn', opts, async () => {
+  const a = await startApp({});
+  const alice = await a.login(ALICE);
+  /** @param {string[]} scopes */
+  const token = async (scopes) => (await a.call('/api/v1/tokens', { cookie: alice, body: { name: scopes.join('_') || 'none', ips: ['127.0.0.1/32', '::1/128'], scopes } })).data.token;
+  const status = await token(['status']);
+  const burn = await token(['burn']);
+  const create = await token(['create']);
+  await a.call('/api/v1/share', { cookie: alice, body: { secret: PLAIN, ttl: 600, comment: 'mine' } });
+  const list = await a.call('/api/v1/me/secrets', { bearer: status });
+  assert.equal(list.status, 200, list.text);
+  const ref = list.data.secrets.find((/** @type {any} */ x) => x.comment === 'mine').ref;
+  assert.equal((await a.call(`/api/v1/me/secrets/${ref}`, { bearer: status })).data.state, 'new');
+  for (const [path, bearer, body] of [['/api/v1/me/secrets', create, undefined], [`/api/v1/me/secrets/${ref}`, burn, undefined], [`/api/v1/me/secrets/${ref}/burn`, status, {}]]) {
+    assert.equal((await a.call(path, { bearer, body })).data.error, 'insufficient_scope', path);
+  }
+  assert.equal((await a.call(`/api/v1/me/secrets/${ref}/burn`, { bearer: burn, body: {} })).data.state, 'burned');
+});
+
 test('SECRET_DETAILS: admins open the status page of any secret from the Secrets tab and burn it there', opts, async () => {
   const a = await adminApp();
   const alice = await a.login(ALICE);

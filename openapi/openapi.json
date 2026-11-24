@@ -1388,10 +1388,16 @@
         ],
         "operationId": "mySecrets",
         "summary": "My secrets (metadata)",
-        "description": "The signed-in user's secrets as the audit log in Redis knows them: the ones they created and the ones for them or one of their groups, with recipients, comment, expiry, state and openings, newest first; never content or keys. The page \"My secrets\" (`/secrets`) uses it. Only with sign-in, AUDIT_LOG_REDIS=true and MY_SECRETS (default true); otherwise 404 `endpoint_disabled`. Session only, no API tokens.",
+        "description": "The signed-in user's secrets as the audit log in Redis knows them: the ones they created and the ones for them or one of their groups, with recipients, comment, expiry, state and openings, newest first; never content or keys. The page \"My secrets\" (`/secrets`) uses it. Only with sign-in, AUDIT_LOG_REDIS=true and MY_SECRETS (default true); otherwise 404 `endpoint_disabled`. With an API token of the user: the scope `status`.",
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiToken": []
           }
         ],
         "parameters": [
@@ -1490,7 +1496,7 @@
             }
           },
           "403": {
-            "description": "`session_required` (called with an API token)",
+            "description": "`insufficient_scope` (the API token lacks the scope `status`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1540,10 +1546,16 @@
         ],
         "operationId": "mySecretStatus",
         "summary": "Status of one of my secrets",
-        "description": "The status page of a secret the signed-in user created, by its ref from `GET /api/v1/me/secrets`: the same answer as `GET /api/v1/receipts/{id}` for its creator (RECEIPT_SHOW_VIEWER applies), but without `secretPath` (the key is not on the server). The page `/secrets/{ref}` uses it. Only for the creator, not for recipients. Needs SECRET_DETAILS (default true), MY_SECRETS and ENABLE_RECEIPTS. Session only, no API tokens.",
+        "description": "The status page of a secret the signed-in user created, by its ref from `GET /api/v1/me/secrets`: the same answer as `GET /api/v1/receipts/{id}` for its creator (RECEIPT_SHOW_VIEWER applies), but without `secretPath` (the key is not on the server). The page `/secrets/{ref}` uses it. Only for the creator, not for recipients. Needs SECRET_DETAILS (default true), MY_SECRETS and ENABLE_RECEIPTS. With an API token of the user: the scope `status`.",
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiToken": []
           }
         ],
         "parameters": [
@@ -1594,7 +1606,7 @@
             }
           },
           "403": {
-            "description": "`session_required` (called with an API token); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
+            "description": "`insufficient_scope` (the API token lacks the scope `status`); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1644,10 +1656,16 @@
         ],
         "operationId": "burnMySecret",
         "summary": "Destroy one of my secrets now",
-        "description": "Burns a secret the signed-in user created, by its ref, from its status page (`/secrets/{ref}`). Same rules as `GET /api/v1/me/secrets/{ref}`, and needs ENABLE_BURN. Session only, no API tokens.",
+        "description": "Burns a secret the signed-in user created, by its ref, from its status page (`/secrets/{ref}`). Same rules as `GET /api/v1/me/secrets/{ref}`, and needs ENABLE_BURN. With an API token of the user: the scope `burn`.",
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiToken": []
           }
         ],
         "parameters": [
@@ -1703,7 +1721,7 @@
             }
           },
           "403": {
-            "description": "`session_required` (called with an API token); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
+            "description": "`insufficient_scope` (the API token lacks the scope `burn`); `ip_denied`: this client IP may not create (CREATE_ALLOWED_IPS / CREATE_DENIED_IPS)",
             "content": {
               "application/json": {
                 "schema": {
