@@ -429,7 +429,7 @@
   "downloads.verifyHint": "Pakiety podpisów (.sigstore.json) są w wydaniu GitHub tej wersji.",
   "downloads.release": "Wydanie na GitHub",
   "downloads.usage": "Użycie",
-  "downloads.usageHint": "VANISHLY_URL (lub --url) określa, z którym serwerem łączy się klient; ta strona wpisuje swój własny. Bez sekretu w wierszu poleceń share o niego pyta (bez wyświetlania) albo czyta go ze standardowego wejścia, więc nie trafia do historii powłoki. Nowsza wersja jest potrzebna tylko wtedy, gdy mówi o tym ta strona lub klient.",
+  "downloads.usageHint": "--url (lub VANISHLY_URL) określa, z którym serwerem łączy się klient; ta strona wpisuje swój własny. Sekret w wierszu poleceń trafia do historii powłoki: --secret-file czyta go z pliku, a share bez sekretu o niego pyta (bez wyświetlania). Nowsza wersja jest potrzebna tylko wtedy, gdy mówi o tym ta strona lub klient.",
   "downloads.libraries": "Biblioteki",
   "downloads.librariesText": "To samo szyfrowanie end-to-end i całe API dla własnych programów:",
   "downloads.docs": "Dokumentacja klientów",

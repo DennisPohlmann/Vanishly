@@ -429,7 +429,7 @@
   "downloads.verifyHint": "Los paquetes de firma (.sigstore.json) están en la versión de GitHub de esta versión.",
   "downloads.release": "Versión en GitHub",
   "downloads.usage": "Uso",
-  "downloads.usageHint": "VANISHLY_URL (o --url) indica con qué servidor habla el cliente; esta página pone el suyo. Sin un secreto en la línea de comandos, share lo pide (sin mostrarlo) o lo lee de la entrada estándar, así no queda en el historial de la shell. Solo necesitas una versión más nueva cuando esta página o el cliente lo indiquen.",
+  "downloads.usageHint": "--url (o VANISHLY_URL) indica con qué servidor habla el cliente; esta página pone el suyo. Un secreto en la línea de comandos queda en el historial de la shell: --secret-file lo lee de un archivo, y share sin secreto lo pide (sin mostrarlo). Solo necesitas una versión más nueva cuando esta página o el cliente lo indiquen.",
   "downloads.libraries": "Bibliotecas",
   "downloads.librariesText": "El mismo cifrado de extremo a extremo y toda la API para tus propios programas:",
   "downloads.docs": "Documentación de los clientes",
