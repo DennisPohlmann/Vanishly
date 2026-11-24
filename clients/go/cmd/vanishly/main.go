@@ -26,7 +26,8 @@ usage: vanishly [global flags] <command> [flags]
 
 commands:
   share [SECRET|-]   encrypt here and store a secret; prints the link
-                     (no SECRET or -: read it from standard input)
+                     (no SECRET or -: asks for it on a terminal, without
+                     echo, else reads standard input, e.g. < file)
   open LINK          open a link: takes one view, decrypts here
   meta LINK|ID       state of a secret without using a view
   status LINK|ID     status of a secret for its sender (status link)
@@ -51,7 +52,9 @@ share/open flags: --passphrase P | --passphrase-file F | --ask
 api flags: --data JSON|@file|- --query key=value (repeatable)
 
 examples:
-  echo -n 's3cret' | vanishly --url https://ots.example.com share --ttl 3600
+  export VANISHLY_URL=https://ots.example.com
+  vanishly share --ttl 3600 --views 1       # asks for the secret
+  vanishly share --ttl 3600 < secret.txt
   vanishly open 'https://ots.example.com/s/<id>#<key>'
 `
 
@@ -209,7 +212,16 @@ func run(args []string) error {
 		if len(pos) == 1 {
 			secret = pos[0]
 		}
-		if secret == "-" {
+		if secret == "-" && term.IsTerminal(int(os.Stdin.Fd())) {
+			// Typed in: no echo, and not in the shell history.
+			fmt.Fprint(os.Stderr, "Secret: ")
+			b, err := term.ReadPassword(int(os.Stdin.Fd()))
+			fmt.Fprintln(os.Stderr)
+			if err != nil {
+				return err
+			}
+			secret = string(b)
+		} else if secret == "-" {
 			b, err := io.ReadAll(os.Stdin)
 			if err != nil {
 				return err

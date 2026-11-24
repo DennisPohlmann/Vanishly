@@ -19,7 +19,9 @@ _RECEIPT = re.compile(r"^(https?://[^#]+?)/r/([A-Za-z0-9_-]{22})(?:#.*)?$")
 _SECRET = re.compile(r"^(https?://[^#]+?)/s/([A-Za-z0-9_-]{22})(?:#.*)?$")
 
 HELP = """examples:
-  echo -n 's3cret' | vanishly --url https://ots.example.com share --ttl 3600
+  export VANISHLY_URL=https://ots.example.com
+  vanishly share --ttl 3600 --views 1       # asks for the secret
+  vanishly share --ttl 3600 < secret.txt
   vanishly open 'https://ots.example.com/s/<id>#<key>'
   vanishly status 'https://ots.example.com/r/<receipt id>'
   vanishly api GET /v1/me/secrets --query limit=10
@@ -46,7 +48,7 @@ def _parser() -> argparse.ArgumentParser:
         g.add_argument("--ask", action="store_true", help="ask for the passphrase")
 
     s = sub.add_parser("share", help="encrypt here and store a secret; prints the link")
-    s.add_argument("secret", nargs="?", default="-", help="the secret; - or nothing: read from standard input")
+    s.add_argument("secret", nargs="?", default="-", help="the secret; - or nothing: asked for on a terminal (no echo), else read from standard input")
     passphrase(s)
     s.add_argument("--ttl", type=int, help="seconds until it expires")
     s.add_argument("--views", type=int, help="how often it can be opened")
@@ -121,7 +123,11 @@ def run(argv=None) -> int:
             return client
 
         if args.cmd == "share":
-            secret = sys.stdin.read() if args.secret == "-" else args.secret
+            if args.secret != "-":
+                secret = args.secret
+            else:
+                # Typed in on a terminal: no echo, not in the shell history.
+                secret = getpass.getpass("Secret: ") if sys.stdin.isatty() else sys.stdin.read()
             if not secret:
                 raise ValueError("the secret is empty")
             opts = {"ttl": args.ttl, "views": args.views, "recipients": args.recipient,

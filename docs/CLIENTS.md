@@ -71,9 +71,10 @@ vanishly help
 
 The Python package (`pip install vanishly`) installs the same `vanishly` command.
 
-The secret comes from the argument or, without one (or `-`), from
-standard input; an argument is visible in the process list and the shell
-history. The passphrase: `--ask` (asked without echo), `--passphrase-file
+The secret comes from the argument or, without one (or `-`), is asked
+for on a terminal (`Secret:`, without echo) or read from standard input
+(`< secret.txt`, a pipe); an argument is visible in the process list and
+the shell history. The passphrase: `--ask` (asked without echo), `--passphrase-file
 FILE`, the environment variable `VANISHLY_PASSPHRASE`, or `--passphrase`
 (visible in the process list). `--server-side` uses `/api/v1/share` and
 `/api/v1/open` instead. The status link goes to standard error, the
