@@ -197,8 +197,8 @@ test('feature switches', () => {
   assert.throws(() => loadConfig({ ENABLE_PASSPHRASE: 'false', REQUIRE_PASSPHRASE: 'true' }), /REQUIRE_PASSPHRASE/);
   const c = loadConfig({ ENABLE_API: 'false' });
   assert.deepEqual([c.api, c.apiDocs, c.features.shareApi, c.features.apiLink], [false, false, false, false]);
-  // ENABLE_MCP: off by default (its tools encrypt on the server), on only with the API.
-  assert.equal(loadConfig({}).mcp, false);
+  // ENABLE_MCP: on by default with the API (creating and opening over it need ENABLE_SHARE_API / ENABLE_OPEN_API).
+  assert.equal(loadConfig({}).mcp, true);
   assert.equal(loadConfig({ ENABLE_MCP: 'true' }).mcp, true);
   assert.equal(c.mcp, false);
   // The endpoints where the server sees a secret are off by default, the downloads on.

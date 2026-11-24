@@ -185,8 +185,8 @@ trust the server and the TLS connection to it, so both are off by default:
 scripts that cannot encrypt themselves (curl). The web pages never use
 them, and neither do the [client libraries and the command line
 client](CLIENTS.md), which encrypt and decrypt on their own machine like
-the browser. The MCP server (`ENABLE_MCP`, off by default) creates secrets
-through `POST /api/v1/share`.
+the browser. The MCP server (`ENABLE_MCP`) creates and opens secrets only
+through these two, so only when they are on.
 
 The command line clients on `/downloads` come with checksums; that a
 binary is genuine shows its Sigstore signature and GitHub attestation from
@@ -428,8 +428,8 @@ those points are listed once as **Operator**. Status words as in the
 
 For the strictest API setup: `API_TOKEN_REQUIRED=true`,
 `API_TOKEN_IP_BINDING=required`, `API_TOKEN_MAX_EXPIRY` set,
-`API_TOKEN_RATE_LIMIT` set, `ENABLE_SHARE_API`, `ENABLE_OPEN_API` and
-`ENABLE_MCP` left off (the default; scripts use a client),
+`API_TOKEN_RATE_LIMIT` set, `ENABLE_SHARE_API` and `ENABLE_OPEN_API`
+left off (the default; scripts use a client, MCP only lists, shows and burns),
 `CLIENT_MIN_VERSION` set, `AUDIT_LOG=true` shipped
 to a SIEM, TLS with `HSTS=true`, and an OIDC provider with MFA.
 

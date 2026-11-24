@@ -165,7 +165,7 @@ config:
   ADMIN_DENIED_IPS: ""
   # == API (true = on)
   ENABLE_API: ""
-  # Off by default: the MCP server; its create_secret also needs ENABLE_SHARE_API.
+  # The MCP server (on with the API); its create_secret / open_secret need ENABLE_SHARE_API / ENABLE_OPEN_API.
   ENABLE_MCP: ""
   MCP_OAUTH: ""
   # MCP protocol versions /mcp speaks (2026-07-28,2025-11-25,2025-06-18); 2026-07-28 alone is strictest.

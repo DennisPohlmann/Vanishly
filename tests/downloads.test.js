@@ -154,18 +154,25 @@ test('CLIENT_MIN_VERSION refuses old clients, CLIENT_RECOMMENDED_VERSION shows a
   });
 });
 
-test('end to end by default: /v1/share, /v1/open and MCP are off unless switched on', opts, async () => {
+test('end to end by default: /v1/share, /v1/open and the MCP tools on them are off unless switched on', opts, async () => {
+  /** @param {string} b */
+  const tools = async (b) => {
+    const r = await fetch(`${b}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'MCP-Protocol-Version': '2025-06-18' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+    return (await r.json()).result.tools.map((/** @type {any} */ t) => t.name);
+  };
   await withApp({}, async (b) => {
     for (const p of ['/api/v1/share', '/api/v1/open']) {
       const r = await fetch(b + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       assert.deepEqual([r.status, (await r.json()).error], [404, 'endpoint_disabled'], p);
     }
-    assert.equal((await fetch(`${b}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 404);
+    // MCP is on, but only shows and burns.
+    assert.deepEqual(await tools(b), ['get_secret_status', 'burn_secret']);
   });
   await withApp({ ENABLE_SHARE_API: 'true', ENABLE_OPEN_API: 'true' }, async (b) => {
     const r = await fetch(`${b}/api/v1/share`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: 'hi' }) });
     assert.equal(r.status, 201);
     const o = await fetch(`${b}/api/v1/open`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ link: (await r.json()).shareUrl }) });
     assert.equal((await o.json()).secret, 'hi');
+    assert.deepEqual(await tools(b), ['create_secret', 'open_secret', 'get_secret_status', 'burn_secret']);
   });
 });

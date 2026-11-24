@@ -104,17 +104,18 @@ turns into minutes unnoticed.
 
 ### Switches (`ENABLE_*`)
 
-Everything is on by default, except the three that let the server see a
-plaintext secret: `ENABLE_SHARE_API`, `ENABLE_OPEN_API` and `ENABLE_MCP`
-are off and need `true`. `false` (or `0`, `no`, `off`) switches the others
-off. Up to version 3 these three were on: when you upgrade and scripts
-use `POST /api/v1/share`, `POST /api/v1/open` or `/mcp`, set them to
-`true` ([INSTALLATION.md](INSTALLATION.md#7-update)).
+Everything is on by default, except the two that let the server see a
+plaintext secret: `ENABLE_SHARE_API` and `ENABLE_OPEN_API` are off and
+need `true`; they also decide whether the MCP server may create and open
+secrets. `false` (or `0`, `no`, `off`) switches the others off. Up to
+version 3 these two were on: when you upgrade and scripts or AI clients
+use `POST /api/v1/share`, `POST /api/v1/open` or create secrets over
+`/mcp`, set them to `true` ([INSTALLATION.md](INSTALLATION.md#7-update)).
 
 | Variable | Off means |
 |---|---|
 | `ENABLE_API` | No public API: every API endpoint and `/api/openapi.json` answer 404, except the calls of this server's own pages; also switches off `ENABLE_API_DOCS`, `ENABLE_SHARE_API`, `ENABLE_OPEN_API`, `ENABLE_MCP` and the footer link ([details](#api-access)) |
-| `ENABLE_MCP` | **Off by default.** `true`: the MCP server at `/mcp`; off it answers 404, the API stays. `ENABLE_MCP=true` with `ENABLE_API=false` stops the start; its tool `create_secret` also needs `ENABLE_SHARE_API=true` ([details](#mcp-server)) |
+| `ENABLE_MCP` | The MCP server at `/mcp` (on by default, off with `ENABLE_API=false`); `false`: it answers 404, the API stays. `ENABLE_MCP=true` with `ENABLE_API=false` stops the start. Its tools `create_secret` and `open_secret` need `ENABLE_SHARE_API` / `ENABLE_OPEN_API`; without them it lists, shows and burns secrets only ([details](#mcp-server)) |
 | `MCP_OAUTH` | No browser sign-in for MCP clients: they need an API token made by hand, and `/mcp` works without one as far as the API does. On by default with sign-in, `API_TOKENS=true` and MCP; `MCP_OAUTH=true` without them stops the start ([details](#sign-in-of-mcp-clients-mcp_oauth)) |
 | `ENABLE_API_DOCS` | No API reference page at `/api/docs` (`API_DOCS` is the older name) |
 | `ENABLE_API_LINK` | No "API" link in the footer; the API itself stays |
@@ -165,7 +166,7 @@ switched off, still answered for this server's own pages (the browser's
 | `GET /api/v1/groups` | `RECIPIENT_GROUPS` (only then) | 404 |
 | `GET /api/v1/people` | `RECIPIENT_USER_GROUP` (only then) | 404 |
 | `GET /api/v1/downloads` | `ENABLE_DOWNLOADS` | 404 |
-| `POST /mcp` (MCP server) | `ENABLE_MCP` (off by default), `ENABLE_API` | 404 |
+| `POST /mcp` (MCP server) | `ENABLE_MCP`, `ENABLE_API` | 404 |
 
 **Create and reveal only.** To offer nothing but creating a secret and
 revealing it, in the form and for scripts:
@@ -424,10 +425,10 @@ for the recipients.
 
 AI clients that speak the [Model Context Protocol](https://modelcontextprotocol.io)
 (Claude, VS Code/Copilot, Cursor, ...) use Vanishly at `<BASE_URL>/mcp`
-(Streamable HTTP, one JSON answer per request, no sessions). Off by default:
-its tool `create_secret` hands the plaintext to the server, so it needs
-`ENABLE_MCP=true` and `ENABLE_SHARE_API=true` (and `ENABLE_API`, on by
-default).
+(Streamable HTTP, one JSON answer per request, no sessions). On by default
+(`ENABLE_MCP`, with `ENABLE_API`). Its tools that hand the plaintext to the
+server, `create_secret` and `open_secret`, are only there with
+`ENABLE_SHARE_API=true` / `ENABLE_OPEN_API=true` (both off by default).
 
 Protocol versions (`MCP_PROTOCOL_VERSIONS`, all three by default):
 `2026-07-28` (stateless: no `initialize`, `server/discover`, the version and

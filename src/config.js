@@ -1187,8 +1187,9 @@ export function loadConfig(env = process.env) {
     defaultLang,
     // ENABLE_API=false: no public API; only this server's own pages may call it.
     api: sw('ENABLE_API', true),
-    // ENABLE_MCP: the MCP server at /mcp (src/mcp.js); off by default (its tools encrypt on the server).
-    mcp: sw('ENABLE_MCP', false),
+    // ENABLE_MCP: the MCP server at /mcp (src/mcp.js); by default on with the API. Creating and
+    // opening over it follow ENABLE_SHARE_API / ENABLE_OPEN_API, so by default it lists, shows and burns.
+    mcp: sw('ENABLE_MCP', sw('ENABLE_API', true)),
     // MCP_OAUTH: MCP clients sign in through the browser (OAuth, src/oauth.js); needs sign-in, API_TOKENS and MCP (checked below).
     mcpOauth: sw('MCP_OAUTH', true),
     // MCP_PROTOCOL_VERSIONS: the MCP revisions /mcp serves (src/mcp.js), newest first.

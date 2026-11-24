@@ -1,6 +1,6 @@
-// The tests below were written when POST /api/v1/share, POST /api/v1/open
-// and the MCP server were on by default; they keep testing them, so they
-// switch them on unless a test sets them itself. config.test.js and
+// The tests below were written when POST /api/v1/share and POST /api/v1/open
+// were on by default; they keep testing them (and the MCP tools on them), so
+// they switch them on unless a test sets them itself. config.test.js and
 // tests/downloads.test.js check the real defaults.
 import { loadConfig as load } from '../src/config.js';
 
