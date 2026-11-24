@@ -6,6 +6,7 @@
 | Configuration | [CONFIG.md](CONFIG.md) | every setting with its default; Redis, passphrase rules, API access, MCP server and the sign-in of MCP clients, sign-in, recipients, responsible people, status page, audit log, API tokens, languages |
 | Usage | [USAGE.md](USAGE.md) | the pages (also API tokens, the audit log page and the consent page of MCP clients), how sharing works, the status page, health and monitoring |
 | Interface and API | [INTERFACE.md](INTERFACE.md) | REST API with examples, MCP and its OAuth endpoints, crypto format v1, Redis keys, audit events and formats, hash chain and `audit:verify`, token API; the contract is [openapi.json](../openapi/openapi.json), the reference is served at `/api/docs` |
+| Clients | [CLIENTS.md](CLIENTS.md) | the client libraries, publishing |
 | Security | [SECURITY.md](SECURITY.md) | how a secret is protected: encryption in the browser, what Redis stores, passphrase, sign-in, status access, audit log and API tokens, limits |
 | Accessibility | [ACCESSIBILITY.md](ACCESSIBILITY.md) | accessibility statement: WCAG 2.2 AA target, what the pages do, how it is checked, known limits, feedback |
 | Development | [DEVELOPMENT.md](DEVELOPMENT.md) | local development, tests, CI, security checks, releases |

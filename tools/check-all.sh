@@ -79,6 +79,12 @@ fi
 step "tests"
 npm test
 
+# The client libraries (build.yml job "clients"), each with its own toolchain.
+client() { # name, tool, folder, command
+  if have "$2"; then step "client: $1"; (cd "clients/$3" && eval "$4"); else skip "client $1 ($2 not installed)"; fi
+}
+client Go go go 'go vet ./... && go test ./...'
+
 step "OpenAPI document"
 npx --yes @redocly/cli@2.82.0 lint --extends=minimal openapi/openapi.json
 

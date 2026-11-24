@@ -151,7 +151,9 @@ own rate limit (`RATE_LIMIT_READ`, bucket `oauth`).
 
 All binary values are base64url without padding. The server has the
 ciphertext and the verifier hash but never the key; the verifier cannot
-decrypt anything without the key.
+decrypt anything without the key. `clients/testvectors.json` has test
+vectors (made from `public/js/vanishly-crypto.js`) that every client
+library checks.
 
 ## Redis keys
 

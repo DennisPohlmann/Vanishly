@@ -27,6 +27,7 @@ Project layout:
 | `src/ratelimit.js` | rate limits in Redis, IP keyed with `RATE_LIMIT_KEY` |
 | `src/mcp.js` | MCP server at `/mcp` (`ENABLE_MCP`) |
 | `src/oauth.js` | sign-in of MCP clients through the browser (`MCP_OAUTH`) |
+| `clients/` | client libraries, test vectors, `set-version.sh` ([CLIENTS.md](CLIENTS.md)) |
 | `public/js/vanishly-crypto.js` | crypto format v1 (browser and server) |
 | `public/js/app.js` | browser logic of the pages |
 | `public/js/rules.js` | passphrase rules, shared by browser and server |
@@ -98,6 +99,8 @@ everything a release would run, and publish nothing:
   repository, the Redis image, builds the image and scans it; fixable
   HIGH/CRITICAL findings fail the build (`.trivyignore` for accepted ones,
   with reason and expiry).
+- **clients:** every client library against the test vectors, each with
+  the toolchain of its language.
 - **package:** `make package`; the tar.gz and `.sha256` are a workflow
   artifact for 7 days.
 
@@ -120,9 +123,11 @@ image-scan:
   last tag; `feat` → minor, `fix`/`perf` → patch, `!` or `BREAKING CHANGE`
   → major, `docs`/`chore`/`ci`/`test`/`refactor`/`style` → no release. It
   updates `VERSION`, `package.json`, `package-lock.json`,
-  `charts/vanishly/Chart.yaml`, `CHANGELOG.md`, commits `chore(release):
+  `charts/vanishly/Chart.yaml`, the client versions
+  (`clients/set-version.sh`), `CHANGELOG.md`, commits `chore(release):
   vX.Y.Z [skip ci]`, tags and creates the GitHub release as a draft
   (releases are immutable once published, so assets are added first).
+  Then it pushes the Go module's tag `clients/go/vX.Y.Z`.
 - **package:** builds the tag and adds the tar.gz and `.sha256` to the
   release.
 - **image:** pushes `ghcr.io/dennispohlmann/vanishly` with `edge` (every

@@ -26,7 +26,7 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "echo ${nextRelease.version} > VERSION && npm version ${nextRelease.version} --no-git-tag-version --allow-same-version && sed -i -E 's/^version: .*/version: ${nextRelease.version}/; s/^appVersion: .*/appVersion: \"${nextRelease.version}\"/' charts/vanishly/Chart.yaml",
+        "prepareCmd": "echo ${nextRelease.version} > VERSION && npm version ${nextRelease.version} --no-git-tag-version --allow-same-version && sed -i -E 's/^version: .*/version: ${nextRelease.version}/; s/^appVersion: .*/appVersion: \"${nextRelease.version}\"/' charts/vanishly/Chart.yaml && clients/set-version.sh ${nextRelease.version}",
         "successCmd": "echo version=${nextRelease.version} >> \"$GITHUB_OUTPUT\""
       }
     ],
@@ -38,7 +38,11 @@
           "VERSION",
           "package.json",
           "package-lock.json",
-          "charts/vanishly/Chart.yaml"
+          "charts/vanishly/Chart.yaml",
+          "clients/go/client.go",
+          "clients/go/go.mod",
+          "clients/go/README.md",
+          "docs/CLIENTS.md"
         ],
         "message": "chore(release): v${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }
