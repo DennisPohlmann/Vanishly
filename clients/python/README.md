@@ -7,8 +7,8 @@ Full documentation: [docs/CLIENTS.md](https://github.com/DennisPohlmann/vanishly
 
 ```bash
 pip install vanishly
-export VANISHLY_URL=https://ots.example.com
-vanishly share --ttl 3600   # asks for the secret, prints the link
+vanishly share 's3cret' --url https://ots.example.com --ttl 3600
+vanishly share --url https://ots.example.com --ttl 3600   # asks for the secret, prints the link
 vanishly open 'https://ots.example.com/s/<id>#<key>'
 ```
 

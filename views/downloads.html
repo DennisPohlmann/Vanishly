@@ -20,15 +20,15 @@ cosign verify-blob vanishly-linux-amd64 \
   <p class="hint">{{ t:downloads.verifyHint }} <a href="{{ release }}" rel="noopener">{{ t:downloads.release }}</a></p>
   <h2>{{ t:downloads.usage }}</h2>
   <pre class="code" tabindex="0"><code>chmod +x vanishly-linux-amd64 &amp;&amp; mv vanishly-linux-amd64 ~/bin/vanishly
-vanishly --url {{ origin }} share 's3cret' --ttl 3600 --views 1
-vanishly --url {{ origin }} share --secret-file secret.txt
-vanishly --url {{ origin }} share
+vanishly share 's3cret' --url {{ origin }} --ttl 3600 --views 1
+vanishly share --url {{ origin }} --secret-file secret.txt
+vanishly share --url {{ origin }}
 vanishly open '{{ origin }}/s/&lt;id&gt;#&lt;key&gt;'
 vanishly help</code></pre>
   <p class="hint">{{ t:downloads.usageHint }}</p>
   <h3>{{ t:downloads.passphrase }}</h3>
-  <pre class="code" tabindex="0"><code>vanishly --url {{ origin }} share 's3cret' --ask
-vanishly --url {{ origin }} share --secret-file secret.txt --passphrase-file passphrase.txt
+  <pre class="code" tabindex="0"><code>vanishly share 's3cret' --url {{ origin }} --ask
+vanishly share --url {{ origin }} --secret-file secret.txt --passphrase-file passphrase.txt
 vanishly open '{{ origin }}/s/&lt;id&gt;#&lt;key&gt;' --ask
 vanishly open '{{ origin }}/s/&lt;id&gt;#&lt;key&gt;' --passphrase-file passphrase.txt</code></pre>
   <p class="hint">{{ t:downloads.passphraseHint }}</p>

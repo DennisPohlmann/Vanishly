@@ -50,9 +50,17 @@ pages' `public/js/vanishly-crypto.js` (`node clients/testvectors.mjs`).
 The command line client `vanishly` is a single binary without
 dependencies (Go, [download](#download-page)):
 
+Every call is `vanishly <command> [arguments] [flags]`: first the command,
+then its arguments, then the flags. The global flags (`--url`, `--token`,
+`--json`, `--run-id`, `--audit-comment`, `--on-behalf-of`) work with every
+command; they are also accepted before it.
+
 ```bash
-export VANISHLY_URL=https://ots.example.com   # or --url
-export VANISHLY_TOKEN=vnly_...                # with sign-in, or --token
+vanishly share 's3cret' --url https://ots.example.com --ttl 3600 --views 1
+vanishly open 'https://ots.example.com/s/<id>#<key>' --ask
+
+export VANISHLY_URL=https://ots.example.com   # instead of --url
+export VANISHLY_TOKEN=vnly_...                # with sign-in, instead of --token
 
 vanishly share --ttl 3600 --views 1   # asks for the secret, prints the link
 vanishly share --secret-file secret.txt --passphrase-file pw.txt --recipient alice@example.com
@@ -66,7 +74,7 @@ vanishly me                   # who is signed in
 vanishly downloads            # the clients the server offers, with checksums
 vanishly api GET /v1/me/secrets --query limit=10
 vanishly api POST /v1/tokens --data '{"name":"ci","scopes":["create"]}'
-vanishly --json share ...     # the whole answer as JSON
+vanishly share ... --json     # the whole answer as JSON
 vanishly help
 ```
 
