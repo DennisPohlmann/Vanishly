@@ -285,7 +285,7 @@ export const SETTINGS = [
   'GENERATOR_LENGTH', 'GENERATOR_COMPLEXITY', 'RECEIPT_KEEP',
   'RATE_LIMIT_CREATE', 'RATE_LIMIT_READ', 'RATE_LIMIT_WINDOW', 'RATE_LIMIT_KEY', 'RATE_LIMIT_KEY_FILE',
   'CREATE_ALLOWED_IPS', 'CREATE_DENIED_IPS', 'READ_ALLOWED_IPS', 'READ_DENIED_IPS', 'ADMIN_ALLOWED_IPS', 'ADMIN_DENIED_IPS',
-  'API_DOCS', 'ACCESS_LOG',
+  'ACCESS_LOG',
   'ENABLE_API', 'ENABLE_MCP', 'MCP_OAUTH', 'MCP_PROTOCOL_VERSIONS', 'MCP_OAUTH_TOKEN_EXPIRY', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SERVER_CREATE_API', 'ENABLE_SERVER_OPEN_API', 'ENABLE_SERVER_CREATE_MCP', 'ENABLE_SERVER_OPEN_MCP',
   'ENABLE_SECRET_META_API', 'ENABLE_CONFIG_API', 'ENABLE_ME_API',
   'ENABLE_CREATE_API', 'ENABLE_REVEAL_API', 'ENABLE_RECEIPT_API', 'ENABLE_API_INDEX',
@@ -1044,7 +1044,7 @@ function auditConfig(env, authSecret) {
 
 // Settings that were renamed: set, they stop the start with the new name
 // (no second name for one setting).
-const RENAMED = { ENABLE_SHARE_API: 'ENABLE_SERVER_CREATE_API', ENABLE_OPEN_API: 'ENABLE_SERVER_OPEN_API' };
+const RENAMED = { ENABLE_SHARE_API: 'ENABLE_SERVER_CREATE_API', ENABLE_OPEN_API: 'ENABLE_SERVER_OPEN_API', API_DOCS: 'ENABLE_API_DOCS' };
 
 /** @param {NodeJS.ProcessEnv} env */
 export function loadConfig(env = process.env) {
@@ -1199,7 +1199,7 @@ export function loadConfig(env = process.env) {
     mcpOauth: sw('MCP_OAUTH', true),
     // MCP_PROTOCOL_VERSIONS: the MCP revisions /mcp serves (src/mcp.js), newest first.
     mcpVersions: named('MCP_PROTOCOL_VERSIONS', () => parseMcpVersions(env.MCP_PROTOCOL_VERSIONS)),
-    apiDocs: env.ENABLE_API_DOCS ? sw('ENABLE_API_DOCS', true) : sw('API_DOCS', true),
+    apiDocs: sw('ENABLE_API_DOCS', true),
     // Features an operator can switch off (ENABLE_*=false); on by default,
     // except the four that let the server see a secret (ENABLE_SERVER_CREATE_API / _MCP, ENABLE_SERVER_OPEN_API / _MCP).
     features: {

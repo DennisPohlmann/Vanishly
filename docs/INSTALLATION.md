@@ -108,6 +108,9 @@ stays on). If scripts (curl) or AI clients create secrets that way, set the
 matching ones to `true` in `.env`; better, move the scripts to a client,
 which encrypts on its own machine. The web pages are not affected.
 
+The older name `API_DOCS` (for `ENABLE_API_DOCS`) stops the start too: rename
+it in `.env`.
+
 Image tags: `latest` (newest release), `<major>.<minor>`, `<version>`,
 `edge` (`main` at the last release run).
 

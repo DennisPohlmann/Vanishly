@@ -213,6 +213,7 @@ test('feature switches', () => {
   // The old names stop the start with the new one.
   assert.throws(() => loadConfig({ ENABLE_SHARE_API: 'true' }), /ENABLE_SHARE_API is now called ENABLE_SERVER_CREATE_API/);
   assert.throws(() => loadConfig({ ENABLE_OPEN_API: 'false' }), /ENABLE_OPEN_API is now called ENABLE_SERVER_OPEN_API/);
+  assert.throws(() => loadConfig({ API_DOCS: 'false' }), /API_DOCS is now called ENABLE_API_DOCS/);
   // CLIENT_MIN_VERSION / CLIENT_RECOMMENDED_VERSION: x.y.z, empty = no rule, recommended not below min.
   assert.deepEqual(loadConfig({}).clientVersions, { min: '', recommended: '' });
   assert.deepEqual(loadConfig({ CLIENT_MIN_VERSION: '3.1.0', CLIENT_RECOMMENDED_VERSION: '3.10.0' }).clientVersions, { min: '3.1.0', recommended: '3.10.0' });

@@ -122,7 +122,7 @@ tools); the old names now stop the start. When you upgrade and scripts use
 | `ENABLE_API` | No public API: every API endpoint and `/api/openapi.json` answer 404, except the calls of this server's own pages; also switches off `ENABLE_API_DOCS`, `ENABLE_SERVER_CREATE_API`, `ENABLE_SERVER_OPEN_API`, `ENABLE_MCP` and the footer link ([details](#api-access)) |
 | `ENABLE_MCP` | The MCP server at `/mcp` (on by default, off with `ENABLE_API=false`); `false`: it answers 404, the API stays. `ENABLE_MCP=true` with `ENABLE_API=false` stops the start. Its tools `create_secret` and `open_secret` need `ENABLE_SERVER_CREATE_MCP` / `ENABLE_SERVER_OPEN_MCP`; without them it lists, shows and burns secrets only ([details](#mcp-server)) |
 | `MCP_OAUTH` | No browser sign-in for MCP clients: they need an API token made by hand, and `/mcp` works without one as far as the API does. On by default with sign-in, `API_TOKENS=true` and MCP; `MCP_OAUTH=true` without them stops the start ([details](#sign-in-of-mcp-clients-mcp_oauth)) |
-| `ENABLE_API_DOCS` | No API reference page at `/api/docs` (`API_DOCS` is the older name) |
+| `ENABLE_API_DOCS` | No API reference page at `/api/docs` (up to version 3 also `API_DOCS`, which now stops the start) |
 | `ENABLE_API_LINK` | No "API" link in the footer; the API itself stays |
 | `ENABLE_SERVER_CREATE_API` | **Off by default.** `true`: `POST /api/v1/share` (the server encrypts, for scripts that cannot, e.g. curl); off it answers 404. The [clients](CLIENTS.md) encrypt themselves and do not need it |
 | `ENABLE_SERVER_OPEN_API` | **Off by default.** `true`: `POST /api/v1/open` (the server opens a link with its key and passphrase); off it answers 404. The clients decrypt themselves |
