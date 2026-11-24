@@ -234,7 +234,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "v$RELEASE" dist/*.tar.gz dist/*.tar.gz.sha256 --repo "$GITHUB_REPOSITORY"
-      # The command line clients with the Dockerfile's stage "clients": the
+      # The command line clients with the Dockerfile's stage "clients" (exported
+      # through "clients-out"): the
       # same recipe and version as the image, so the image's /downloads has
       # the same bytes (job image checks it). The checksum files have the
       # format the server makes (src/downloads.js).
@@ -243,7 +244,7 @@ jobs:
         env:
           VERSION: ${{ env.RELEASE || format('edge+{0}', github.sha) }}
         run: |
-          docker buildx build --target clients --build-arg VERSION="$VERSION" --output type=local,dest=dist/clients .
+          docker buildx build --target clients-out --build-arg VERSION="$VERSION" --output type=local,dest=dist/clients .
           cd dist/clients
           python3 - <<'PY'
           import hashlib, os

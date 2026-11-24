@@ -33,6 +33,12 @@ COPY VERSION ./
 COPY clients/go ./clients/go
 RUN cd clients/go && go mod download && ./build.sh /out "$VERSION"
 
+# Only the binaries, for `docker buildx build --target clients-out --output
+# type=local` (build.yml): exporting the stage above would copy the whole Go
+# image, whose read-only module cache the export cannot write.
+FROM scratch AS clients-out
+COPY --from=clients /out /
+
 FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="vanishly" \
