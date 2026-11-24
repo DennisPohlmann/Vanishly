@@ -2363,8 +2363,9 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         min ? t['downloads.minVersion'].replace('{v}', min) : '',
         recommended ? t['downloads.recommended'].replace('{v}', recommended) : '',
       ].filter(Boolean).map((x) => `<p class="notice">${escapeHtml(x)}</p>`).join('');
-      // One group per operating system, the common architectures first; each file with
-      // its SHA-256 shortened and all checksums in full behind a <details> (no wide table).
+      // One group per operating system, the common architectures first; each file with its
+      // SHA-256 and the other checksums behind a <details>, each in a box that scrolls on its own
+      // when the hash is longer than the box, with a copy button.
       const archOrder = ['amd64', 'arm64', '386', 'armv7', 'armv6'];
       const groups = Object.entries(OS)
         .map(([os, osName]) => {
@@ -2372,14 +2373,19 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
             .filter((d) => d.os === os)
             .sort((a, b) => archOrder.indexOf(a.arch) - archOrder.indexOf(b.arch))
             .map((d) => {
-              const sha = d.checksums.sha256;
-              const sums = ALGORITHMS.map(([key, , , shown]) => `<dt>${shown}</dt><dd><code>${d.checksums[key]}</code></dd>`).join('');
+              const sum = (/** @type {typeof ALGORITHMS[number]} */ [key, , , shown]) => {
+                const id = `sum-${d.name.replace(/\W/g, '-')}-${key}`;
+                return `<div class="dl-sum"><span class="dl-algo">${shown}</span>` +
+                  `<div class="dl-hash" tabindex="0" role="group" aria-label="${shown} ${escapeHtml(d.name)}"><code id="${id}">${d.checksums[key]}</code></div>` +
+                  `<button type="button" class="btn btn-small" data-copy="${id}">${escapeHtml(t['created.copy'])}</button></div>`;
+              };
+              const [first, ...rest] = ALGORITHMS;
               return `<li class="dl-item"><div class="dl-main">` +
                 `<span class="dl-arch">${escapeHtml(ARCH[/** @type {keyof typeof ARCH} */ (d.arch)])}</span>` +
                 `<a class="btn btn-small dl-file" href="/downloads/${escapeHtml(d.name)}" download>${escapeHtml(d.name)}</a>` +
                 `<span class="dl-size">${(d.size / 1048576).toFixed(1)} MB</span></div>` +
-                `<details class="dl-sums"><summary>SHA-256 <code title="${sha}">${sha.slice(0, 12)}…${sha.slice(-8)}</code>` +
-                `<span class="dl-more">${escapeHtml(t['downloads.allChecksums'])}</span></summary><dl class="sums-list">${sums}</dl></details></li>`;
+                sum(first) +
+                `<details class="dl-sums"><summary>${escapeHtml(t['downloads.allChecksums'])}</summary>${rest.map(sum).join('')}</details></li>`;
             })
             .join('');
           return items ? `<section class="dl-os"><h3>${osName}</h3><ul class="dl-list">${items}</ul></section>` : '';

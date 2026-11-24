@@ -96,15 +96,16 @@ modeToggle?.addEventListener('click', () => {
   } catch {}
 });
 
-// Copy buttons: data-copy="<id of the input or textarea>".
+// Copy buttons: data-copy="<id of the input or textarea>", or of an element with the text (a checksum).
 document.addEventListener('click', async (e) => {
   const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-copy]'));
   if (!btn) return;
   const field = $(btn.dataset.copy || '');
   if (!field) return;
   try {
-    await navigator.clipboard.writeText(field.value);
+    await navigator.clipboard.writeText(field.value ?? field.textContent);
   } catch {
+    if (!field.select) return;
     field.select();
     document.execCommand('copy');
   }
