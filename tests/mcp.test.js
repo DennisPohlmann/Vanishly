@@ -255,7 +255,7 @@ test('only the tools whose endpoints are on', async () => {
   }
 });
 
-test('ENABLE_OPEN_API gives open_secret, "My secrets" list_my_secrets and burn_my_secret; their scopes', async () => {
+test('ENABLE_SERVER_OPEN gives open_secret, "My secrets" list_my_secrets and burn_my_secret; their scopes', async () => {
   const all = { ...ON, openApi: true, mySecrets: true, mySecretDetails: true };
   assert.deepEqual(toolScopes(all), ['create', 'read', 'status', 'burn']);
   assert.deepEqual(toolScopes({ shareApi: false, receipts: false, receiptApi: false, burn: true, mySecrets: true, mySecretDetails: true }), ['status', 'burn']);
@@ -501,7 +501,7 @@ test('standalone: create, status and burn over MCP, like the open API', opts, as
   assert.equal(r.body.result.isError, true);
   // The answers of the API still work after MCP calls on the same app.
   assert.equal((await fetch(`${base}/api/v1/receipts/${made.receiptId}`)).status, 200);
-  // ENABLE_OPEN_API: open_secret takes one view.
+  // ENABLE_SERVER_OPEN: open_secret takes one view.
   const link = (await rpc(base, { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'create_secret', arguments: { secret: 'hunter22' } } }, LEGACY)).body.result.structuredContent.shareUrl;
   r = await rpc(base, { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'open_secret', arguments: { link } } }, LEGACY);
   assert.equal(r.body.result.structuredContent.secret, 'hunter22', JSON.stringify(r.body));
@@ -509,8 +509,8 @@ test('standalone: create, status and burn over MCP, like the open API', opts, as
   assert.equal(r.body.result.isError, true);
 });
 
-test('ENABLE_SHARE_API=false, ENABLE_OPEN_API=false: no create_secret, no open_secret over MCP either', opts, async () => {
-  const base = await vanishly({ ENABLE_SHARE_API: 'false', ENABLE_OPEN_API: 'false' });
+test('ENABLE_SERVER_CREATE=false, ENABLE_SERVER_OPEN=false: no create_secret, no open_secret over MCP either', opts, async () => {
+  const base = await vanishly({ ENABLE_SERVER_CREATE: 'false', ENABLE_SERVER_OPEN: 'false' });
   const names = (await rpc(base, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, LEGACY)).body.result.tools.map((/** @type {any} */ t) => t.name);
   assert.deepEqual(names, ['get_secret_status', 'burn_secret']);
 });

@@ -140,7 +140,7 @@ export function secretHints(v) {
 
 /**
  * @typedef {{ shareApi: boolean, openApi?: boolean, receipts: boolean, receiptApi: boolean, burn: boolean, mySecrets?: boolean, mySecretDetails?: boolean }} ToolFeatures
- *   shareApi / openApi: ENABLE_SHARE_API / ENABLE_OPEN_API, the same switches as for the API;
+ *   shareApi / openApi: ENABLE_SERVER_CREATE / ENABLE_SERVER_OPEN, the same switches as for the API;
  *   mySecrets / mySecretDetails: MY_SECRETS / SECRET_DETAILS as the app has them on
  */
 

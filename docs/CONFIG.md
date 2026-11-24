@@ -105,22 +105,24 @@ turns into minutes unnoticed.
 ### Switches (`ENABLE_*`)
 
 Everything is on by default, except the two that let the server see a
-plaintext secret: `ENABLE_SHARE_API` and `ENABLE_OPEN_API` are off and
+plaintext secret: `ENABLE_SERVER_CREATE` and `ENABLE_SERVER_OPEN` are off and
 need `true`; they also decide whether the MCP server may create and open
 secrets. `false` (or `0`, `no`, `off`) switches the others off. Up to
-version 3 these two were on: when you upgrade and scripts or AI clients
-use `POST /api/v1/share`, `POST /api/v1/open` or create secrets over
-`/mcp`, set them to `true` ([INSTALLATION.md](INSTALLATION.md#7-update)).
+version 3 these two were on and were called `ENABLE_SHARE_API` and
+`ENABLE_OPEN_API`; the old names now stop the start. When you upgrade and
+scripts or AI clients use `POST /api/v1/share`, `POST /api/v1/open` or
+create secrets over `/mcp`, set them to `true`
+([INSTALLATION.md](INSTALLATION.md#7-update)).
 
 | Variable | Off means |
 |---|---|
-| `ENABLE_API` | No public API: every API endpoint and `/api/openapi.json` answer 404, except the calls of this server's own pages; also switches off `ENABLE_API_DOCS`, `ENABLE_SHARE_API`, `ENABLE_OPEN_API`, `ENABLE_MCP` and the footer link ([details](#api-access)) |
-| `ENABLE_MCP` | The MCP server at `/mcp` (on by default, off with `ENABLE_API=false`); `false`: it answers 404, the API stays. `ENABLE_MCP=true` with `ENABLE_API=false` stops the start. Its tools `create_secret` and `open_secret` need `ENABLE_SHARE_API` / `ENABLE_OPEN_API`; without them it lists, shows and burns secrets only ([details](#mcp-server)) |
+| `ENABLE_API` | No public API: every API endpoint and `/api/openapi.json` answer 404, except the calls of this server's own pages; also switches off `ENABLE_API_DOCS`, `ENABLE_SERVER_CREATE`, `ENABLE_SERVER_OPEN`, `ENABLE_MCP` and the footer link ([details](#api-access)) |
+| `ENABLE_MCP` | The MCP server at `/mcp` (on by default, off with `ENABLE_API=false`); `false`: it answers 404, the API stays. `ENABLE_MCP=true` with `ENABLE_API=false` stops the start. Its tools `create_secret` and `open_secret` need `ENABLE_SERVER_CREATE` / `ENABLE_SERVER_OPEN`; without them it lists, shows and burns secrets only ([details](#mcp-server)) |
 | `MCP_OAUTH` | No browser sign-in for MCP clients: they need an API token made by hand, and `/mcp` works without one as far as the API does. On by default with sign-in, `API_TOKENS=true` and MCP; `MCP_OAUTH=true` without them stops the start ([details](#sign-in-of-mcp-clients-mcp_oauth)) |
 | `ENABLE_API_DOCS` | No API reference page at `/api/docs` (`API_DOCS` is the older name) |
 | `ENABLE_API_LINK` | No "API" link in the footer; the API itself stays |
-| `ENABLE_SHARE_API` | **Off by default.** `true`: `POST /api/v1/share` (the server encrypts, for scripts that cannot, e.g. curl) and the MCP tool `create_secret`; off both are gone. The [clients](CLIENTS.md) encrypt themselves and do not need it |
-| `ENABLE_OPEN_API` | **Off by default.** `true`: `POST /api/v1/open` (the server opens a link with its key and passphrase) and the MCP tool `open_secret`; off both are gone. The clients decrypt themselves |
+| `ENABLE_SERVER_CREATE` | **Off by default.** `true`: `POST /api/v1/share` (the server encrypts, for scripts that cannot, e.g. curl) and the MCP tool `create_secret`; off both are gone. The [clients](CLIENTS.md) encrypt themselves and do not need it |
+| `ENABLE_SERVER_OPEN` | **Off by default.** `true`: `POST /api/v1/open` (the server opens a link with its key and passphrase) and the MCP tool `open_secret`; off both are gone. The clients decrypt themselves |
 | `ENABLE_DOWNLOADS_LINK` | No "Downloads" link in the footer (next to "API"); `/downloads` stays. The link is shown only when the server has binaries |
 | `ENABLE_DOWNLOADS` | No download page `/downloads` and no `GET /api/v1/downloads`; also no footer link. Without binaries in the app's `downloads/` folder (only the image has them) the page says so and the link is hidden ([details](#clients)) |
 | `ENABLE_SECRET_META_API` | `GET /api/v1/secrets/{id}` (a secret's state and passphrase parameters without using a view) answers 404; the reveal page gets what it needs with the page itself |
@@ -156,10 +158,10 @@ switched off, still answered for this server's own pages (the browser's
 | `GET /api/openapi.json`, `/api/docs` | `ENABLE_API_DOCS` (docs page), `ENABLE_API` (everything) | 404 |
 | `GET /api/v1/config` | `ENABLE_CONFIG_API` | 404 |
 | `POST /api/v1/secrets` | `ENABLE_CREATE_API` | 404 for scripts, the form keeps working |
-| `POST /api/v1/share` | `ENABLE_SHARE_API` (off by default) | 404 |
+| `POST /api/v1/share` | `ENABLE_SERVER_CREATE` (off by default) | 404 |
 | `GET /api/v1/secrets/{id}` | `ENABLE_SECRET_META_API` | 404 (the reveal page does not need it) |
 | `POST /api/v1/secrets/{id}/reveal` | `ENABLE_REVEAL_API` | 404 for scripts, the reveal page keeps working |
-| `POST /api/v1/open` | `ENABLE_OPEN_API` (off by default) | 404 |
+| `POST /api/v1/open` | `ENABLE_SERVER_OPEN` (off by default) | 404 |
 | `GET /api/v1/receipts/{id}` | `ENABLE_RECEIPT_API` (`ENABLE_RECEIPTS` also removes the status page) | 404 for scripts, the status page keeps working |
 | `POST /api/v1/receipts/{id}/burn` | `ENABLE_RECEIPT_API`, `ENABLE_BURN` | as above; `ENABLE_BURN=false` removes it for all |
 | `GET /api/v1/me` | `ENABLE_ME_API` (only with sign-in) | 404 |
@@ -172,8 +174,8 @@ switched off, still answered for this server's own pages (the browser's
 revealing it, in the form and for scripts:
 
 ```bash
-ENABLE_SHARE_API=false        # no server-side encryption for scripts (the default)
-ENABLE_OPEN_API=false         # no server-side reveal for scripts (the default)
+ENABLE_SERVER_CREATE=false    # no server-side encryption for scripts (the default)
+ENABLE_SERVER_OPEN=false      # no server-side reveal for scripts (the default)
 ENABLE_SECRET_META_API=false  # no state lookup of a secret
 ENABLE_CONFIG_API=false       # no limits and options
 ENABLE_ME_API=false           # no "who is signed in"
@@ -428,7 +430,7 @@ AI clients that speak the [Model Context Protocol](https://modelcontextprotocol.
 (Streamable HTTP, one JSON answer per request, no sessions). On by default
 (`ENABLE_MCP`, with `ENABLE_API`). Its tools that hand the plaintext to the
 server, `create_secret` and `open_secret`, are only there with
-`ENABLE_SHARE_API=true` / `ENABLE_OPEN_API=true` (both off by default).
+`ENABLE_SERVER_CREATE=true` / `ENABLE_SERVER_OPEN=true` (both off by default).
 
 Protocol versions (`MCP_PROTOCOL_VERSIONS`, all three by default):
 `2026-07-28` (stateless: no `initialize`, `server/discover`, the version and
@@ -444,15 +446,15 @@ tool's input schema (unknown fields too) before the API is called.
 
 | Tool | Runs | Needs |
 |---|---|---|
-| `create_secret` | `POST /api/v1/share`: the secret is encrypted on the server, the answer has `shareUrl` (for the recipient) and `receiptUrl` | `ENABLE_SHARE_API` |
-| `open_secret` | `POST /api/v1/open`: opens a link (uses up a view), the server decrypts, the answer has the secret | `ENABLE_OPEN_API` |
+| `create_secret` | `POST /api/v1/share`: the secret is encrypted on the server, the answer has `shareUrl` (for the recipient) and `receiptUrl` | `ENABLE_SERVER_CREATE` |
+| `open_secret` | `POST /api/v1/open`: opens a link (uses up a view), the server decrypts, the answer has the secret | `ENABLE_SERVER_OPEN` |
 | `list_my_secrets` | `GET /api/v1/me/secrets`: the person's secrets (created by them or for them), metadata only, each with its `ref`; optional `status`, `limit` | sign-in, `MY_SECRETS` |
 | `burn_my_secret` | `POST /api/v1/me/secrets/{ref}/burn`: burns a secret the person created, by its `ref` | also `SECRET_DETAILS`, `ENABLE_BURN` |
 | `get_secret_status` | `GET /api/v1/receipts/{id}`, by receipt id or link | `ENABLE_RECEIPTS`, `ENABLE_RECEIPT_API` |
 | `burn_secret` | `POST /api/v1/receipts/{id}/burn` | also `ENABLE_BURN` |
 
 Creating and opening secrets over MCP follow the same switches as the API:
-`ENABLE_SHARE_API` and `ENABLE_OPEN_API` (both off by default). With them
+`ENABLE_SERVER_CREATE` and `ENABLE_SERVER_OPEN` (both off by default). With them
 off, MCP can only list the person's secrets, show their status and burn
 them. Each tool is the API call itself: the
 same limits, switches, rate limits and audit events (route `/api/v1/...`);
@@ -557,8 +559,8 @@ claude mcp add --transport http vanishly https://ots.example.com/mcp
 
 Vanishly has client libraries and a command line client `vanishly`
 ([CLIENTS.md](CLIENTS.md)). They encrypt and decrypt on the user's machine
-like the web pages, so they need neither `ENABLE_SHARE_API` nor
-`ENABLE_OPEN_API`.
+like the web pages, so they need neither `ENABLE_SERVER_CREATE` nor
+`ENABLE_SERVER_OPEN`.
 
 The image has the command line client for 14 platforms in
 `/app/downloads`; `/downloads` offers them with five checksums each
@@ -696,8 +698,8 @@ RESPONSIBLE=required           # and who looks after it
 STATUS_ACCESS=signed-in        # status only for creator, responsible, openers
 RECEIPT_SHOW_VIEWER=name,email # creator and responsible see who opened it
 # The API only creates and reveals; the pages keep working:
-ENABLE_SHARE_API=false
-ENABLE_OPEN_API=false
+ENABLE_SERVER_CREATE=false
+ENABLE_SERVER_OPEN=false
 ENABLE_SECRET_META_API=false
 ENABLE_CONFIG_API=false
 ENABLE_ME_API=false

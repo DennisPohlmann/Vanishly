@@ -168,7 +168,7 @@ test('end to end by default: /v1/share, /v1/open and the MCP tools on them are o
     // MCP is on, but only shows and burns.
     assert.deepEqual(await tools(b), ['get_secret_status', 'burn_secret']);
   });
-  await withApp({ ENABLE_SHARE_API: 'true', ENABLE_OPEN_API: 'true' }, async (b) => {
+  await withApp({ ENABLE_SERVER_CREATE: 'true', ENABLE_SERVER_OPEN: 'true' }, async (b) => {
     const r = await fetch(`${b}/api/v1/share`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: 'hi' }) });
     assert.equal(r.status, 201);
     const o = await fetch(`${b}/api/v1/open`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ link: (await r.json()).shareUrl }) });

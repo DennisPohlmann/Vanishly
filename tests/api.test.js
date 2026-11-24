@@ -358,7 +358,7 @@ test('view log off keeps the receipt without times', opts, async () => {
     ENABLE_VIEW_LOG: 'false',
     ENABLE_BURN: 'false',
     ENABLE_RECEIPT_SHARE_LINK: 'false',
-    ENABLE_SHARE_API: 'false',
+    ENABLE_SERVER_CREATE: 'false',
     ENABLE_API_LINK: 'false',
     ACCESS_LOG: 'false',
   });
@@ -555,7 +555,7 @@ test('GET /api and /api/v1: an index of the switched-on endpoints, browsers to t
     const spec = await (await fetch(`${b}/api/openapi.json`)).json();
     assert.ok(spec.paths['/'] && spec.paths['/v1']);
   });
-  await withApp({ ENABLE_API_DOCS: 'false', ENABLE_SECRET_META_API: 'false', ENABLE_SHARE_API: 'false', ENABLE_OPEN_API: 'false', ENABLE_CONFIG_API: 'false' }, async (b) => {
+  await withApp({ ENABLE_API_DOCS: 'false', ENABLE_SECRET_META_API: 'false', ENABLE_SERVER_CREATE: 'false', ENABLE_SERVER_OPEN: 'false', ENABLE_CONFIG_API: 'false' }, async (b) => {
     const r = await fetch(`${b}/api`, { headers: { Accept: 'text/html' }, redirect: 'manual' });
     assert.equal(r.status, 200); // no docs: JSON for browsers too
     const j = await r.json();
@@ -574,7 +574,7 @@ test('served OpenAPI document: only the switched-on endpoints, the same as the /
   const ops = (spec) => Object.entries(spec.paths).flatMap(([p, item]) => Object.keys(/** @type {any} */ (item)).map((m) => `${m.toUpperCase()} /api${p}`)).filter((e) => !/ \/api(\/v1)?\/?$/.test(e)).sort();
   for (const env of /** @type {Record<string, string>[]} */ ([
     {},
-    { ENABLE_SHARE_API: 'false', ENABLE_OPEN_API: 'false', ENABLE_SECRET_META_API: 'false', ENABLE_CONFIG_API: 'false', ENABLE_ME_API: 'false' },
+    { ENABLE_SERVER_CREATE: 'false', ENABLE_SERVER_OPEN: 'false', ENABLE_SECRET_META_API: 'false', ENABLE_CONFIG_API: 'false', ENABLE_ME_API: 'false' },
     { ENABLE_RECEIPTS: 'false' },
     { ENABLE_BURN: 'false', ENABLE_API_DOCS: 'false' },
   ])) {
@@ -590,7 +590,7 @@ test('served OpenAPI document: only the switched-on endpoints, the same as the /
       assert.deepEqual(spec.tags.map((/** @type {any} */ t) => t.name).sort(), [...tags].sort());
     });
   }
-  await withApp({ ENABLE_SHARE_API: 'false', ENABLE_OPEN_API: 'false', ENABLE_SECRET_META_API: 'false', ENABLE_CONFIG_API: 'false', ENABLE_ME_API: 'false', ENABLE_RECEIPTS: 'false' }, async (b) => {
+  await withApp({ ENABLE_SERVER_CREATE: 'false', ENABLE_SERVER_OPEN: 'false', ENABLE_SECRET_META_API: 'false', ENABLE_CONFIG_API: 'false', ENABLE_ME_API: 'false', ENABLE_RECEIPTS: 'false' }, async (b) => {
     const spec = await (await fetch(`${b}/api/openapi.json`)).json();
     assert.deepEqual(Object.keys(spec.paths), ['/', '/v1', '/v1/downloads', '/v1/secrets', '/v1/secrets/{id}/reveal']);
     assert.deepEqual(Object.keys(spec.paths['/v1/secrets/{id}']?.get ? {} : {}), []);
@@ -632,7 +632,7 @@ test('API switches: meta, config and me answer 404 when off; the reveal page sti
     const cfg = await (await fetch(`${b}/api/v1/config`)).json();
     assert.deepEqual([cfg.features.secretMetaApi, cfg.features.configApi, cfg.features.meApi, cfg.passphraseRule], [true, true, true, 'off']);
   });
-  await withApp({ ENABLE_SECRET_META_API: 'false', ENABLE_CONFIG_API: 'false', ENABLE_ME_API: 'false', ENABLE_SHARE_API: 'false', ENABLE_OPEN_API: 'false' }, async (b) => {
+  await withApp({ ENABLE_SECRET_META_API: 'false', ENABLE_CONFIG_API: 'false', ENABLE_ME_API: 'false', ENABLE_SERVER_CREATE: 'false', ENABLE_SERVER_OPEN: 'false' }, async (b) => {
     for (const p of ['/api/v1/config', '/api/v1/me', `/api/v1/secrets/${'a'.repeat(22)}`]) {
       const r = await fetch(b + p);
       assert.equal(r.status, 404, p);

@@ -120,16 +120,16 @@ test('MCP_OAUTH needs sign-in, API_TOKENS and MCP; off without them', () => {
 });
 
 test('discovery: 401 with resource metadata, then the authorization server metadata', opts, async () => {
-  const a = await startApp({ ENABLE_OPEN_API: 'false' });
+  const a = await startApp({ ENABLE_SERVER_OPEN: 'false' });
   const r = await a.mcp({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
   assert.equal(r.status, 401);
   assert.equal(r.headers.get('www-authenticate'), `Bearer resource_metadata="${a.base}/.well-known/oauth-protected-resource/mcp", scope="create status burn"`);
   const prm = await (await a.req('/.well-known/oauth-protected-resource/mcp')).json();
   assert.equal(prm.resource, `${a.base}/mcp`);
   assert.deepEqual(prm.authorization_servers, [a.base]);
-  // Only the scopes the MCP tools need (CIS MCP 3.3.4): "read" only with open_secret (ENABLE_OPEN_API).
+  // Only the scopes the MCP tools need (CIS MCP 3.3.4): "read" only with open_secret (ENABLE_SERVER_OPEN).
   assert.deepEqual(prm.scopes_supported, ['create', 'status', 'burn']);
-  const open = await startApp({ ENABLE_OPEN_API: 'true' });
+  const open = await startApp({ ENABLE_SERVER_OPEN: 'true' });
   assert.deepEqual((await (await open.req('/.well-known/oauth-protected-resource/mcp')).json()).scopes_supported, ['create', 'read', 'status', 'burn']);
   const as = await (await a.req('/.well-known/oauth-authorization-server')).json();
   assert.equal(as.issuer, a.base);

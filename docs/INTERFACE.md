@@ -26,8 +26,8 @@ and `rule` give the rule of the form's checkbox in the language of the request:
 | `GET /api`, `GET /api/v1` | index: name, version, `api: "v1"`, docs and OpenAPI links and the endpoints switched on; a browser goes to `/api/docs` |
 | `GET /api/v1/config` | limits and options of this server (`ENABLE_CONFIG_API`) |
 | `POST /api/v1/secrets` | store a secret encrypted by the client |
-| `POST /api/v1/share` | encrypt on the server and store (for scripts; off by default, `ENABLE_SHARE_API`) |
-| `POST /api/v1/open` | open a secret link, with its passphrase, on the server (for scripts; off by default, `ENABLE_OPEN_API`) |
+| `POST /api/v1/share` | encrypt on the server and store (for scripts; off by default, `ENABLE_SERVER_CREATE`) |
+| `POST /api/v1/open` | open a secret link, with its passphrase, on the server (for scripts; off by default, `ENABLE_SERVER_OPEN`) |
 | `GET /api/v1/secrets/{id}` | check a secret without using a view; passphrase parameters (`ENABLE_SECRET_META_API`) |
 | `POST /api/v1/secrets/{id}/reveal` | take one view, get the ciphertext |
 | `GET /api/v1/receipts/{id}` | status for the sender (token scope `status`; `STATUS_ACCESS=signed-in`: creator, responsible, openers after sign-in; `ENABLE_RECEIPT_API`) |
@@ -77,7 +77,7 @@ Pages of the sign-in (not part of the API): `GET /auth/login?return=/s/<id>`,
 
 The [clients](CLIENTS.md) do the encryption themselves. With curl only,
 the server has to encrypt: `/v1/share` and `/v1/open` need
-`ENABLE_SHARE_API=true` and `ENABLE_OPEN_API=true`.
+`ENABLE_SERVER_CREATE=true` and `ENABLE_SERVER_OPEN=true`.
 
 ```bash
 # Server-side encryption: returns shareUrl and receiptUrl with the key.
@@ -149,7 +149,7 @@ own rate limit (`RATE_LIMIT_READ`, bucket `oauth`).
 
 | Method and path | Purpose |
 |---|---|
-| `POST /mcp` | MCP server (`ENABLE_MCP`): one JSON-RPC message per request, answered as JSON (Streamable HTTP without sessions); tools `create_secret` (`ENABLE_SHARE_API`), `open_secret` (`ENABLE_OPEN_API`), `list_my_secrets` and `burn_my_secret` (sign-in, `MY_SECRETS`, `SECRET_DETAILS`), `get_secret_status`, `burn_secret`. With `CONFIRM_CHECKBOX=true` `create_secret` (2026-07-28 only) answers first with `resultType: "input_required"` and `inputRequests.confirm`, an `elicitation/create` in form mode (`message`: warnings by kind and the rule; schema `{"confirm": boolean}`); the client retries with `params.inputResponses.confirm` = `{"action": "accept", "content": {"confirm": true}}`, then the server sends `"confirmed": true` to the API. The tool has no `confirmed` argument; tool errors `confirmation_declined` (decline, cancel) and `confirmation_unavailable` (older protocol or no elicitation in form mode). Switched off: `404` with a JSON-RPC error. With `MCP_OAUTH` and no valid token: `401` with `WWW-Authenticate: Bearer resource_metadata="<BASE_URL>/.well-known/oauth-protected-resource/mcp", scope="create status"`; a tool without the token's scope: `403` with `error="insufficient_scope"` and JSON-RPC `-32001`. Versions `MCP_PROTOCOL_VERSIONS`; errors: `-32020` missing or differing `MCP-Protocol-Version` / `Mcp-Method` / `Mcp-Name` header, `-32022` unsupported version (`data.supported`, `data.requested`), `-32602` bad params or missing `_meta` (2026-07-28), `-32600` bad message or an `id` that is not a string or integer, all with `400`; `-32601` unknown method (`404` with 2026-07-28); `GET`/`DELETE` `405`. Own rate limit counter (bucket `mcp`) |
+| `POST /mcp` | MCP server (`ENABLE_MCP`): one JSON-RPC message per request, answered as JSON (Streamable HTTP without sessions); tools `create_secret` (`ENABLE_SERVER_CREATE`), `open_secret` (`ENABLE_SERVER_OPEN`), `list_my_secrets` and `burn_my_secret` (sign-in, `MY_SECRETS`, `SECRET_DETAILS`), `get_secret_status`, `burn_secret`. With `CONFIRM_CHECKBOX=true` `create_secret` (2026-07-28 only) answers first with `resultType: "input_required"` and `inputRequests.confirm`, an `elicitation/create` in form mode (`message`: warnings by kind and the rule; schema `{"confirm": boolean}`); the client retries with `params.inputResponses.confirm` = `{"action": "accept", "content": {"confirm": true}}`, then the server sends `"confirmed": true` to the API. The tool has no `confirmed` argument; tool errors `confirmation_declined` (decline, cancel) and `confirmation_unavailable` (older protocol or no elicitation in form mode). Switched off: `404` with a JSON-RPC error. With `MCP_OAUTH` and no valid token: `401` with `WWW-Authenticate: Bearer resource_metadata="<BASE_URL>/.well-known/oauth-protected-resource/mcp", scope="create status"`; a tool without the token's scope: `403` with `error="insufficient_scope"` and JSON-RPC `-32001`. Versions `MCP_PROTOCOL_VERSIONS`; errors: `-32020` missing or differing `MCP-Protocol-Version` / `Mcp-Method` / `Mcp-Name` header, `-32022` unsupported version (`data.supported`, `data.requested`), `-32602` bad params or missing `_meta` (2026-07-28), `-32600` bad message or an `id` that is not a string or integer, all with `400`; `-32601` unknown method (`404` with 2026-07-28); `GET`/`DELETE` `405`. Own rate limit counter (bucket `mcp`) |
 | `GET /.well-known/oauth-protected-resource`, `.../oauth-protected-resource/mcp` | protected resource metadata (RFC 9728): `resource` `<BASE_URL>/mcp`, this server as authorization server, the scopes |
 | `GET /.well-known/oauth-authorization-server` | authorization server metadata (RFC 8414): the endpoints below, `code` with PKCE `S256`, public clients only (`none`) |
 | `POST /oauth/register` | dynamic client registration (RFC 7591): `redirect_uris` (1 to 5 loopback URIs), `client_name`, `application_type` only `native` (or left out) → `201` with a signed `client_id` (nothing is stored) |

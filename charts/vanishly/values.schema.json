@@ -577,7 +577,7 @@
             }
           ]
         },
-        "ENABLE_SHARE_API": {
+        "ENABLE_SERVER_CREATE": {
           "anyOf": [
             {
               "type": "boolean"
@@ -588,7 +588,7 @@
             }
           ]
         },
-        "ENABLE_OPEN_API": {
+        "ENABLE_SERVER_OPEN": {
           "anyOf": [
             {
               "type": "boolean"
