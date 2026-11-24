@@ -99,14 +99,15 @@ failed, `2` wrong usage.
 SHA-256, SHA-512, SHA3-256, SHA3-512 and BLAKE2b-512 (MD5 and SHA-1 are
 broken and left out). The checksum files are next to them in the format of
 `sha256sum`: `SHA256SUMS`, `SHA512SUMS`, `SHA3-256SUMS`, `SHA3-512SUMS`,
-`B2SUMS`. `GET /api/v1/downloads` gives the same as JSON
+`B2SUMS`. The page groups them by operating system (Windows, macOS, Linux,
+FreeBSD); each checksum has a copy button. `GET /api/v1/downloads` gives the same as JSON
 ([INTERFACE.md](INTERFACE.md#rest-api)).
 
 | File | Platform |
 |---|---|
-| `vanishly-linux-amd64`, `-386`, `-arm64`, `-armv7`, `-armv6` | Linux x86-64, x86 (32-bit), ARM64, ARMv7, ARMv6 (Raspberry Pi 1/Zero) |
 | `vanishly-windows-amd64.exe`, `-386.exe`, `-arm64.exe` | Windows x86-64, x86 (32-bit), ARM64 |
 | `vanishly-macos-amd64`, `-arm64` | macOS Intel, Apple silicon |
+| `vanishly-linux-amd64`, `-386`, `-arm64`, `-armv7`, `-armv6` | Linux x86-64, x86 (32-bit), ARM64, ARMv7, ARMv6 (Raspberry Pi 1/Zero) |
 | `vanishly-freebsd-amd64`, `-386`, `-arm64`, `-armv7` | FreeBSD x86-64, x86 (32-bit), ARM64, ARMv7 |
 
 The binaries are not signed for Windows (Authenticode) or notarized for
