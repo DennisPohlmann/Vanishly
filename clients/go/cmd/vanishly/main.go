@@ -22,7 +22,7 @@ import (
 
 const usage = `vanishly - one-time secrets, end-to-end encrypted
 
-usage: vanishly [global flags] <command> [flags]
+usage: vanishly <command> [arguments] [flags]
 
 commands:
   share [SECRET|-]   encrypt here and store a secret; prints the link
@@ -39,7 +39,7 @@ commands:
   api METHOD PATH    any API call, e.g. api GET /v1/tokens
   version            print the version
 
-global flags (before the command):
+global flags (for every command, also before it):
   --url URL          server, e.g. https://ots.example.com (VANISHLY_URL)
   --token TOKEN      API token vnly_... (VANISHLY_TOKEN)
   --json             print the whole answer as JSON
@@ -53,10 +53,12 @@ share/open flags: --passphrase P | --passphrase-file F | --ask
 api flags: --data JSON|@file|- --query key=value (repeatable)
 
 examples:
+  vanishly share 's3cret' --url https://ots.example.com --ttl 3600 --views 1
+  vanishly share --url https://ots.example.com --secret-file secret.txt --ask
+  vanishly open 'https://ots.example.com/s/<id>#<key>' --ask
   export VANISHLY_URL=https://ots.example.com
   vanishly share --ttl 3600 --views 1       # asks for the secret
   vanishly share --ttl 3600 < secret.txt
-  vanishly open 'https://ots.example.com/s/<id>#<key>'
 `
 
 var (
@@ -90,6 +92,17 @@ type global struct {
 	url, token, runID, comment, onBehalf string
 	json                                 bool
 	client                               *vanishly.Client
+}
+
+// add registers the global flags on a flag set, with their current values as
+// defaults: on the command's flags too, so they work after the command as well.
+func (g *global) add(fs *flag.FlagSet) {
+	fs.StringVar(&g.url, "url", g.url, "")
+	fs.StringVar(&g.token, "token", g.token, "")
+	fs.BoolVar(&g.json, "json", g.json, "")
+	fs.StringVar(&g.runID, "run-id", g.runID, "")
+	fs.StringVar(&g.comment, "audit-comment", g.comment, "")
+	fs.StringVar(&g.onBehalf, "on-behalf-of", g.onBehalf, "")
 }
 
 func (g *global) make(base string) (*vanishly.Client, error) {
@@ -163,15 +176,10 @@ func baseAndID(ref string, re *regexp.Regexp, fallback string) (string, string, 
 }
 
 func run(args []string) error {
-	g := &global{}
+	g := &global{url: os.Getenv("VANISHLY_URL"), token: os.Getenv("VANISHLY_TOKEN")}
 	fs := flag.NewFlagSet("vanishly", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.StringVar(&g.url, "url", os.Getenv("VANISHLY_URL"), "")
-	fs.StringVar(&g.token, "token", os.Getenv("VANISHLY_TOKEN"), "")
-	fs.BoolVar(&g.json, "json", false, "")
-	fs.StringVar(&g.runID, "run-id", "", "")
-	fs.StringVar(&g.comment, "audit-comment", "", "")
-	fs.StringVar(&g.onBehalf, "on-behalf-of", "", "")
+	g.add(fs)
 	if err := fs.Parse(args); err != nil {
 		return errUsage
 	}
@@ -188,6 +196,7 @@ func run(args []string) error {
 	}()
 	sub := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	sub.SetOutput(io.Discard)
+	g.add(sub)
 	switch cmd {
 	case "share":
 		var o vanishly.Options
@@ -330,6 +339,9 @@ func run(args []string) error {
 		}
 		g.print(res, "")
 	case "config", "me", "downloads":
+		if pos, err := parse(sub, rest); err != nil || len(pos) != 0 {
+			return errUsage
+		}
 		c, err := g.make(g.url)
 		if err != nil {
 			return err

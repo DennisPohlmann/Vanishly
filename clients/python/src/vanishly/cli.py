@@ -19,10 +19,12 @@ _RECEIPT = re.compile(r"^(https?://[^#]+?)/r/([A-Za-z0-9_-]{22})(?:#.*)?$")
 _SECRET = re.compile(r"^(https?://[^#]+?)/s/([A-Za-z0-9_-]{22})(?:#.*)?$")
 
 HELP = """examples:
+  vanishly share 's3cret' --url https://ots.example.com --ttl 3600 --views 1
+  vanishly share --url https://ots.example.com --secret-file secret.txt --ask
+  vanishly open 'https://ots.example.com/s/<id>#<key>' --ask
   export VANISHLY_URL=https://ots.example.com
   vanishly share --ttl 3600 --views 1       # asks for the secret
   vanishly share --ttl 3600 < secret.txt
-  vanishly open 'https://ots.example.com/s/<id>#<key>'
   vanishly status 'https://ots.example.com/r/<receipt id>'
   vanishly api GET /v1/me/secrets --query limit=10
 
@@ -30,16 +32,33 @@ environment: VANISHLY_URL, VANISHLY_TOKEN, VANISHLY_SECRET, VANISHLY_PASSPHRASE"
 
 
 def _parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="vanishly", description="Vanishly client: one-time secrets, end-to-end encrypted.",
+    p = argparse.ArgumentParser(prog="vanishly", usage="vanishly <command> [arguments] [flags]",
+                                description="Vanishly client: one-time secrets, end-to-end encrypted.",
                                 epilog=HELP, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--url", default=os.environ.get("VANISHLY_URL"), help="server, e.g. https://ots.example.com (VANISHLY_URL)")
-    p.add_argument("--token", default=os.environ.get("VANISHLY_TOKEN"), help="API token vnly_... (VANISHLY_TOKEN)")
-    p.add_argument("--json", action="store_true", help="print the whole answer as JSON")
-    p.add_argument("--run-id", help="X-Run-Id for the audit log")
-    p.add_argument("--audit-comment", help="X-Audit-Comment for the audit log")
-    p.add_argument("--on-behalf-of", help="X-On-Behalf-Of for the audit log")
+
+    def global_flags(gp, default):
+        # default: the real defaults before the command; SUPPRESS after it, so a flag
+        # given before the command is kept when the command does not repeat it.
+        d = (lambda v: v) if default else (lambda v: argparse.SUPPRESS)
+        gp.add_argument("--url", default=d(os.environ.get("VANISHLY_URL")), help="server, e.g. https://ots.example.com (VANISHLY_URL)")
+        gp.add_argument("--token", default=d(os.environ.get("VANISHLY_TOKEN")), help="API token vnly_... (VANISHLY_TOKEN)")
+        gp.add_argument("--json", action="store_true", default=d(False), help="print the whole answer as JSON")
+        gp.add_argument("--run-id", default=d(None), help="X-Run-Id for the audit log")
+        gp.add_argument("--audit-comment", default=d(None), help="X-Audit-Comment for the audit log")
+        gp.add_argument("--on-behalf-of", default=d(None), help="X-On-Behalf-Of for the audit log")
+
+    global_flags(p, True)
+    common = argparse.ArgumentParser(add_help=False)
+    global_flags(common.add_argument_group("global flags"), False)
     p.add_argument("--version", action="version", version=f"vanishly {__version__} (python)")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    subs = p.add_subparsers(dest="cmd", required=True)
+
+    class _Sub:
+        # Every command takes the global flags after it too.
+        def add_parser(self, name, **kw):
+            return subs.add_parser(name, parents=[common], **kw)
+
+    sub = _Sub()
 
     def passphrase(sp):
         g = sp.add_mutually_exclusive_group()
