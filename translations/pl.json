@@ -433,10 +433,7 @@
   "downloads.libraries": "Biblioteki",
   "downloads.librariesText": "To samo szyfrowanie end-to-end i całe API dla własnych programów:",
   "downloads.docs": "Dokumentacja klientów",
-  "downloads.col.platform": "Platforma",
-  "downloads.col.file": "Plik",
-  "downloads.col.size": "Rozmiar",
-  "downloads.col.checksums": "Sumy kontrolne",
+  "downloads.allChecksums": "wszystkie sumy kontrolne",
   "downloads.col.language": "Język",
   "downloads.col.install": "Instalacja"
 }

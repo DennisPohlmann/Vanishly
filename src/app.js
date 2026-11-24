@@ -13,7 +13,7 @@ import { Auth, RETURN } from './auth.js';
 import { Users } from './users.js';
 import { mcpRouter, toolScopes } from './mcp.js';
 import { oauthRouter } from './oauth.js';
-import { ALGORITHMS, clientStatus, loadDownloads, SIGNER_REPO } from './downloads.js';
+import { ALGORITHMS, ARCH, clientStatus, loadDownloads, OS, SIGNER_REPO } from './downloads.js';
 import { missingClasses } from '../public/js/rules.js';
 import { escapeHtml, ROOT } from './theme.js';
 
@@ -2362,19 +2362,29 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         min ? t['downloads.minVersion'].replace('{v}', min) : '',
         recommended ? t['downloads.recommended'].replace('{v}', recommended) : '',
       ].filter(Boolean).map((x) => `<p class="notice">${escapeHtml(x)}</p>`).join('');
-      const label = (/** @type {string} */ k) => escapeHtml(t[`downloads.col.${k}`]);
-      const rows = downloads.files
-        .map((d) => {
-          const sums = ALGORITHMS.map(([key, , , shown]) => `<dt>${shown}</dt><dd><code>${d.checksums[key]}</code></dd>`).join('');
-          return `<tr><td data-label="${label('platform')}">${escapeHtml(d.platform)}</td>` +
-            `<td data-label="${label('file')}"><a href="/downloads/${escapeHtml(d.name)}" download>${escapeHtml(d.name)}</a></td>` +
-            `<td data-label="${label('size')}">${(d.size / 1048576).toFixed(1)} MB</td>` +
-            `<td data-label="${label('checksums')}"><dl class="sums-list">${sums}</dl></td></tr>`;
+      // One group per operating system, the common architectures first; each file with
+      // its SHA-256 shortened and all checksums in full behind a <details> (no wide table).
+      const archOrder = ['amd64', 'arm64', '386', 'armv7', 'armv6'];
+      const groups = Object.entries(OS)
+        .map(([os, osName]) => {
+          const items = downloads.files
+            .filter((d) => d.os === os)
+            .sort((a, b) => archOrder.indexOf(a.arch) - archOrder.indexOf(b.arch))
+            .map((d) => {
+              const sha = d.checksums.sha256;
+              const sums = ALGORITHMS.map(([key, , , shown]) => `<dt>${shown}</dt><dd><code>${d.checksums[key]}</code></dd>`).join('');
+              return `<li class="dl-item"><div class="dl-main">` +
+                `<span class="dl-arch">${escapeHtml(ARCH[/** @type {keyof typeof ARCH} */ (d.arch)])}</span>` +
+                `<a class="btn btn-small dl-file" href="/downloads/${escapeHtml(d.name)}" download>${escapeHtml(d.name)}</a>` +
+                `<span class="dl-size">${(d.size / 1048576).toFixed(1)} MB</span></div>` +
+                `<details class="dl-sums"><summary>SHA-256 <code title="${sha}">${sha.slice(0, 12)}…${sha.slice(-8)}</code>` +
+                `<span class="dl-more">${escapeHtml(t['downloads.allChecksums'])}</span></summary><dl class="sums-list">${sums}</dl></details></li>`;
+            })
+            .join('');
+          return items ? `<section class="dl-os"><h3>${osName}</h3><ul class="dl-list">${items}</ul></section>` : '';
         })
         .join('');
-      const fileTable = rows
-        ? `<div class="table-wrap"><table class="data"><thead><tr><th scope="col">${label('platform')}</th><th scope="col">${label('file')}</th><th scope="col">${label('size')}</th><th scope="col">${label('checksums')}</th></tr></thead><tbody>${rows}</tbody></table></div>`
-        : `<p class="notice">${escapeHtml(t['downloads.none'])}</p>`;
+      const fileTable = groups ? `<div class="dl-groups">${groups}</div>` : `<p class="notice">${escapeHtml(t['downloads.none'])}</p>`;
       const list = downloadList(req);
       res.type('html').send(
         page('downloads', req, res, {

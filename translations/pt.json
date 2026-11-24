@@ -433,10 +433,7 @@
   "downloads.libraries": "Bibliotecas",
   "downloads.librariesText": "A mesma cifragem ponto a ponto e toda a API para os seus próprios programas:",
   "downloads.docs": "Documentação dos clientes",
-  "downloads.col.platform": "Plataforma",
-  "downloads.col.file": "Ficheiro",
-  "downloads.col.size": "Tamanho",
-  "downloads.col.checksums": "Somas",
+  "downloads.allChecksums": "todas as somas de verificação",
   "downloads.col.language": "Linguagem",
   "downloads.col.install": "Instalação"
 }

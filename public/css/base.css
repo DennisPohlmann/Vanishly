@@ -318,7 +318,26 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible, .mode-toggle:focu
 /* API tokens and the audit log: wider pages with tables */
 body[data-page="tokens"] .site-main, body[data-page="admin"] .site-main, body[data-page="mysecrets"] .site-main, body[data-page="downloads"] .site-main { max-width: 72rem; }
 /* Download page: commands and checksums */
-.downloads pre.code { overflow-x: auto; margin: 0 0 1rem; padding: .75rem; border: 1px solid var(--border); border-radius: calc(var(--radius) / 1.5); background: var(--surface-2); font-family: var(--font-mono); font-size: .82rem; }
+.downloads pre.code { margin: 0 0 1rem; padding: .75rem; border: 1px solid var(--border); border-radius: calc(var(--radius) / 1.5); background: var(--surface-2); font-family: var(--font-mono); font-size: .82rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* The files, grouped by operating system: no wide table, no sideways scrolling. */
+.dl-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr)); gap: 1rem; margin: 0 0 1.5rem; }
+.dl-os { min-width: 0; border: 1px solid var(--border); border-radius: calc(var(--radius) / 1.5); overflow: hidden; }
+.dl-os h3 { margin: 0; padding: .55rem .9rem; font-size: .95rem; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.dl-list { list-style: none; margin: 0; padding: 0; }
+.dl-item { padding: .6rem .9rem; border-bottom: 1px solid var(--border); }
+.dl-item:last-child { border-bottom: 0; }
+.dl-main { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .75rem; }
+.dl-arch { flex: 1 1 8rem; font-weight: 600; }
+.dl-file { font-family: var(--font-mono); font-size: .8rem; text-decoration: none; }
+.dl-size { margin-left: auto; color: var(--muted); font-size: .82rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dl-sums { margin-top: .35rem; font-size: .8rem; }
+.dl-sums summary { cursor: pointer; color: var(--muted); display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .5rem; }
+.dl-sums summary code { font-family: var(--font-mono); color: var(--text); }
+.dl-sums summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dl-more { color: var(--link, var(--accent)); text-decoration: underline; }
+.dl-sums[open] .dl-more { display: none; }
+.dl-sums dl.sums-list { margin-top: .4rem; padding: .5rem .6rem; background: var(--surface-2); border-radius: calc(var(--radius) / 2); }
+.dl-sums dl.sums-list code { font-family: var(--font-mono); font-size: .76rem; overflow-wrap: anywhere; word-break: break-all; }
 .downloads pre.code:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .downloads dl.sums-list { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: .15rem .6rem; }
 .downloads dl.sums-list dt { color: var(--muted); font-size: .78rem; }

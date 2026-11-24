@@ -23,8 +23,8 @@ export const ALGORITHMS = /** @type {const} */ ([
 ]);
 
 const NAME = /^vanishly-(linux|windows|macos|freebsd)-(amd64|386|arm64|armv7|armv6)(\.exe)?$/;
-const OS = { linux: 'Linux', windows: 'Windows', macos: 'macOS', freebsd: 'FreeBSD' };
-const ARCH = { amd64: 'x86-64', 386: 'x86 (32-bit)', arm64: 'ARM64', armv7: 'ARMv7 (32-bit)', armv6: 'ARMv6 (32-bit)' };
+export const OS = { linux: 'Linux', windows: 'Windows', macos: 'macOS', freebsd: 'FreeBSD' };
+export const ARCH = { amd64: 'x86-64', 386: 'x86 (32-bit)', arm64: 'ARM64', armv7: 'ARMv7 (32-bit)', armv6: 'ARMv6 (32-bit)' };
 
 /**
  * @typedef {{ name: string, os: string, arch: string, platform: string, size: number,

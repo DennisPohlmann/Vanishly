@@ -433,10 +433,7 @@
   "downloads.libraries": "Bibliothèques",
   "downloads.librariesText": "Le même chiffrement de bout en bout et toute l’API pour vos propres programmes :",
   "downloads.docs": "Documentation des clients",
-  "downloads.col.platform": "Plateforme",
-  "downloads.col.file": "Fichier",
-  "downloads.col.size": "Taille",
-  "downloads.col.checksums": "Sommes",
+  "downloads.allChecksums": "toutes les sommes de contrôle",
   "downloads.col.language": "Langage",
   "downloads.col.install": "Installation"
 }

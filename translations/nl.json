@@ -433,10 +433,7 @@
   "downloads.libraries": "Bibliotheken",
   "downloads.librariesText": "Dezelfde end-to-end-versleuteling en de hele API voor je eigen programma's:",
   "downloads.docs": "Documentatie van de clients",
-  "downloads.col.platform": "Platform",
-  "downloads.col.file": "Bestand",
-  "downloads.col.size": "Grootte",
-  "downloads.col.checksums": "Controlesommen",
+  "downloads.allChecksums": "alle controlesommen",
   "downloads.col.language": "Taal",
   "downloads.col.install": "Installatie"
 }

@@ -433,10 +433,7 @@
   "downloads.libraries": "Bibliotheken",
   "downloads.librariesText": "Dieselbe Ende-zu-Ende-Verschlüsselung und die ganze API für eigene Programme:",
   "downloads.docs": "Dokumentation der Clients",
-  "downloads.col.platform": "Plattform",
-  "downloads.col.file": "Datei",
-  "downloads.col.size": "Größe",
-  "downloads.col.checksums": "Prüfsummen",
+  "downloads.allChecksums": "alle Prüfsummen",
   "downloads.col.language": "Sprache",
   "downloads.col.install": "Installation"
 }
