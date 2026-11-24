@@ -4,7 +4,9 @@
 // Run: npm run test:a11y
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { after, before, test } from 'node:test';
 import { chromium } from 'playwright';
@@ -75,7 +77,10 @@ for (const template of TEMPLATES) {
       ACCESS_LOG: 'false',
     });
     const store = await Store.connect(redisUrl, config);
-    const srv = createApp({ config, store, theme: loadTheme(config, 'test'), version: 'test' }).listen(0, '127.0.0.1');
+    // Two stand-in binaries, so /downloads shows its table.
+    const downloadsDir = mkdtempSync(join(tmpdir(), 'vanishly-a11y-'));
+    for (const n of ['vanishly-linux-amd64', 'vanishly-windows-arm64.exe']) writeFileSync(join(downloadsDir, n), n);
+    const srv = createApp({ config, store, theme: loadTheme(config, 'test'), version: 'test', downloadsDir }).listen(0, '127.0.0.1');
     await new Promise((r) => srv.once('listening', r));
     const base = `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`;
     /** @type {string[]} */
@@ -128,12 +133,15 @@ for (const template of TEMPLATES) {
           problems.push(...(await scan(page, at('gone'))));
           await page.goto(`${base}/nope`);
           problems.push(...(await scan(page, at('404'))));
+          await page.goto(`${base}/downloads`);
+          problems.push(...(await scan(page, at('downloads'))));
           await ctx.close();
         }
       }
     } finally {
       srv.close();
       await store.close();
+      rmSync(downloadsDir, { recursive: true, force: true });
     }
     for (const p of problems) console.log(`a11y: ${p}`);
     assert.equal(problems.length, 0, `${problems.length} accessibility problems, see the a11y: lines`);

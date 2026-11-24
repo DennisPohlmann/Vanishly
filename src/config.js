@@ -3,6 +3,7 @@
 import { createHash, createPrivateKey, X509Certificate } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
+import { compareVersions, parseVersion } from './downloads.js';
 
 /**
  * @param {string | undefined} v
@@ -291,7 +292,7 @@ export const SETTINGS = [
   'RESPONSIBLE', 'STATUS_ACCESS',
   'ENABLE_PASSPHRASE', 'ENABLE_VIEWS', 'ENABLE_RECEIPTS', 'ENABLE_BURN', 'ENABLE_VIEW_LOG',
   'ENABLE_RECEIPT_SHARE_LINK', 'ENABLE_GENERATOR', 'ENABLE_LANG_SWITCH', 'ENABLE_THEME_TOGGLE',
-  'ENABLE_GITHUB_LINK', 'VANISHLY_VERSION',
+  'ENABLE_GITHUB_LINK', 'VANISHLY_VERSION', 'ENABLE_DOWNLOADS', 'ENABLE_DOWNLOADS_LINK', 'CLIENT_MIN_VERSION', 'CLIENT_RECOMMENDED_VERSION',
   'AUDIT_LOG', 'AUDIT_LOG_FORMAT', 'AUDIT_LOG_PRETTY', 'AUDIT_LOG_FILE', 'AUDIT_LOG_FSYNC', 'AUDIT_LOG_STDOUT',
   'AUDIT_LOG_REDIS', 'AUDIT_LOG_REDIS_MAXLEN', 'AUDIT_LOG_HMAC_KEY', 'AUDIT_LOG_HMAC_KEY_FILE', 'AUDIT_LOG_FAIL',
   'AUDIT_LOG_IP', 'AUDIT_LOG_USER_AGENT', 'AUDIT_LOG_INSTANCE', 'AUDIT_LOG_CHECKPOINT', 'AUDIT_LOG_SYSLOG',
@@ -1205,6 +1206,10 @@ export function loadConfig(env = process.env) {
       generator: sw('ENABLE_GENERATOR', true),
       shareApi: sw('ENABLE_SHARE_API', false),
       openApi: sw('ENABLE_OPEN_API', false),
+      // The download page /downloads and GET /api/v1/downloads (the command line clients).
+      downloads: sw('ENABLE_DOWNLOADS', true),
+      // ENABLE_DOWNLOADS_LINK: the "Downloads" link in the footer, next to "API".
+      downloadsLink: sw('ENABLE_DOWNLOADS_LINK', true),
       // Single API endpoints the web pages do not need (create and reveal only).
       secretMetaApi: sw('ENABLE_SECRET_META_API', true),
       configApi: sw('ENABLE_CONFIG_API', true),
@@ -1220,6 +1225,12 @@ export function loadConfig(env = process.env) {
       githubLink: sw('ENABLE_GITHUB_LINK', true),
     },
     accessLog: sw('ACCESS_LOG', true),
+    // CLIENT_MIN_VERSION: Vanishly clients (X-Vanishly-Client) below it get 426;
+    // CLIENT_RECOMMENDED_VERSION: below it they work and show a notice. Empty: no rule.
+    clientVersions: {
+      min: str('CLIENT_MIN_VERSION', /^\d{1,6}\.\d{1,6}\.\d{1,6}$/, '', 'a version like 3.1.0'),
+      recommended: str('CLIENT_RECOMMENDED_VERSION', /^\d{1,6}\.\d{1,6}\.\d{1,6}$/, '', 'a version like 3.1.0'),
+    },
     auth,
     audit: auditConfig(env, auth?.secret || ''),
     // AUDIT_COMMENT: a comment per secret for the audit log (off, optional,
@@ -1236,6 +1247,10 @@ export function loadConfig(env = process.env) {
     // responsible people and those who opened the secret, after sign-in.
     statusAccess: str('STATUS_ACCESS', /^(link|signed-in)$/, env.AUTH_PROVIDER && env.AUTH_PROVIDER !== 'none' ? 'signed-in' : 'link', 'link or signed-in'),
   };
+  const cv = config.clientVersions;
+  if (cv.min && cv.recommended && compareVersions(/** @type {number[]} */ (parseVersion(cv.recommended)), /** @type {number[]} */ (parseVersion(cv.min))) < 0) {
+    throw new Error('CLIENT_RECOMMENDED_VERSION is below CLIENT_MIN_VERSION');
+  }
   if (config.minSecretChars > maxSecretChars) throw new Error('MIN_SECRET_CHARS is above MAX_SECRET_CHARS');
   if (config.redisTlsCa && !config.redisUrl.startsWith('rediss://')) throw new Error('REDIS_TLS_CA_FILE needs a rediss:// REDIS_URL (TLS)');
   /** REQUIRE_PASSPHRASE=true: every secret needs one. */

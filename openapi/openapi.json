@@ -3,7 +3,7 @@
   "info": {
     "title": "Vanishly API",
     "version": "0.0.0",
-    "description": "Share secrets with links that work only once (or a few times) and then burn.\n\n**End-to-end encryption.** Secrets are encrypted on the client (AES-256-GCM, format v1, see `public/js/vanishly-crypto.js` and docs/INTERFACE.md). The server stores only the ciphertext. The key travels in the URL fragment (`#...`), which browsers never send to the server.\n\nUse `POST /v1/secrets` with a client-encrypted payload: the Vanishly clients do that (client libraries, docs/CLIENTS.md). For scripts without crypto, `POST /v1/share` encrypts on the server, returns the full links with the key and forgets the key; it and `POST /v1/open` are off by default (`ENABLE_SHARE_API`, `ENABLE_OPEN_API`).\n\n**Authentication.** By default none: whoever knows a secret or receipt id may use it, so ids are 128-bit random values. With sign-in on (`AUTH_PROVIDER=entra`, `oidc`, a preset or `local` for Vanishly's own accounts, see `auth` in `GET /v1/config`) creating may need a signed-in user (`AUTH_CREATE`), and a secret with `recipients` / `recipientGroups` opens only for one of them: `GET /v1/secrets/{id}`, `/reveal` and `/v1/open` answer `401 login_required` without a sign-in and `403 not_recipient` for anybody else, without using a view. Browsers use the session cookie of `/auth/login`; scripts send an access token of the provider as `Authorization: Bearer` when the server sets `AUTH_API_AUDIENCE`.\n\n**Switches.** An operator can turn parts off (see `features` in `GET /v1/config`). Switched-off endpoints answer 404: `/v1/share` (`ENABLE_SHARE_API`), the receipt endpoints (`ENABLE_RECEIPTS`), burn (`ENABLE_BURN`). With `ENABLE_API=false` the whole API answers 404 except for the server's own pages.\n\n**Audit and API tokens.** With AUDIT_LOG every call gets a run id (`X-Run-Id` / `X-Request-Id` from the caller, else a UUID; returned in both headers) and the W3C `traceparent` is honoured. Personal API tokens (`Authorization: Bearer vnly_...`, API_TOKENS) act as their owner, only from their IP networks; `X-Audit-Comment` and `X-On-Behalf-Of` go into the audit log. With API_TOKEN_REQUIRED=true scripts need such a token.\n\n**Rate limits.** Per client IP and window (`RATE_LIMIT_*`): over the limit an endpoint answers `429 rate_limited` with `Retry-After` (seconds). With sign-in on, all calls of one IP together are also capped at 10 × the larger of `RATE_LIMIT_READ` and `RATE_LIMIT_CREATE`.\n\n**Errors and versioning.** Every error is `{\"error\": \"<code>\", \"message\": \"...\"}`. A known path with another method answers `405 method_not_allowed` with an `Allow` header; an unknown path `404 not_found`. This is version `v1`: within it changes are only additive (new endpoints, optional fields, answer fields, error codes), so ignore fields you do not know; a breaking change comes only as `/v2` (see docs/INTERFACE.md, Versioning).",
+    "description": "Share secrets with links that work only once (or a few times) and then burn.\n\n**End-to-end encryption.** Secrets are encrypted on the client (AES-256-GCM, format v1, see `public/js/vanishly-crypto.js` and docs/INTERFACE.md). The server stores only the ciphertext. The key travels in the URL fragment (`#...`), which browsers never send to the server.\n\nUse `POST /v1/secrets` with a client-encrypted payload: the Vanishly clients do that (command line binaries on `/downloads`, `GET /v1/downloads`, client libraries, docs/CLIENTS.md). For scripts without crypto, `POST /v1/share` encrypts on the server, returns the full links with the key and forgets the key; it and `POST /v1/open` are off by default (`ENABLE_SHARE_API`, `ENABLE_OPEN_API`).\n\n**Authentication.** By default none: whoever knows a secret or receipt id may use it, so ids are 128-bit random values. With sign-in on (`AUTH_PROVIDER=entra`, `oidc`, a preset or `local` for Vanishly's own accounts, see `auth` in `GET /v1/config`) creating may need a signed-in user (`AUTH_CREATE`), and a secret with `recipients` / `recipientGroups` opens only for one of them: `GET /v1/secrets/{id}`, `/reveal` and `/v1/open` answer `401 login_required` without a sign-in and `403 not_recipient` for anybody else, without using a view. Browsers use the session cookie of `/auth/login`; scripts send an access token of the provider as `Authorization: Bearer` when the server sets `AUTH_API_AUDIENCE`.\n\n**Client versions.** Vanishly's own clients send `X-Vanishly-Client: <name>/<version>`. Below `CLIENT_MIN_VERSION` every call answers `426 client_outdated` (with `minVersion` and `downloadUrl`); below `CLIENT_RECOMMENDED_VERSION` calls work and the answer carries `X-Vanishly-Client-Recommended: <version>`, which the clients show as a notice. Calls without the header are not affected.\n\n**Switches.** An operator can turn parts off (see `features` in `GET /v1/config`). Switched-off endpoints answer 404: `/v1/share` (`ENABLE_SHARE_API`), the receipt endpoints (`ENABLE_RECEIPTS`), burn (`ENABLE_BURN`). With `ENABLE_API=false` the whole API answers 404 except for the server's own pages.\n\n**Audit and API tokens.** With AUDIT_LOG every call gets a run id (`X-Run-Id` / `X-Request-Id` from the caller, else a UUID; returned in both headers) and the W3C `traceparent` is honoured. Personal API tokens (`Authorization: Bearer vnly_...`, API_TOKENS) act as their owner, only from their IP networks; `X-Audit-Comment` and `X-On-Behalf-Of` go into the audit log. With API_TOKEN_REQUIRED=true scripts need such a token.\n\n**Rate limits.** Per client IP and window (`RATE_LIMIT_*`): over the limit an endpoint answers `429 rate_limited` with `Retry-After` (seconds). With sign-in on, all calls of one IP together are also capped at 10 × the larger of `RATE_LIMIT_READ` and `RATE_LIMIT_CREATE`.\n\n**Errors and versioning.** Every error is `{\"error\": \"<code>\", \"message\": \"...\"}`. A known path with another method answers `405 method_not_allowed` with an `Allow` header; an unknown path `404 not_found`. This is version `v1`: within it changes are only additive (new endpoints, optional fields, answer fields, error codes), so ignore fields you do not know; a breaking change comes only as `/v2` (see docs/INTERFACE.md, Versioning).",
     "license": {
       "name": "GPL-3.0-or-later",
       "identifier": "GPL-3.0-or-later"
@@ -158,6 +158,48 @@
             "$ref": "#/components/parameters/Traceparent"
           }
         ]
+      }
+    },
+    "/v1/downloads": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "operationId": "getDownloads",
+        "summary": "The command line clients of this server, with checksums",
+        "description": "The binaries the download page `/downloads` offers (ENABLE_DOWNLOADS; 404 when off), each with SHA-256, SHA-512, SHA3-256, SHA3-512 and BLAKE2b-512, the checksum files (`/downloads/SHA256SUMS`, ...; `sha256sum -c` format) and where to verify the signatures: the binaries are built reproducibly and signed in GitHub Actions (Sigstore, artifact attestations), so a file from this server has the checksum of the signed one.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Clients",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Downloads"
+                }
+              }
+            },
+            "headers": {
+              "X-Run-Id": {
+                "$ref": "#/components/headers/RunId"
+              }
+            }
+          },
+          "404": {
+            "description": "`endpoint_disabled`: ENABLE_DOWNLOADS=false",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/secrets": {
@@ -6627,6 +6669,173 @@
           "created",
           "updated"
         ]
+      },
+      "Downloads": {
+        "type": "object",
+        "required": [
+          "version",
+          "files",
+          "checksumFiles",
+          "signatures"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "Version of this server; its clients have the same version"
+          },
+          "minVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "CLIENT_MIN_VERSION: older clients get 426 client_outdated"
+          },
+          "recommendedVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "CLIENT_RECOMMENDED_VERSION: older clients work and show a notice"
+          },
+          "page": {
+            "type": "string",
+            "format": "uri",
+            "description": "The download page"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "os",
+                "arch",
+                "platform",
+                "size",
+                "url",
+                "checksums"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "examples": [
+                    "vanishly-linux-amd64"
+                  ]
+                },
+                "os": {
+                  "type": "string",
+                  "enum": [
+                    "linux",
+                    "windows",
+                    "macos",
+                    "freebsd"
+                  ]
+                },
+                "arch": {
+                  "type": "string",
+                  "enum": [
+                    "amd64",
+                    "386",
+                    "arm64",
+                    "armv7",
+                    "armv6"
+                  ]
+                },
+                "platform": {
+                  "type": "string",
+                  "examples": [
+                    "Linux x86-64"
+                  ]
+                },
+                "size": {
+                  "type": "integer",
+                  "description": "Bytes"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "checksums": {
+                  "type": "object",
+                  "required": [
+                    "sha256",
+                    "sha512",
+                    "sha3_256",
+                    "sha3_512",
+                    "blake2b_512"
+                  ],
+                  "properties": {
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]+$"
+                    },
+                    "sha512": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]+$"
+                    },
+                    "sha3_256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]+$"
+                    },
+                    "sha3_512": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]+$"
+                    },
+                    "blake2b_512": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]+$"
+                    }
+                  },
+                  "description": "Hex digests"
+                }
+              }
+            }
+          },
+          "checksumFiles": {
+            "type": "object",
+            "properties": {
+              "sha256": {
+                "type": "string",
+                "format": "uri"
+              },
+              "sha512": {
+                "type": "string",
+                "format": "uri"
+              },
+              "sha3_256": {
+                "type": "string",
+                "format": "uri"
+              },
+              "sha3_512": {
+                "type": "string",
+                "format": "uri"
+              },
+              "blake2b_512": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "description": "Checksum files in the format of sha256sum, sha512sum, sha3sum and b2sum (-c)"
+          },
+          "signatures": {
+            "type": "object",
+            "properties": {
+              "repository": {
+                "type": "string",
+                "format": "uri"
+              },
+              "release": {
+                "type": "string",
+                "format": "uri",
+                "description": "GitHub release with the signature bundles (.sigstore.json)"
+              },
+              "verify": {
+                "type": "string",
+                "description": "Command that checks a file's attestation"
+              }
+            }
+          }
+        }
       }
     },
     "securitySchemes": {

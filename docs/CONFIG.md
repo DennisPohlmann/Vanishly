@@ -65,6 +65,8 @@ The container then does not come up (`docker compose logs vanishly`).
 | `READ_ALLOWED_IPS`, `READ_DENIED_IPS` | (none: everybody) | Client IPs that may / may not open secrets: `/s/<id>`, `GET /api/v1/secrets/{id}`, reveal, `/api/v1/open` ([details](#ip-access)) |
 | `ADMIN_ALLOWED_IPS`, `ADMIN_DENIED_IPS` | (none: everybody) | Client IPs that may / may not use the admin area: `/admin` and `/api/v1/admin/*` ([details](#ip-access)) |
 | `MCP_PROTOCOL_VERSIONS` | `2026-07-28,2025-11-25,2025-06-18` | MCP protocol versions `/mcp` speaks, any of these three. Others (e.g. `2025-03-26`) are refused with error `-32022` and logged as `mcp.request_denied`. `2026-07-28` alone is the strictest choice; older clients then fail ([details](#mcp-server)) |
+| `CLIENT_MIN_VERSION` | (none) | Oldest Vanishly client allowed, e.g. `3.1.0`: an older one (by its `X-Vanishly-Client` header) gets `426 client_outdated` with a link to `/downloads` ([details](#client-versions)) |
+| `CLIENT_RECOMMENDED_VERSION` | (none) | Clients below it keep working but print a notice to update, e.g. `3.2.0`; not below `CLIENT_MIN_VERSION` ([details](#client-versions)) |
 | `ACCESS_LOG` | `true` | One line per request to stdout (method, path with ids replaced by `:id`, status, time) |
 
 ### Durations
@@ -118,6 +120,8 @@ use `POST /api/v1/share`, `POST /api/v1/open` or `/mcp`, set them to
 | `ENABLE_API_LINK` | No "API" link in the footer; the API itself stays |
 | `ENABLE_SHARE_API` | **Off by default.** `true`: `POST /api/v1/share` (the server encrypts, for scripts that cannot, e.g. curl); off it answers 404. The [clients](CLIENTS.md) encrypt themselves and do not need it |
 | `ENABLE_OPEN_API` | **Off by default.** `true`: `POST /api/v1/open` (the server opens a link with its key and passphrase); off it answers 404. The clients decrypt themselves |
+| `ENABLE_DOWNLOADS_LINK` | No "Downloads" link in the footer (next to "API"); `/downloads` stays. The link is shown only when the server has binaries |
+| `ENABLE_DOWNLOADS` | No download page `/downloads` and no `GET /api/v1/downloads`; also no footer link. Without binaries in the app's `downloads/` folder (only the image has them) the page says so and the link is hidden ([details](#clients)) |
 | `ENABLE_SECRET_META_API` | `GET /api/v1/secrets/{id}` (a secret's state and passphrase parameters without using a view) answers 404; the reveal page gets what it needs with the page itself |
 | `ENABLE_CONFIG_API` | `GET /api/v1/config` (limits and options) answers 404; the pages do not use it |
 | `ENABLE_ME_API` | `GET /api/v1/me` (who is signed in) answers 404; the pages do not use it |
@@ -160,6 +164,7 @@ switched off, still answered for this server's own pages (the browser's
 | `GET /api/v1/me` | `ENABLE_ME_API` (only with sign-in) | 404 |
 | `GET /api/v1/groups` | `RECIPIENT_GROUPS` (only then) | 404 |
 | `GET /api/v1/people` | `RECIPIENT_USER_GROUP` (only then) | 404 |
+| `GET /api/v1/downloads` | `ENABLE_DOWNLOADS` | 404 |
 | `POST /mcp` (MCP server) | `ENABLE_MCP` (off by default), `ENABLE_API` | 404 |
 
 **Create and reveal only.** To offer nothing but creating a secret and
@@ -539,6 +544,41 @@ claude mcp add --transport http vanishly https://ots.example.com/mcp
   that to Vanishly's `/.well-known/oauth-authorization-server` in the
   reverse proxy.
 - `MCP_OAUTH=false`: no OAuth endpoints, `/mcp` as without it.
+
+## Clients
+
+Vanishly has client libraries and a command line client `vanishly`
+([CLIENTS.md](CLIENTS.md)). They encrypt and decrypt on the user's machine
+like the web pages, so they need neither `ENABLE_SHARE_API` nor
+`ENABLE_OPEN_API`.
+
+The image has the command line client for 14 platforms in
+`/app/downloads`; `/downloads` offers them with five checksums each
+(SHA-256, SHA-512, SHA3-256, SHA3-512, BLAKE2b-512), the checksum files
+(`/downloads/SHA256SUMS`, ...) and how to check the signature of the GitHub
+release. `GET /api/v1/downloads` gives the same as JSON. `ENABLE_DOWNLOADS=false`
+switches both off. The archive (`make package`) has no binaries; put them
+into `/opt/vanishly/downloads` yourself (`make clients` builds them) or
+leave the page off.
+
+### Client versions
+
+Each client sends `X-Vanishly-Client: <name>/<version>` (e.g. `cli/3.2.0`,
+`go/3.2.0`). With these two settings the server can steer old clients:
+
+| Setting | Client below it |
+|---|---|
+| `CLIENT_RECOMMENDED_VERSION` | works; the answer has `X-Vanishly-Client-Recommended: <version>` and the command line client prints a notice with the link to `/downloads` |
+| `CLIENT_MIN_VERSION` | gets `426 {"error": "client_outdated", "minVersion": ..., "downloadUrl": ...}` for every API call |
+
+Both take `x.y.z` and are empty by default (no rule). Requests without the
+header (curl, own code) and development builds (no `x.y.z` version) are not
+affected: this keeps clients current, it is no access control.
+
+```bash
+CLIENT_RECOMMENDED_VERSION=3.2.0   # 3.1.x still works, with a notice
+CLIENT_MIN_VERSION=3.0.0           # 2.x is refused
+```
 
 ## Sign-in and recipients
 

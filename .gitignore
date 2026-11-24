@@ -11,3 +11,4 @@ dist/
 vendor/
 .claude/
 CLAUDE.md
+/downloads/

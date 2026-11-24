@@ -310,12 +310,20 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible, .mode-toggle:focu
 .no-theme-toggle #mode-toggle,
 .no-api-link .api-link,
 .no-github-link .github-link,
+.no-downloads-link .downloads-link,
 /* Not signed in where creating needs a sign-in: no "New secret" link (also in own layouts). */
 .no-new-link .nav-new,
 .no-new-link .site-nav > a[href="/"] { display: none !important; }
 
 /* API tokens and the audit log: wider pages with tables */
-body[data-page="tokens"] .site-main, body[data-page="admin"] .site-main, body[data-page="mysecrets"] .site-main { max-width: 72rem; }
+body[data-page="tokens"] .site-main, body[data-page="admin"] .site-main, body[data-page="mysecrets"] .site-main, body[data-page="downloads"] .site-main { max-width: 72rem; }
+/* Download page: commands and checksums */
+.downloads pre.code { overflow-x: auto; margin: 0 0 1rem; padding: .75rem; border: 1px solid var(--border); border-radius: calc(var(--radius) / 1.5); background: var(--surface-2); font-family: var(--font-mono); font-size: .82rem; }
+.downloads pre.code:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.downloads dl.sums-list { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: .15rem .6rem; }
+.downloads dl.sums-list dt { color: var(--muted); font-size: .78rem; }
+.downloads dl.sums-list dd { margin: 0; }
+.downloads p.sums a { margin-right: .75rem; }
 .card-wide h2 { margin-top: 0; }
 .table-wrap { overflow-x: auto; margin: 0 0 1rem; border: 1px solid var(--border); border-radius: calc(var(--radius) / 1.5); }
 table.data { width: 100%; border-collapse: collapse; font-size: .9rem; }

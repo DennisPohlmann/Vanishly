@@ -33,7 +33,7 @@ The details for developers are in
 ## How it is checked
 
 Every change runs `npm run test:a11y` in CI: the form, errors, link
-ready, reveal, wrong passphrase, revealed, status page, gone, 404 and the
+ready, reveal, wrong passphrase, revealed, status page, gone, 404, downloads and the
 sign-in flow with recipients, in every built-in template, light and dark, at desktop size and at 320 px,
 checked with [axe-core](https://github.com/dequelabs/axe-core) against
 WCAG 2.0 to 2.2 A/AA, plus the reflow, the skip link and the focus on

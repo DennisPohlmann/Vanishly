@@ -786,6 +786,36 @@
             }
           ]
         },
+        "ENABLE_DOWNLOADS": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "ENABLE_DOWNLOADS_LINK": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "CLIENT_MIN_VERSION": {
+          "type": "string",
+          "pattern": "^$|^\\d{1,6}\\.\\d{1,6}\\.\\d{1,6}$"
+        },
+        "CLIENT_RECOMMENDED_VERSION": {
+          "type": "string",
+          "pattern": "^$|^\\d{1,6}\\.\\d{1,6}\\.\\d{1,6}$"
+        },
         "AUTH_PROVIDER": {
           "anyOf": [
             {

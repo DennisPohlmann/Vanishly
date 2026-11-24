@@ -32,6 +32,7 @@ and `rule` give the rule of the form's checkbox in the language of the request:
 | `POST /api/v1/secrets/{id}/reveal` | take one view, get the ciphertext |
 | `GET /api/v1/receipts/{id}` | status for the sender (token scope `status`; `STATUS_ACCESS=signed-in`: creator, responsible, openers after sign-in; `ENABLE_RECEIPT_API`) |
 | `POST /api/v1/receipts/{id}/burn` | destroy the secret now (token scope `burn`; `STATUS_ACCESS=signed-in`: creator and responsible only) |
+| `GET /api/v1/downloads` | the command line clients of `/downloads`: `version`, per file `name`, `os`, `arch`, `platform`, `size`, `url` and `checksums` (`sha256`, `sha512`, `sha3_256`, `sha3_512`, `blake2b_512`), `checksumFiles` (their URLs), `signatures` (`repository`, `release`, `verify` command), `minVersion` and `recommendedVersion` (`ENABLE_DOWNLOADS`) |
 | `GET /api/v1/me` | who is signed in (sign-in on; `ENABLE_ME_API`) |
 | `GET /api/v1/me/secrets?status=&from=&to=&limit=` | the signed-in user's secrets (created by them, or for them or one of their groups) from the audit stream, metadata only, same shape as `/admin/secrets` without the `ip` and `userAgent` of the views (`MY_SECRETS`, `AUDIT_LOG_REDIS`; session only) |
 | `GET /api/v1/me/secrets/{ref}` | the status of a secret the signed-in user created, by its ref from `/me/secrets`: the answer of `GET /api/v1/receipts/{id}` for its creator, without `secretPath` (`SECRET_DETAILS`, `MY_SECRETS`, `ENABLE_RECEIPTS`; session only) |
@@ -51,6 +52,20 @@ caller's own or a new UUID) and each action is an audit event
 client IP may not create, read or use the admin area
 ([`*_ALLOWED_IPS` / `*_DENIED_IPS`](CONFIG.md#ip-access)); with `AUDIT_LOG_FAIL=closed`
 `503 audit_unavailable` when the log cannot be written.
+
+**Client versions.** The [clients](CLIENTS.md) send
+`X-Vanishly-Client: <name>/<version>`. Below `CLIENT_MIN_VERSION` every API
+call answers `426 {"error": "client_outdated", "minVersion": "3.1.0",
+"downloadUrl": "<BASE_URL>/downloads", ...}`; below
+`CLIENT_RECOMMENDED_VERSION` the answer has
+`X-Vanishly-Client-Recommended: <version>`
+([CONFIG.md](CONFIG.md#client-versions)). Without the header nothing
+applies.
+
+Download pages (not part of the API, `ENABLE_DOWNLOADS`): `GET /downloads`
+(the page), `GET /downloads/<file>` (a binary as attachment), and the
+checksum files `GET /downloads/SHA256SUMS`, `SHA512SUMS`, `SHA3-256SUMS`,
+`SHA3-512SUMS`, `B2SUMS` (`text/plain`, format of `sha256sum -c`).
 
 Pages of the sign-in (not part of the API): `GET /auth/login?return=/s/<id>`,
 `GET /auth/callback` (the provider's redirect), `POST /auth/logout`. With

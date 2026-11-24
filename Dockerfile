@@ -22,6 +22,17 @@ RUN npm ci --ignore-scripts \
  && npm prune --omit=dev --ignore-scripts \
  && find node_modules -type d -empty -delete
 
+# The command line clients for /downloads (clients/go/build.sh), built
+# reproducibly: the same version and Go release give the same bytes, so the
+# files in the image have the checksums of the ones build.yml signs for the
+# GitHub release (and that job checks it). Pinned by digest like Node.
+FROM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS clients
+ARG VERSION=dev
+WORKDIR /src
+COPY VERSION ./
+COPY clients/go ./clients/go
+RUN cd clients/go && go mod download && ./build.sh /out "$VERSION"
+
 FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="vanishly" \
@@ -51,6 +62,7 @@ COPY views ./views
 COPY translations ./translations
 COPY openapi ./openapi
 COPY templates ./templates
+COPY --from=clients /out ./downloads
 # Own templates: mount a folder at /var/lib/vanishly/templates (read-only);
 # own or extra translations (fr.json, ...) at /var/lib/vanishly/translations.
 USER node

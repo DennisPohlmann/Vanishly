@@ -8,7 +8,7 @@ endif
 PKG     := vanishly-$(VERSION)
 IMAGE   ?= vanishly
 
-.PHONY: check hooks vendor package image up clean
+.PHONY: check hooks vendor package clients image up clean
 
 # Everything the CI checks on a push, as far as this machine can.
 check:
@@ -34,6 +34,11 @@ package: vendor
 	cp .env.example dist/root/etc/vanishly/vanishly.env
 	tar -C dist/root --owner=0 --group=0 -czf dist/$(PKG).tar.gz .
 	cd dist && sha256sum $(PKG).tar.gz > $(PKG).tar.gz.sha256
+
+# The command line clients for every platform in downloads/ (served on
+# /downloads); the image builds them itself (Dockerfile stage "clients").
+clients:
+	cd clients/go && ./build.sh ../../downloads $(VERSION)
 
 # Local container image, tagged with the version.
 image:

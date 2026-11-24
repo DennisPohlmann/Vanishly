@@ -183,10 +183,15 @@ Neither stores or logs the text, key or passphrase. They still mean you
 trust the server and the TLS connection to it, so both are off by default:
 `ENABLE_SHARE_API=true` and `ENABLE_OPEN_API=true` switch them on for
 scripts that cannot encrypt themselves (curl). The web pages never use
-them, and neither do the [client
-libraries](CLIENTS.md), which encrypt and decrypt on their own machine like
+them, and neither do the [client libraries and the command line
+client](CLIENTS.md), which encrypt and decrypt on their own machine like
 the browser. The MCP server (`ENABLE_MCP`, off by default) creates secrets
 through `POST /api/v1/share`.
+
+The command line clients on `/downloads` come with checksums; that a
+binary is genuine shows its Sigstore signature and GitHub attestation from
+the release, which do not depend on the server
+([CLIENTS.md](CLIENTS.md#checking-a-binary)).
 
 ## Quantum computers
 
@@ -425,7 +430,7 @@ For the strictest API setup: `API_TOKEN_REQUIRED=true`,
 `API_TOKEN_IP_BINDING=required`, `API_TOKEN_MAX_EXPIRY` set,
 `API_TOKEN_RATE_LIMIT` set, `ENABLE_SHARE_API`, `ENABLE_OPEN_API` and
 `ENABLE_MCP` left off (the default; scripts use a client),
-`AUDIT_LOG=true` shipped
+`CLIENT_MIN_VERSION` set, `AUDIT_LOG=true` shipped
 to a SIEM, TLS with `HSTS=true`, and an OIDC provider with MFA.
 
 ## What Vanishly cannot protect against

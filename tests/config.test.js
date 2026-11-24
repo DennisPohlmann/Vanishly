@@ -201,9 +201,15 @@ test('feature switches', () => {
   assert.equal(loadConfig({}).mcp, false);
   assert.equal(loadConfig({ ENABLE_MCP: 'true' }).mcp, true);
   assert.equal(c.mcp, false);
-  // The endpoints where the server sees a secret are off by default.
-  assert.deepEqual([sw.shareApi, sw.openApi], [false, false]);
+  // The endpoints where the server sees a secret are off by default, the downloads on.
+  assert.deepEqual([sw.shareApi, sw.openApi, sw.downloads], [false, false, true]);
   assert.deepEqual([loadConfig({ ENABLE_SHARE_API: 'true' }).features.shareApi, loadConfig({ ENABLE_OPEN_API: 'true' }).features.openApi], [true, true]);
+  // CLIENT_MIN_VERSION / CLIENT_RECOMMENDED_VERSION: x.y.z, empty = no rule, recommended not below min.
+  assert.deepEqual(loadConfig({}).clientVersions, { min: '', recommended: '' });
+  assert.deepEqual(loadConfig({ CLIENT_MIN_VERSION: '3.1.0', CLIENT_RECOMMENDED_VERSION: '3.10.0' }).clientVersions, { min: '3.1.0', recommended: '3.10.0' });
+  assert.throws(() => loadConfig({ CLIENT_MIN_VERSION: '3.1' }), /CLIENT_MIN_VERSION: a version like/);
+  assert.throws(() => loadConfig({ CLIENT_RECOMMENDED_VERSION: 'latest' }), /CLIENT_RECOMMENDED_VERSION/);
+  assert.throws(() => loadConfig({ CLIENT_MIN_VERSION: '3.2.0', CLIENT_RECOMMENDED_VERSION: '3.1.9' }), /below CLIENT_MIN_VERSION/);
   assert.deepEqual([loadConfig({ ENABLE_MCP: 'false' }).mcp, loadConfig({ ENABLE_MCP: 'false' }).api], [false, true]);
   assert.throws(() => loadConfig({ ENABLE_API: 'false', ENABLE_MCP: 'true' }), /ENABLE_MCP=true needs ENABLE_API=true/);
 });

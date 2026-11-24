@@ -86,7 +86,7 @@ jobs:
         env:
           REDIS_URL: redis://localhost:6379
 
-  # The client libraries (clients/): each one
+  # The client libraries and the command line client (clients/): each one
   # against the shared test vectors of public/js/vanishly-crypto.js, with
   # the toolchain of its language. tests/clients.test.js (job check) checks
   # that the vectors and the versions are current.
@@ -97,8 +97,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: '1.27'
-          cache: false # no dependencies yet
-      - name: Go
+          cache-dependency-path: clients/go/go.sum
+      - name: Go (library and command line client)
         working-directory: clients/go
         run: test -z "$(gofmt -l .)" && go vet ./... && go test ./...
 
@@ -199,6 +199,8 @@ jobs:
     runs-on: ubuntu-26.04
     permissions:
       contents: write
+      id-token: write # keyless Sigstore signatures of the command line clients
+      attestations: write # their build provenance
     env:
       RELEASE: ${{ needs.release.outputs.version }}
     steps:
@@ -226,13 +228,61 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "v$RELEASE" dist/*.tar.gz dist/*.tar.gz.sha256 --repo "$GITHUB_REPOSITORY"
+      # The command line clients with the Dockerfile's stage "clients": the
+      # same recipe and version as the image, so the image's /downloads has
+      # the same bytes (job image checks it). The checksum files have the
+      # format the server makes (src/downloads.js).
+      - uses: docker/setup-buildx-action@v4
+      - name: build the command line clients
+        env:
+          VERSION: ${{ env.RELEASE || format('edge+{0}', github.sha) }}
+        run: |
+          docker buildx build --target clients --build-arg VERSION="$VERSION" --output type=local,dest=dist/clients .
+          cd dist/clients
+          python3 - <<'PY'
+          import hashlib, os
+          names = sorted(n for n in os.listdir('.') if n.startswith('vanishly-'))
+          for algo, file in [('sha256', 'SHA256SUMS'), ('sha512', 'SHA512SUMS'), ('sha3_256', 'SHA3-256SUMS'), ('sha3_512', 'SHA3-512SUMS'), ('blake2b', 'B2SUMS')]:
+              with open(file, 'w') as out:
+                  for n in names:
+                      out.write(f"{hashlib.new(algo, open(n, 'rb').read()).hexdigest()}  {n}\n")
+          PY
+          sha256sum -c SHA256SUMS && b2sum -c B2SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vanishly-clients
+          path: dist/clients/*
+          if-no-files-found: error
+          retention-days: 7
+      # Release only: keyless signatures (a .sigstore.json bundle per file,
+      # identity: this workflow) and GitHub artifact attestations (SLSA build
+      # provenance), checked with cosign verify-blob or gh attestation verify
+      # (docs/CLIENTS.md).
+      - uses: sigstore/cosign-installer@v3
+        if: env.RELEASE != ''
+      - name: sign the command line clients
+        if: env.RELEASE != ''
+        run: |
+          cd dist/clients
+          for f in vanishly-* *SUMS; do cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"; done
+      - uses: actions/attest-build-provenance@v4
+        if: env.RELEASE != ''
+        with:
+          subject-path: |
+            dist/clients/vanishly-*
+            dist/clients/*SUMS
+      - name: add the command line clients to the release
+        if: env.RELEASE != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v$RELEASE" dist/clients/* --repo "$GITHUB_REPOSITORY"
 
   # Publishes the image, only in a manual release run (image-scan has
   # already built and scanned it on every push): edge always, and for a new
   # version <version>, <major>.<minor> and latest, with an SBOM and full
   # provenance as attestations; a release also gets the SBOM as an SPDX file.
   image:
-    needs: [check, image-scan, release]
+    needs: [check, image-scan, release, package]
     if: ${{ !cancelled() && needs.release.result == 'success' }}
     runs-on: ubuntu-26.04
     permissions:
@@ -274,6 +324,21 @@ jobs:
           build-args: VERSION=${{ env.RELEASE || format('edge+{0}', github.sha) }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # Reproducible builds: the clients the image serves on /downloads are
+      # byte for byte the ones signed for the release.
+      - uses: actions/download-artifact@v8
+        if: env.RELEASE != ''
+        with:
+          name: vanishly-clients
+          path: signed
+      - name: the clients in the image are the signed ones
+        if: env.RELEASE != ''
+        run: |
+          docker pull "${IMAGE,,}:$RELEASE"
+          id=$(docker create "${IMAGE,,}:$RELEASE")
+          docker cp "$id:/app/downloads" from-image
+          docker rm "$id"
+          cd from-image && sha256sum -c ../signed/SHA256SUMS && sha512sum -c ../signed/SHA512SUMS
       - uses: ./.github/actions/setup-trivy
         if: env.RELEASE != ''
       - name: add the SBOM to the release

@@ -41,7 +41,10 @@
           "charts/vanishly/Chart.yaml",
           "clients/go/client.go",
           "clients/go/go.mod",
+          "clients/go/cmd/vanishly/main.go",
+          "clients/go/build.sh",
           "clients/go/README.md",
+          "views/downloads.html",
           "docs/CLIENTS.md"
         ],
         "message": "chore(release): v${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"

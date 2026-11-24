@@ -115,8 +115,9 @@ A template can replace `layout.html`, `home.html`, `secret.html`,
 `receipt.html`, `error.html`, `login.html` (the sign-in prompt), `tokens.html`
 (API tokens, `API_TOKENS`), `admin.html` (administration), `mysecrets.html`
 ("My secrets", `MY_SECRETS`), `local-login.html` and `password.html` (sign-in
-form and "Change password", `AUTH_PROVIDER=local`) or `oauth.html` (the
-consent page of MCP clients, `MCP_OAUTH`) of the app's `views/` folder. Start from the
+form and "Change password", `AUTH_PROVIDER=local`), `oauth.html` (the
+consent page of MCP clients, `MCP_OAUTH`) or `downloads.html` (the download
+page of the clients, `ENABLE_DOWNLOADS`) of the app's `views/` folder. Start from the
 original. Placeholders:
 
 - `{{ name }}`: a value, HTML-escaped
@@ -124,7 +125,7 @@ original. Placeholders:
   and with sign-in `authNav` in the layout and `recipientsBlock` in the home view,
   which also carries the comment field of `AUDIT_COMMENT`; `expirySelect` and
   `scopeBoxes` in `tokens.html`, `scopeList` in `oauth.html`, `notice` in `local-login.html` and
-  `password.html`)
+  `password.html`, `versionNotice`, `fileTable` and `sumLinks` in `downloads.html`)
 - `{{ t:key }}`: a text from `translations/*.json` or `strings`
 
 Keep the element ids the page script uses (`create-form`, `secret`,
@@ -136,7 +137,8 @@ Content Security Policy blocks them. Extra CSS goes into `theme.css`.
 The `ENABLE_*` switches (docs/CONFIG.md) add classes to `<body>`, e.g.
 `no-passphrase no-receipts`, and `public/css/base.css` hides the matching
 parts by their ids: `#passphrase-wrap`, `#views-wrap`, `#receipt-wrap`,
-`.r-log-row`, `#generate`, `.lang-switch`, `#mode-toggle`, `.api-link`. An
+`.r-log-row`, `#generate`, `.lang-switch`, `#mode-toggle`, `.api-link`,
+`.downloads-link` (`no-downloads-link`: no clients to offer). An
 own `home.html`, `receipt.html` or `layout.html` should keep these ids and
 classes (copy them from `views/`), or hide the parts itself, e.g.
 `.no-generator .my-button { display: none; }`. The server enforces the

@@ -13,6 +13,7 @@ import { Auth, RETURN } from './auth.js';
 import { Users } from './users.js';
 import { mcpRouter, toolScopes } from './mcp.js';
 import { oauthRouter } from './oauth.js';
+import { ALGORITHMS, clientStatus, loadDownloads, SIGNER_REPO } from './downloads.js';
 import { missingClasses } from '../public/js/rules.js';
 import { escapeHtml, ROOT } from './theme.js';
 
@@ -120,9 +121,9 @@ const cached = (body) => ({ body, etag: `"${createHash('sha256').update(body).di
 
 /**
  * @param {{ config: import('./config.js').Config, store: import('./store.js').Store,
- *   theme: import('./theme.js').Theme, version: string, auth?: Auth | null, audit?: Audit | null }} deps
+ *   theme: import('./theme.js').Theme, version: string, auth?: Auth | null, audit?: Audit | null, downloadsDir?: string }} deps
  */
-export function createApp({ config, store, theme, version, auth: authIn, audit: auditIn }) {
+export function createApp({ config, store, theme, version, auth: authIn, audit: auditIn, downloadsDir = join(ROOT, 'downloads') }) {
   const app = express();
   // Sign-in (AUTH_PROVIDER); null = off, Vanishly works without any login.
   const auth = authIn === undefined ? (config.auth ? new Auth(config.auth, store) : null) : authIn;
@@ -327,6 +328,17 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   });
   // A switched-off endpoint (ENABLE_*): 404, but told apart from a wrong path.
   const disabled = () => new ApiError(404, 'endpoint_disabled', 'This endpoint is disabled on this server');
+  // ENABLE_DOWNLOADS: the command line clients in downloads/, read once (src/downloads.js).
+  const downloads = config.features.downloads ? loadDownloads(downloadsDir) : { files: [], sums: {} };
+  // CLIENT_MIN_VERSION / CLIENT_RECOMMENDED_VERSION for Vanishly's own clients
+  // (X-Vanishly-Client); calls without the header are not affected.
+  api.use((req, res, next) => {
+    const st = clientStatus(req.get('x-vanishly-client'), config.clientVersions);
+    if (st === 'outdated') res.set('X-Vanishly-Client-Recommended', config.clientVersions.recommended);
+    if (st !== 'refused') return next();
+    const dl = config.features.downloads ? { downloadUrl: `${origin(req)}/downloads` } : {};
+    next(new ApiError(426, 'client_outdated', `This client is too old for this server; version ${config.clientVersions.min} or newer is needed`, { minVersion: config.clientVersions.min, ...dl }));
+  });
   // MY_SECRETS: "My secrets" (page, menu entry, API) only with sign-in and the audit stream in Redis.
   const mySecretsOn = Boolean(auth?.c.mySecrets && audit?.c.redis);
   // SECRET_DETAILS: the status page of the user's own secrets from "My secrets" (needs receipts).
@@ -341,6 +353,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   /** @type {[boolean | undefined, string, string][]} */
   const endpointTable = [
     [f.configApi, 'GET', '/v1/config'],
+    [f.downloads, 'GET', '/v1/downloads'],
     [f.createApi, 'POST', '/v1/secrets'],
     [f.shareApi, 'POST', '/v1/share'],
     [f.secretMetaApi, 'GET', '/v1/secrets/{id}'],
@@ -776,7 +789,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
     api.use((req, _res, next) => {
       const own = fromPage(req) && /^\/v1\/(secrets|receipts|me|groups|people|tokens|admin)(\/|$)/.test(req.path);
       // Known paths: switched off; anything else falls through to not_found.
-      const known = /^\/(v1(\/(config|secrets|share|open|receipts|me|groups|people|tokens|admin)(\/.*)?)?\/?|openapi\.json|docs(\/.*)?)?$/.test(req.path);
+      const known = /^\/(v1(\/(config|downloads|secrets|share|open|receipts|me|groups|people|tokens|admin)(\/.*)?)?\/?|openapi\.json|docs(\/.*)?)?$/.test(req.path);
       next(own ? undefined : known ? disabled() : undefined);
     });
   }
@@ -811,6 +824,31 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   // (Sec-Fetch-Site; a guard against casual use, no access control).
   /** @param {boolean} on @param {import('express').Request} req */
   const pagesOnly = (on, req) => switchedOff(on || fromPage(req));
+
+  /** What /downloads and GET /api/v1/downloads show. @param {import('express').Request} req */
+  const downloadList = (req) => {
+    const o = origin(req);
+    const tag = /^\d+\.\d+\.\d+$/.test(version) ? `v${version}` : '';
+    return {
+      version,
+      minVersion: config.clientVersions.min || null,
+      recommendedVersion: config.clientVersions.recommended || null,
+      page: `${o}/downloads`,
+      files: downloads.files.map((d) => ({ ...d, url: `${o}/downloads/${d.name}` })),
+      checksumFiles: Object.fromEntries(ALGORITHMS.map(([key, , file]) => [key, `${o}/downloads/${file}`])),
+      // Built and signed in GitHub Actions (Sigstore, artifact attestations); reproducible, so the files here have the same checksums.
+      signatures: {
+        repository: `https://github.com/${SIGNER_REPO}`,
+        release: tag ? `https://github.com/${SIGNER_REPO}/releases/tag/${tag}` : `https://github.com/${SIGNER_REPO}/releases`,
+        verify: `gh attestation verify <file> --repo ${SIGNER_REPO}`,
+      },
+    };
+  };
+
+  api.get('/v1/downloads', (req, res) => {
+    switchedOff(config.features.downloads);
+    res.json(downloadList(req));
+  });
 
   api.get('/v1/config', (_req, res) => {
     switchedOff(config.features.configApi);
@@ -1898,6 +1936,8 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       signedOut && auth?.c.createNeedsLogin ? 'no-new-link' : '',
       // AUTH_AUTO_LOGIN: the page script tries a silent sign-in once per tab.
       signedOut && auth?.c.autoLogin ? 'auto-login' : '',
+      // The footer link (ENABLE_DOWNLOADS_LINK) only when this server has clients to offer.
+      config.features.downloads && config.features.downloadsLink && downloads.files.length ? '' : 'no-downloads-link',
     ].filter(Boolean);
     return theme.page(view, lang(res), { authNav: authNav(req, res), bodyClasses, ...ctx }, COMMON);
   };
@@ -2297,6 +2337,58 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         }),
     );
   });
+
+  // ENABLE_DOWNLOADS: the download page and the files of downloads/, only
+  // the names read at the start (no path from the request reaches the disk).
+  if (config.features.downloads) {
+    const byName = new Map(downloads.files.map((d) => [d.name, d]));
+    app.get('/downloads', (req, res) => {
+      const t = theme.strings[lang(res)];
+      const o = origin(req);
+      const { min, recommended } = config.clientVersions;
+      const versionNotice = [
+        min ? t['downloads.minVersion'].replace('{v}', min) : '',
+        recommended ? t['downloads.recommended'].replace('{v}', recommended) : '',
+      ].filter(Boolean).map((x) => `<p class="notice">${escapeHtml(x)}</p>`).join('');
+      const label = (/** @type {string} */ k) => escapeHtml(t[`downloads.col.${k}`]);
+      const rows = downloads.files
+        .map((d) => {
+          const sums = ALGORITHMS.map(([key, , , shown]) => `<dt>${shown}</dt><dd><code>${d.checksums[key]}</code></dd>`).join('');
+          return `<tr><td data-label="${label('platform')}">${escapeHtml(d.platform)}</td>` +
+            `<td data-label="${label('file')}"><a href="/downloads/${escapeHtml(d.name)}" download>${escapeHtml(d.name)}</a></td>` +
+            `<td data-label="${label('size')}">${(d.size / 1048576).toFixed(1)} MB</td>` +
+            `<td data-label="${label('checksums')}"><dl class="sums-list">${sums}</dl></td></tr>`;
+        })
+        .join('');
+      const fileTable = rows
+        ? `<div class="table-wrap"><table class="data"><thead><tr><th scope="col">${label('platform')}</th><th scope="col">${label('file')}</th><th scope="col">${label('size')}</th><th scope="col">${label('checksums')}</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : `<p class="notice">${escapeHtml(t['downloads.none'])}</p>`;
+      const list = downloadList(req);
+      res.type('html').send(
+        page('downloads', req, res, {
+          page: 'downloads',
+          title: t['downloads.title'],
+          versionNotice,
+          fileTable,
+          sumLinks: ALGORITHMS.map(([, , file]) => `<a href="/downloads/${file}" download>${file}</a>`).join(' '),
+          repo: SIGNER_REPO,
+          release: list.signatures.release,
+          docs: `https://github.com/${SIGNER_REPO}/blob/main/docs/CLIENTS.md`,
+          origin: o,
+        }),
+      );
+    });
+    app.get('/downloads/:file', (req, res, next) => {
+      const name = String(req.params.file);
+      const sums = Object.hasOwn(downloads.sums, name) ? downloads.sums[name] : null;
+      if (sums !== null) return void res.set('Cache-Control', 'public, max-age=300').type('text/plain').send(sums);
+      if (!byName.has(name)) return next();
+      res.set('Cache-Control', 'public, max-age=3600');
+      res.download(name, name, { root: downloadsDir, dotfiles: 'deny' }, (err) => {
+        if (err && !res.headersSent) next(err);
+      });
+    });
+  }
 
   app.get('/s/:id', async (req, res) => {
     const id = String(req.params.id);

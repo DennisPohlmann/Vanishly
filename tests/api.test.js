@@ -343,7 +343,7 @@ test('switched-off features', opts, async () => {
     assert.equal((await fetch(`${b}/api/v1/receipts/${'a'.repeat(22)}`, { headers: page })).status, 404);
     assert.equal((await fetch(`${b}/r/${'a'.repeat(22)}`)).status, 404);
     const html = await (await fetch(`${b}/`)).text();
-    assert.match(html, /class="no-passphrase no-views no-receipts no-burn no-view-log no-receipt-key no-generator no-theme-toggle no-api-link no-github-link"/);
+    assert.match(html, /class="no-passphrase no-views no-receipts no-burn no-view-log no-receipt-key no-generator no-theme-toggle no-api-link no-github-link no-downloads-link"/);
     assert.match(html, /data-mode-toggle="0"/);
   } finally {
     srv.close();
@@ -560,7 +560,7 @@ test('GET /api and /api/v1: an index of the switched-on endpoints, browsers to t
     assert.equal(r.status, 200); // no docs: JSON for browsers too
     const j = await r.json();
     assert.equal(j.docs, undefined);
-    assert.deepEqual(j.endpoints, ['POST /api/v1/secrets', 'POST /api/v1/secrets/{id}/reveal', 'GET /api/v1/receipts/{id}', 'POST /api/v1/receipts/{id}/burn']);
+    assert.deepEqual(j.endpoints, ['GET /api/v1/downloads', 'POST /api/v1/secrets', 'POST /api/v1/secrets/{id}/reveal', 'GET /api/v1/receipts/{id}', 'POST /api/v1/receipts/{id}/burn']);
   });
   await withApp({ ENABLE_API: 'false' }, async (b) => {
     const r = await fetch(`${b}/api`);
@@ -592,7 +592,7 @@ test('served OpenAPI document: only the switched-on endpoints, the same as the /
   }
   await withApp({ ENABLE_SHARE_API: 'false', ENABLE_OPEN_API: 'false', ENABLE_SECRET_META_API: 'false', ENABLE_CONFIG_API: 'false', ENABLE_ME_API: 'false', ENABLE_RECEIPTS: 'false' }, async (b) => {
     const spec = await (await fetch(`${b}/api/openapi.json`)).json();
-    assert.deepEqual(Object.keys(spec.paths), ['/', '/v1', '/v1/secrets', '/v1/secrets/{id}/reveal']);
+    assert.deepEqual(Object.keys(spec.paths), ['/', '/v1', '/v1/downloads', '/v1/secrets', '/v1/secrets/{id}/reveal']);
     assert.deepEqual(Object.keys(spec.paths['/v1/secrets/{id}']?.get ? {} : {}), []);
     assert.equal(spec.components.schemas.PlainSecret, undefined); // only /v1/share used it
     assert.equal(spec.components.schemas.Receipt, undefined);
@@ -887,7 +887,7 @@ test('OpenAPI: every rate-limited operation documents 429', async () => {
   const { readFileSync } = await import('node:fs');
   const spec = JSON.parse(readFileSync(new URL('../openapi/openapi.json', import.meta.url), 'utf8'));
   // The only operations without a per-endpoint limit (src/app.js, limit()).
-  const unlimited = new Set(['get /', 'get /v1', 'get /v1/config', 'get /v1/me']);
+  const unlimited = new Set(['get /', 'get /v1', 'get /v1/config', 'get /v1/downloads', 'get /v1/me']);
   for (const [p, item] of Object.entries(spec.paths)) {
     for (const [m, op] of Object.entries(/** @type {Record<string, any>} */ (item))) {
       if (!unlimited.has(`${m} ${p}`)) assert.ok(op.responses['429'], `${m.toUpperCase()} ${p}`);

@@ -27,7 +27,8 @@ Project layout:
 | `src/ratelimit.js` | rate limits in Redis, IP keyed with `RATE_LIMIT_KEY` |
 | `src/mcp.js` | MCP server at `/mcp` (`ENABLE_MCP`) |
 | `src/oauth.js` | sign-in of MCP clients through the browser (`MCP_OAUTH`) |
-| `clients/` | client libraries, test vectors, `set-version.sh` ([CLIENTS.md](CLIENTS.md)) |
+| `src/downloads.js` | the command line clients of `/downloads` (checksums) and the client version rules |
+| `clients/` | client libraries, the command line client, test vectors, `set-version.sh` ([CLIENTS.md](CLIENTS.md)) |
 | `public/js/vanishly-crypto.js` | crypto format v1 (browser and server) |
 | `public/js/app.js` | browser logic of the pages |
 | `public/js/rules.js` | passphrase rules, shared by browser and server |
@@ -102,7 +103,9 @@ everything a release would run, and publish nothing:
 - **clients:** every client library against the test vectors, each with
   the toolchain of its language.
 - **package:** `make package`; the tar.gz and `.sha256` are a workflow
-  artifact for 7 days.
+  artifact for 7 days. Also builds the command line clients for all 14
+  platforms (Dockerfile stage `clients`) and their five checksum files,
+  as workflow artifact `vanishly-clients`.
 
 `codeql.yml` runs CodeQL on every push and pull request.
 
@@ -129,11 +132,15 @@ image-scan:
   (releases are immutable once published, so assets are added first).
   Then it pushes the Go module's tag `clients/go/vX.Y.Z`.
 - **package:** builds the tag and adds the tar.gz and `.sha256` to the
-  release.
+  release; also the command line clients and their checksum files, each
+  signed keyless with cosign (`<file>.sigstore.json`) and with a GitHub
+  artifact attestation (build provenance).
 - **image:** pushes `ghcr.io/dennispohlmann/vanishly` with `edge` (every
   release run, also without a new version) and `<version>`,
   `<major>.<minor>`, `latest` (new version), SBOM and provenance; the SPDX
-  SBOM goes into the release.
+  SBOM goes into the release. It checks that the clients in the image
+  (`/app/downloads`) have the checksums of the signed ones (reproducible
+  build).
 - **chart:** pushes the chart (see below).
 - **publish-release:** after package, image and chart, publishes the draft
   release.
@@ -184,7 +191,7 @@ EN 301 549 require. What the code does for it:
 
 `npm run test:a11y` (CI job `check`, step "accessibility") opens every page
 and state (form, error, link ready, reveal, wrong passphrase, revealed,
-status page, gone, 404) in every built-in template, light and dark, at
+status page, gone, 404, downloads) in every built-in template, light and dark, at
 desktop size and at 320 px, and checks them with
 [axe-core](https://github.com/dequelabs/axe-core) against WCAG 2.0 to 2.2
 A/AA plus best practices, the reflow, the skip link and the focus on

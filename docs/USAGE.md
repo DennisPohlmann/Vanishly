@@ -7,6 +7,7 @@
 | `/` | Create a secret: text, optional passphrase, expiry, number of views, password generator |
 | `/s/<id>#<key>` | The recipient's link: shows a button; the secret is fetched and decrypted only after the click |
 | `/r/<id>#<key>` | The status page (receipt): state, created, expires, views left, the history (created, opened, burned), share link, burn button. With `STATUS_ACCESS=signed-in` only after a sign-in, see below |
+| `/downloads` | The command line clients for every platform, with their checksums, how to check the signature, and the client libraries (`ENABLE_DOWNLOADS`, [CLIENTS.md](CLIENTS.md)); linked in the footer when the server has binaries |
 | `/api/docs` | API documentation (Scalar API reference) |
 | `/api/openapi.json` | OpenAPI 3.1 document |
 | `/healthz` | `ok` (200) when Redis answers and accepts writes, otherwise 503 |

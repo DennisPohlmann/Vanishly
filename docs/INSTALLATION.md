@@ -124,6 +124,10 @@ sudo systemctl daemon-reload && sudo systemctl enable --now vanishly
 
 The unit binds to `127.0.0.1` and runs hardened as user `vanishly`.
 Release archives come with a `.sha256` file: `sha256sum -c vanishly-<version>.tar.gz.sha256`.
+The archive has no command line clients for `/downloads`: `make clients`
+in a checkout (needs Go) builds them into `downloads/`, copy that folder to
+`/opt/vanishly/downloads`, or take the signed ones from the GitHub release
+([CLIENTS.md](CLIENTS.md#checking-a-binary)).
 
 For a Redis on the host used only by Vanishly, disable persistence in
 `/etc/redis/redis.conf` (`save ""`, `appendonly no`) so no secret is

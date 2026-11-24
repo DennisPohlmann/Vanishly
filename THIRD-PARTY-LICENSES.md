@@ -22,6 +22,16 @@ texts ship with each package in `node_modules/<package>/LICENSE`.
 
 `vendor/scalar.js` is built from the development package by `npm run vendor`, without the web fonts that Scalar loads from its own servers. It bundles the packages Scalar needs in the browser (Vue and others, under MIT, BSD, ISC and Apache-2.0 licenses); their notices are in the bundle and in the [Scalar repository](https://github.com/scalar/scalar).
 
+## Client libraries and command line client (`clients/`)
+
+| Component | Version | License | Use |
+|---|---|---|---|
+| [Go](https://go.dev) standard library and runtime | 1.27 | BSD-3-Clause | compiled into the command line binaries on `/downloads` |
+| [golang.org/x/term](https://pkg.go.dev/golang.org/x/term) | 0.48.0 | BSD-3-Clause | passphrase prompt without echo (`--ask`); compiled into the binaries |
+| [golang.org/x/sys](https://pkg.go.dev/golang.org/x/sys) | 0.50.0 | BSD-3-Clause | needed by x/term; compiled into the binaries |
+
+The other libraries use only their language's standard library.
+
 ## All production npm packages (`npm ls --omit=dev --all`)
 
 ### BSD-3-Clause (1)

@@ -39,6 +39,13 @@ Vanishly runs as a small Node.js container next to Redis.
   link previews cannot burn a secret.
 - **Password generator** (in the browser, `crypto.getRandomValues`), with
   configurable length and character classes.
+- **Clients for scripts and the command line** ([docs/CLIENTS.md](docs/CLIENTS.md)):
+  client libraries and the command line client `vanishly` for Windows,
+  macOS, Linux and FreeBSD (x86, x86-64, ARM), all end-to-end encrypted
+  like the web pages.
+  The server offers the binaries on `/downloads` with five checksums each,
+  signed in the GitHub release (Sigstore, artifact attestations, reproducible
+  builds); it can recommend or require a minimum client version.
 - **OpenAPI 3.1 API** (`/api/openapi.json`, API reference at `/api/docs`,
   linked in the footer). For `curl` alone, `POST /api/v1/share` and
   `POST /api/v1/open` encrypt and open on the server; they are off by
