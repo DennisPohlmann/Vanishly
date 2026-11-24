@@ -26,6 +26,12 @@ vanishly --url {{ origin }} share
 vanishly open '{{ origin }}/s/&lt;id&gt;#&lt;key&gt;'
 vanishly help</code></pre>
   <p class="hint">{{ t:downloads.usageHint }}</p>
+  <h3>{{ t:downloads.passphrase }}</h3>
+  <pre class="code" tabindex="0"><code>vanishly --url {{ origin }} share 's3cret' --ask
+vanishly --url {{ origin }} share --secret-file secret.txt --passphrase-file passphrase.txt
+vanishly open '{{ origin }}/s/&lt;id&gt;#&lt;key&gt;' --ask
+vanishly open '{{ origin }}/s/&lt;id&gt;#&lt;key&gt;' --passphrase-file passphrase.txt</code></pre>
+  <p class="hint">{{ t:downloads.passphraseHint }}</p>
   <h2>{{ t:downloads.libraries }}</h2>
   <p>{{ t:downloads.librariesText }}</p>
   <div class="table-wrap">

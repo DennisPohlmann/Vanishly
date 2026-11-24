@@ -430,6 +430,8 @@
   "downloads.release": "GitHub-release",
   "downloads.usage": "Gebruik",
   "downloads.usageHint": "--url (of VANISHLY_URL) bepaalt met welke server de client praat; deze pagina vult haar eigen in. Een geheim op de opdrachtregel belandt in de shellgeschiedenis: --secret-file leest het uit een bestand, en share zonder geheim vraagt erom (zonder het te tonen). Een nieuwere versie is alleen nodig als deze pagina of de client dat zegt.",
+  "downloads.passphrase": "Met wachtzin",
+  "downloads.passphraseHint": "--ask vraagt om de wachtzin (zonder die te tonen), --passphrase-file leest hem uit een bestand, VANISHLY_PASSPHRASE haalt hem uit de omgeving. De ontvanger heeft dezelfde wachtzin nodig om het geheim te openen; stuur hem via een ander kanaal dan de link.",
   "downloads.libraries": "Bibliotheken",
   "downloads.librariesText": "Dezelfde end-to-end-versleuteling en de hele API voor je eigen programma's:",
   "downloads.docs": "Documentatie van de clients",

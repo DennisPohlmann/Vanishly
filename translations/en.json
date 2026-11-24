@@ -430,6 +430,8 @@
   "downloads.release": "GitHub release",
   "downloads.usage": "Use",
   "downloads.usageHint": "--url (or VANISHLY_URL) says which server the client talks to; this page fills in its own. A secret on the command line ends up in the shell history: --secret-file reads it from a file, and share without a secret asks for it (without echo). A newer version is needed only when this page or the client says so.",
+  "downloads.passphrase": "With a passphrase",
+  "downloads.passphraseHint": "--ask asks for the passphrase (without showing it), --passphrase-file reads it from a file, VANISHLY_PASSPHRASE takes it from the environment. The recipient needs the same passphrase to open the secret; send it another way than the link.",
   "downloads.libraries": "Libraries",
   "downloads.librariesText": "The same end-to-end encryption and the whole API for your own programs:",
   "downloads.docs": "Documentation of the clients",

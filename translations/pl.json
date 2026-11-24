@@ -430,6 +430,8 @@
   "downloads.release": "Wydanie na GitHub",
   "downloads.usage": "Użycie",
   "downloads.usageHint": "--url (lub VANISHLY_URL) określa, z którym serwerem łączy się klient; ta strona wpisuje swój własny. Sekret w wierszu poleceń trafia do historii powłoki: --secret-file czyta go z pliku, a share bez sekretu o niego pyta (bez wyświetlania). Nowsza wersja jest potrzebna tylko wtedy, gdy mówi o tym ta strona lub klient.",
+  "downloads.passphrase": "Z frazą dostępu",
+  "downloads.passphraseHint": "--ask pyta o frazę dostępu (bez wyświetlania), --passphrase-file czyta ją z pliku, VANISHLY_PASSPHRASE bierze ją ze środowiska. Odbiorca potrzebuje tej samej frazy, aby otworzyć sekret; wyślij ją innym kanałem niż link.",
   "downloads.libraries": "Biblioteki",
   "downloads.librariesText": "To samo szyfrowanie end-to-end i całe API dla własnych programów:",
   "downloads.docs": "Dokumentacja klientów",
