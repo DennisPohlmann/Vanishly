@@ -10,7 +10,7 @@ import { flatSchema, headerValue, mcpRouter, PROTOCOL_VERSIONS, receiptId, schem
 const spec = JSON.parse(readFileSync(new URL('../openapi/openapi.json', import.meta.url), 'utf8'));
 const ID = 'A'.repeat(22);
 const NOSCOPE = 'S'.repeat(22);
-const ON = { shareApi: true, receipts: true, receiptApi: true, burn: true };
+const ON = { shareMcp: true, receipts: true, receiptApi: true, burn: true };
 
 /** @param {string} base @param {any} msg @param {Record<string, string>} [headers] */
 async function rpc(base, msg, headers = {}) {
@@ -245,7 +245,7 @@ test('request ids: a string or an integer, never null (CIS 7.1.2)', async () => 
 });
 
 test('only the tools whose endpoints are on', async () => {
-  const f = await fake({ shareApi: false, receipts: true, receiptApi: true, burn: false });
+  const f = await fake({ shareMcp: false, receipts: true, receiptApi: true, burn: false });
   try {
     const r = await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, LEGACY);
     assert.deepEqual(r.body.result.tools.map((/** @type {any} */ t) => t.name), ['get_secret_status']);
@@ -255,11 +255,11 @@ test('only the tools whose endpoints are on', async () => {
   }
 });
 
-test('ENABLE_SERVER_OPEN gives open_secret, "My secrets" list_my_secrets and burn_my_secret; their scopes', async () => {
-  const all = { ...ON, openApi: true, mySecrets: true, mySecretDetails: true };
+test('ENABLE_SERVER_OPEN_MCP gives open_secret, "My secrets" list_my_secrets and burn_my_secret; their scopes', async () => {
+  const all = { ...ON, openMcp: true, mySecrets: true, mySecretDetails: true };
   assert.deepEqual(toolScopes(all), ['create', 'read', 'status', 'burn']);
-  assert.deepEqual(toolScopes({ shareApi: false, receipts: false, receiptApi: false, burn: true, mySecrets: true, mySecretDetails: true }), ['status', 'burn']);
-  assert.deepEqual(toolScopes({ shareApi: false, receipts: true, receiptApi: true, burn: false }), ['status']);
+  assert.deepEqual(toolScopes({ shareMcp: false, receipts: false, receiptApi: false, burn: true, mySecrets: true, mySecretDetails: true }), ['status', 'burn']);
+  assert.deepEqual(toolScopes({ shareMcp: false, receipts: true, receiptApi: true, burn: false }), ['status']);
   const f = await fake(all);
   try {
     const names = (await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, LEGACY)).body.result.tools.map((/** @type {any} */ t) => t.name);
@@ -501,7 +501,7 @@ test('standalone: create, status and burn over MCP, like the open API', opts, as
   assert.equal(r.body.result.isError, true);
   // The answers of the API still work after MCP calls on the same app.
   assert.equal((await fetch(`${base}/api/v1/receipts/${made.receiptId}`)).status, 200);
-  // ENABLE_SERVER_OPEN: open_secret takes one view.
+  // ENABLE_SERVER_OPEN_MCP: open_secret takes one view.
   const link = (await rpc(base, { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'create_secret', arguments: { secret: 'hunter22' } } }, LEGACY)).body.result.structuredContent.shareUrl;
   r = await rpc(base, { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'open_secret', arguments: { link } } }, LEGACY);
   assert.equal(r.body.result.structuredContent.secret, 'hunter22', JSON.stringify(r.body));
@@ -509,8 +509,8 @@ test('standalone: create, status and burn over MCP, like the open API', opts, as
   assert.equal(r.body.result.isError, true);
 });
 
-test('ENABLE_SERVER_CREATE=false, ENABLE_SERVER_OPEN=false: no create_secret, no open_secret over MCP either', opts, async () => {
-  const base = await vanishly({ ENABLE_SERVER_CREATE: 'false', ENABLE_SERVER_OPEN: 'false' });
+test('ENABLE_SERVER_CREATE_MCP=false, ENABLE_SERVER_OPEN_MCP=false: no create_secret, no open_secret over MCP either', opts, async () => {
+  const base = await vanishly({ ENABLE_SERVER_CREATE_MCP: 'false', ENABLE_SERVER_OPEN_MCP: 'false' });
   const names = (await rpc(base, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, LEGACY)).body.result.tools.map((/** @type {any} */ t) => t.name);
   assert.deepEqual(names, ['get_secret_status', 'burn_secret']);
 });

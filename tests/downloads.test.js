@@ -168,11 +168,28 @@ test('end to end by default: /v1/share, /v1/open and the MCP tools on them are o
     // MCP is on, but only shows and burns.
     assert.deepEqual(await tools(b), ['get_secret_status', 'burn_secret']);
   });
-  await withApp({ ENABLE_SERVER_CREATE: 'true', ENABLE_SERVER_OPEN: 'true' }, async (b) => {
+  // Over the API only: MCP still only shows and burns.
+  await withApp({ ENABLE_SERVER_CREATE_API: 'true', ENABLE_SERVER_OPEN_API: 'true' }, async (b) => {
     const r = await fetch(`${b}/api/v1/share`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: 'hi' }) });
     assert.equal(r.status, 201);
     const o = await fetch(`${b}/api/v1/open`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ link: (await r.json()).shareUrl }) });
     assert.equal((await o.json()).secret, 'hi');
+    assert.deepEqual(await tools(b), ['get_secret_status', 'burn_secret']);
+  });
+  // Over MCP only: the API endpoints stay 404.
+  await withApp({ ENABLE_SERVER_CREATE_MCP: 'true', ENABLE_SERVER_OPEN_MCP: 'true' }, async (b) => {
+    for (const p of ['/api/v1/share', '/api/v1/open']) {
+      const r = await fetch(b + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      assert.equal(r.status, 404, p);
+    }
     assert.deepEqual(await tools(b), ['create_secret', 'open_secret', 'get_secret_status', 'burn_secret']);
+    /** @param {string} name @param {any} args */
+    const call = async (name, args) => {
+      const r = await fetch(`${b}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'MCP-Protocol-Version': '2025-06-18' }, body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args } }) });
+      return (await r.json()).result;
+    };
+    const made = await call('create_secret', { secret: 'hi' });
+    assert.equal(made.isError, undefined, JSON.stringify(made));
+    assert.equal((await call('open_secret', { link: made.structuredContent.shareUrl })).structuredContent.secret, 'hi');
   });
 });

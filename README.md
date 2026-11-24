@@ -49,12 +49,12 @@ Vanishly runs as a small Node.js container next to Redis.
 - **OpenAPI 3.1 API** (`/api/openapi.json`, API reference at `/api/docs`,
   linked in the footer). For `curl` alone, `POST /api/v1/share` and
   `POST /api/v1/open` encrypt and open on the server; they are off by
-  default (`ENABLE_SERVER_CREATE`, `ENABLE_SERVER_OPEN`). Every endpoint can be
+  default (`ENABLE_SERVER_CREATE_API`, `ENABLE_SERVER_OPEN_API`). Every endpoint can be
   switched off on its own (e.g. create and reveal only); the docs then show
   only what is on.
 - **MCP server for AI clients** (`/mcp`, `ENABLE_MCP`): Claude, VS Code and
   other MCP clients list the person's secrets and check or burn them through
-  the API; creating and opening only with `ENABLE_SERVER_CREATE` / `ENABLE_SERVER_OPEN`.
+  the API; creating and opening only with their own switches `ENABLE_SERVER_CREATE_MCP` / `ENABLE_SERVER_OPEN_MCP`.
   With sign-in and `API_TOKENS=true` the client signs in through the browser
   and gets a personal API token (`MCP_OAUTH`); there is no tool to open a
   secret.

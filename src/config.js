@@ -286,7 +286,7 @@ export const SETTINGS = [
   'RATE_LIMIT_CREATE', 'RATE_LIMIT_READ', 'RATE_LIMIT_WINDOW', 'RATE_LIMIT_KEY', 'RATE_LIMIT_KEY_FILE',
   'CREATE_ALLOWED_IPS', 'CREATE_DENIED_IPS', 'READ_ALLOWED_IPS', 'READ_DENIED_IPS', 'ADMIN_ALLOWED_IPS', 'ADMIN_DENIED_IPS',
   'API_DOCS', 'ACCESS_LOG',
-  'ENABLE_API', 'ENABLE_MCP', 'MCP_OAUTH', 'MCP_PROTOCOL_VERSIONS', 'MCP_OAUTH_TOKEN_EXPIRY', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SERVER_CREATE', 'ENABLE_SERVER_OPEN',
+  'ENABLE_API', 'ENABLE_MCP', 'MCP_OAUTH', 'MCP_PROTOCOL_VERSIONS', 'MCP_OAUTH_TOKEN_EXPIRY', 'ENABLE_API_DOCS', 'ENABLE_API_LINK', 'ENABLE_SERVER_CREATE_API', 'ENABLE_SERVER_OPEN_API', 'ENABLE_SERVER_CREATE_MCP', 'ENABLE_SERVER_OPEN_MCP',
   'ENABLE_SECRET_META_API', 'ENABLE_CONFIG_API', 'ENABLE_ME_API',
   'ENABLE_CREATE_API', 'ENABLE_REVEAL_API', 'ENABLE_RECEIPT_API', 'ENABLE_API_INDEX',
   'RESPONSIBLE', 'STATUS_ACCESS',
@@ -1044,7 +1044,7 @@ function auditConfig(env, authSecret) {
 
 // Settings that were renamed: set, they stop the start with the new name
 // (no second name for one setting).
-const RENAMED = { ENABLE_SHARE_API: 'ENABLE_SERVER_CREATE', ENABLE_OPEN_API: 'ENABLE_SERVER_OPEN' };
+const RENAMED = { ENABLE_SHARE_API: 'ENABLE_SERVER_CREATE_API', ENABLE_OPEN_API: 'ENABLE_SERVER_OPEN_API' };
 
 /** @param {NodeJS.ProcessEnv} env */
 export function loadConfig(env = process.env) {
@@ -1193,7 +1193,7 @@ export function loadConfig(env = process.env) {
     // ENABLE_API=false: no public API; only this server's own pages may call it.
     api: sw('ENABLE_API', true),
     // ENABLE_MCP: the MCP server at /mcp (src/mcp.js); by default on with the API. Creating and
-    // opening over it follow ENABLE_SERVER_CREATE / ENABLE_SERVER_OPEN, so by default it lists, shows and burns.
+    // opening over it follow ENABLE_SERVER_CREATE_MCP / ENABLE_SERVER_OPEN_MCP, so by default it lists, shows and burns.
     mcp: sw('ENABLE_MCP', sw('ENABLE_API', true)),
     // MCP_OAUTH: MCP clients sign in through the browser (OAuth, src/oauth.js); needs sign-in, API_TOKENS and MCP (checked below).
     mcpOauth: sw('MCP_OAUTH', true),
@@ -1201,7 +1201,7 @@ export function loadConfig(env = process.env) {
     mcpVersions: named('MCP_PROTOCOL_VERSIONS', () => parseMcpVersions(env.MCP_PROTOCOL_VERSIONS)),
     apiDocs: env.ENABLE_API_DOCS ? sw('ENABLE_API_DOCS', true) : sw('API_DOCS', true),
     // Features an operator can switch off (ENABLE_*=false); on by default,
-    // except the two that let the server see a secret (ENABLE_SERVER_CREATE, ENABLE_SERVER_OPEN).
+    // except the four that let the server see a secret (ENABLE_SERVER_CREATE_API / _MCP, ENABLE_SERVER_OPEN_API / _MCP).
     features: {
       passphrase: sw('ENABLE_PASSPHRASE', true),
       views: sw('ENABLE_VIEWS', true),
@@ -1210,8 +1210,12 @@ export function loadConfig(env = process.env) {
       viewLog: sw('ENABLE_VIEW_LOG', true),
       receiptShareLink: sw('ENABLE_RECEIPT_SHARE_LINK', true),
       generator: sw('ENABLE_GENERATOR', true),
-      shareApi: sw('ENABLE_SERVER_CREATE', false),
-      openApi: sw('ENABLE_SERVER_OPEN', false),
+      // The server encrypts / decrypts: over the API (POST /v1/share, /v1/open) and over MCP
+      // (create_secret, open_secret) each on its own, since an AI client passes the secret on.
+      shareApi: sw('ENABLE_SERVER_CREATE_API', false),
+      openApi: sw('ENABLE_SERVER_OPEN_API', false),
+      shareMcp: sw('ENABLE_SERVER_CREATE_MCP', false),
+      openMcp: sw('ENABLE_SERVER_OPEN_MCP', false),
       // The download page /downloads and GET /api/v1/downloads (the command line clients).
       downloads: sw('ENABLE_DOWNLOADS', true),
       // ENABLE_DOWNLOADS_LINK: the "Downloads" link in the footer, next to "API".
@@ -1301,6 +1305,10 @@ export function loadConfig(env = process.env) {
     config.apiDocs = false;
     config.features.shareApi = false;
     config.features.openApi = false;
+  }
+  if (!config.mcp) {
+    config.features.shareMcp = false;
+    config.features.openMcp = false;
   }
   if (!config.api && !config.apiDocs) config.features.apiLink = false;
   return { ...config, requirePassphrase };

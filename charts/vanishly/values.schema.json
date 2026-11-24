@@ -577,7 +577,7 @@
             }
           ]
         },
-        "ENABLE_SERVER_CREATE": {
+        "ENABLE_SERVER_CREATE_API": {
           "anyOf": [
             {
               "type": "boolean"
@@ -588,7 +588,29 @@
             }
           ]
         },
-        "ENABLE_SERVER_OPEN": {
+        "ENABLE_SERVER_OPEN_API": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "ENABLE_SERVER_CREATE_MCP": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^$|^(?i:1|0|true|false|yes|no|on|off)$"
+            }
+          ]
+        },
+        "ENABLE_SERVER_OPEN_MCP": {
           "anyOf": [
             {
               "type": "boolean"

@@ -181,12 +181,15 @@ duration of the request:
 
 Neither stores or logs the text, key or passphrase. They still mean you
 trust the server and the TLS connection to it, so both are off by default:
-`ENABLE_SERVER_CREATE=true` and `ENABLE_SERVER_OPEN=true` switch them on for
+`ENABLE_SERVER_CREATE_API=true` and `ENABLE_SERVER_OPEN_API=true` switch them on for
 scripts that cannot encrypt themselves (curl). The web pages never use
 them, and neither do the [client libraries and the command line
 client](CLIENTS.md), which encrypt and decrypt on their own machine like
-the browser. The MCP server (`ENABLE_MCP`) creates and opens secrets only
-through these two, so only when they are on.
+the browser. The MCP server (`ENABLE_MCP`) runs the same two endpoints for
+`create_secret` and `open_secret`, but with its own switches,
+`ENABLE_SERVER_CREATE_MCP` and `ENABLE_SERVER_OPEN_MCP` (also off by
+default): over MCP the secret also passes the AI client and its provider,
+so an operator can allow scripts and still keep AI clients out.
 
 The command line clients on `/downloads` come with checksums; that a
 binary is genuine shows its Sigstore signature and GitHub attestation from
@@ -353,13 +356,13 @@ third-party servers (sections 4 and 8, except the server side of 4.1.3).
 | 3.3.1 Audience-bound tokens (RFC 8707) | Pass | `resource` must be `<BASE_URL>/mcp` (else `invalid_target`); the token gets audience `mcp` and is refused on `/api/v1/*` (`api.token_audience_denied`) |
 | 3.3.2 Discovery metadata over TLS, approved issuer | Pass / Operator | Vanishly is its own authorization server, named in the protected resource metadata; TLS by the proxy |
 | 3.3.3 No shared downstream service accounts | n.a. | no downstream services |
-| 3.3.4 Minimal scopes, step-up | Pass | OAuth offers only the scopes of the tools that are on: `status` and `burn`, `create` with `ENABLE_SERVER_CREATE`, `read` only with `ENABLE_SERVER_OPEN`; a missing scope answers `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` |
+| 3.3.4 Minimal scopes, step-up | Pass | OAuth offers only the scopes of the tools that are on: `status` and `burn`, `create` with `ENABLE_SERVER_CREATE_MCP`, `read` only with `ENABLE_SERVER_OPEN_MCP`; a missing scope answers `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` |
 | 3.3.5 Confused deputy, static client ids | Pass / Deviation | no static client ids, no third-party authorization server; consent page per client; only `native` clients with loopback redirects. Any port on the loopback address is accepted, as RFC 8252 section 7.3 requires |
 | 4.1.3 Elicitation consented, redacted, identity-bound (server side) | Pass / limit | only with `CONFIRM_CHECKBOX=true`: every `create_secret` asks the person (form mode, a yes/no only; no secret asked for or shown, warnings name only the kind of access data found). The model cannot confirm (no `confirmed` argument); without elicitation or on an older protocol the tool refuses (`confirmation_unavailable`). Logged as `mcp.tool_called` (`confirmation` `requested` / `accepted`, reason `confirmation_declined`), own rate limit counter. No `requestState`, no URL mode: nothing to bind or tamper with. Limit: the yes is what the MCP client reports; a compromised client can forge it, as any client input. Consent UI, decline buttons and the client-side records are the client's |
 | 5.1.1 Tool argument validation | Pass | arguments checked against the tool's input schema (types, lengths, ranges, enums, no unknown fields) before the API, refusals as tool errors (`invalid_arguments`) |
 | 5.2.2, 5.2.3 Sessions, legacy streams | Pass | no `Mcp-Session-Id`, no SSE stream, `GET`/`DELETE` `405`, `Last-Event-ID` ignored |
 | 5.6.1 Idempotency keys | Deviation | a replay would have to store the answer, and the answer of `create_secret` holds the link with its key: the server would keep the key. Each call creates a new secret; `burn_secret` is idempotent |
-| 6.1 Context minimized | Pass / limit | tools return only the API's answer (links, status; secret contents only from `open_secret`, `ENABLE_SERVER_OPEN`, off by default); the plaintext of `create_secret` and `open_secret` passes the AI client and its provider |
+| 6.1 Context minimized | Pass / limit | tools return only the API's answer (links, status; secret contents only from `open_secret`, `ENABLE_SERVER_OPEN_MCP`, off by default); the plaintext of `create_secret` and `open_secret` passes the AI client and its provider |
 | 6.2 Tokens and keys protected | Pass | tokens stored only as HMAC; the server never holds a secret's key |
 | 7.1.1 Lifecycle and invocation records | Pass | `mcp.request`, `mcp.tool_called`, `mcp.request_denied` with `AUDIT_LOG=true` |
 | 7.1.2 Non-null request ids | Pass | an `id` that is `null` or not a string or integer is refused (`-32600`); the id is in the events |
@@ -428,7 +431,7 @@ those points are listed once as **Operator**. Status words as in the
 
 For the strictest API setup: `API_TOKEN_REQUIRED=true`,
 `API_TOKEN_IP_BINDING=required`, `API_TOKEN_MAX_EXPIRY` set,
-`API_TOKEN_RATE_LIMIT` set, `ENABLE_SERVER_CREATE` and `ENABLE_SERVER_OPEN`
+`API_TOKEN_RATE_LIMIT` set, the four `ENABLE_SERVER_*` switches
 left off (the default; scripts use a client, MCP only lists, shows and burns),
 `CLIENT_MIN_VERSION` set, `AUDIT_LOG=true` shipped
 to a SIEM, TLS with `HSTS=true`, and an OIDC provider with MFA.

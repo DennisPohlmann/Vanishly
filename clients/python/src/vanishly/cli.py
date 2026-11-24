@@ -59,12 +59,12 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--responsible-group", action="append", help="responsible group, repeatable")
     s.add_argument("--comment", help="what the secret is for (AUDIT_COMMENT)")
     s.add_argument("--confirm", action="store_true", help='send "confirmed": true (CONFIRM_CHECKBOX)')
-    s.add_argument("--server-side", action="store_true", help="let the server encrypt (POST /v1/share, ENABLE_SERVER_CREATE)")
+    s.add_argument("--server-side", action="store_true", help="let the server encrypt (POST /v1/share, ENABLE_SERVER_CREATE_API)")
 
     o = sub.add_parser("open", help="open a link: takes one view, decrypts here")
     o.add_argument("link")
     passphrase(o)
-    o.add_argument("--server-side", action="store_true", help="let the server decrypt (POST /v1/open, ENABLE_SERVER_OPEN)")
+    o.add_argument("--server-side", action="store_true", help="let the server decrypt (POST /v1/open, ENABLE_SERVER_OPEN_API)")
 
     for name, text in (("meta", "state of a secret without using a view"), ("status", "status of a secret for its sender"),
                        ("burn", "destroy a secret now")):

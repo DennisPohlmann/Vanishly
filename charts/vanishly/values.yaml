@@ -165,7 +165,7 @@ config:
   ADMIN_DENIED_IPS: ""
   # == API (true = on)
   ENABLE_API: ""
-  # The MCP server (on with the API); its create_secret / open_secret need ENABLE_SERVER_CREATE / ENABLE_SERVER_OPEN.
+  # The MCP server (on with the API); its create_secret / open_secret need ENABLE_SERVER_CREATE_MCP / ENABLE_SERVER_OPEN_MCP.
   ENABLE_MCP: ""
   MCP_OAUTH: ""
   # MCP protocol versions /mcp speaks (2026-07-28,2025-11-25,2025-06-18); 2026-07-28 alone is strictest.
@@ -173,8 +173,11 @@ config:
   ENABLE_API_DOCS: ""
   ENABLE_API_LINK: ""
   # Off by default: POST /api/v1/share and /open, where the server sees the secret (curl). The clients do not need them.
-  ENABLE_SERVER_CREATE: ""
-  ENABLE_SERVER_OPEN: ""
+  ENABLE_SERVER_CREATE_API: ""
+  ENABLE_SERVER_OPEN_API: ""
+  # Off by default: the MCP tools create_secret and open_secret, apart from the API's switches.
+  ENABLE_SERVER_CREATE_MCP: ""
+  ENABLE_SERVER_OPEN_MCP: ""
   ENABLE_SECRET_META_API: ""
   ENABLE_CONFIG_API: ""
   ENABLE_ME_API: ""

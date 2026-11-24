@@ -979,7 +979,8 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   // Encrypts on the server for scripts without crypto (curl): the key is
   // returned in the links and forgotten right away.
   api.post('/v1/share', limit('create'), async (req, res) => {
-    if (!config.features.shareApi) throw disabled();
+    // The MCP tool create_secret runs this route with its own switch (res.locals.mcp, src/mcp.js).
+    if (!(res.locals.mcp ? config.features.shareMcp : config.features.shareApi)) throw disabled();
     mayCreate(res);
     await needScope(req, res, 'create');
     auditReady();
@@ -1069,7 +1070,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
   // secret has one, its passphrase go to the server, which decrypts and
   // forgets both. Same trust as /v1/share; browsers decrypt themselves.
   api.post('/v1/open', limit('read'), async (req, res) => {
-    if (!config.features.openApi) throw disabled();
+    if (!(res.locals.mcp ? config.features.openMcp : config.features.openApi)) throw disabled();
     await needScope(req, res, 'read');
     auditReady();
     const b = req.body || {};

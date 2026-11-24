@@ -98,12 +98,14 @@ docker run -d --name vanishly --network vanishly --restart unless-stopped \
 ```
 
 **Server-side encryption is off by default** since the release with the
-clients ([CLIENTS.md](CLIENTS.md)): `ENABLE_SERVER_CREATE` and
-`ENABLE_SERVER_OPEN` (up to version 3 `ENABLE_SHARE_API` and
-`ENABLE_OPEN_API`, which now stop the start: rename them) used to be on. Unset, `POST /api/v1/share` and
-`POST /api/v1/open` now answer 404, and the MCP server (`/mcp`, still on)
-has no `create_secret`. If scripts (curl) or AI clients create secrets that
-way, set them to `true` in `.env`; better, move the scripts to a client,
+clients ([CLIENTS.md](CLIENTS.md)): up to version 3 `ENABLE_SHARE_API` and
+`ENABLE_OPEN_API` were on and covered the API and MCP. They are now four
+switches, all off by default, and the old names stop the start:
+`ENABLE_SERVER_CREATE_API` / `ENABLE_SERVER_OPEN_API` for `POST /api/v1/share`
+and `POST /api/v1/open`, `ENABLE_SERVER_CREATE_MCP` / `ENABLE_SERVER_OPEN_MCP`
+for the MCP tools `create_secret` and `open_secret` (the MCP server, `/mcp`,
+stays on). If scripts (curl) or AI clients create secrets that way, set the
+matching ones to `true` in `.env`; better, move the scripts to a client,
 which encrypts on its own machine. The web pages are not affected.
 
 Image tags: `latest` (newest release), `<major>.<minor>`, `<version>`,

@@ -139,8 +139,8 @@ export function secretHints(v) {
 }
 
 /**
- * @typedef {{ shareApi: boolean, openApi?: boolean, receipts: boolean, receiptApi: boolean, burn: boolean, mySecrets?: boolean, mySecretDetails?: boolean }} ToolFeatures
- *   shareApi / openApi: ENABLE_SERVER_CREATE / ENABLE_SERVER_OPEN, the same switches as for the API;
+ * @typedef {{ shareMcp: boolean, openMcp?: boolean, receipts: boolean, receiptApi: boolean, burn: boolean, mySecrets?: boolean, mySecretDetails?: boolean }} ToolFeatures
+ *   shareMcp / openMcp: ENABLE_SERVER_CREATE_MCP / ENABLE_SERVER_OPEN_MCP, apart from the API's switches;
  *   mySecrets / mySecretDetails: MY_SECRETS / SECRET_DETAILS as the app has them on
  */
 
@@ -153,8 +153,8 @@ export function secretHints(v) {
 export function toolScopes(f) {
   const receipts = f.receipts && f.receiptApi;
   return [
-    ...(f.shareApi ? ['create'] : []),
-    ...(f.openApi ? ['read'] : []),
+    ...(f.shareMcp ? ['create'] : []),
+    ...(f.openMcp ? ['read'] : []),
     ...(receipts || f.mySecrets ? ['status'] : []),
     ...(f.burn && (receipts || f.mySecretDetails) ? ['burn'] : []),
   ];
@@ -197,7 +197,7 @@ export function mcpRouter({ api, spec, features, version, origin, bodyLimit, ver
 
   /** @type {{ name: string, description: string, inputSchema: any, scope: string, run: (a: any) => [string, string, any] }[]} */
   const tools = [];
-  if (features.shareApi) {
+  if (features.shareMcp) {
     // "confirmed" never comes from the model: with CONFIRM_CHECKBOX the person confirms by elicitation.
     const { confirmed: _, ...share } = flatSchema(spec.paths['/v1/share'].post.requestBody.content['application/json'].schema, spec).properties;
     tools.push({
@@ -209,7 +209,7 @@ export function mcpRouter({ api, spec, features, version, origin, bodyLimit, ver
       run: (a) => ['POST', '/v1/share', a],
     });
   }
-  if (features.openApi) {
+  if (features.openMcp) {
     const schema = flatSchema(spec.paths['/v1/open'].post.requestBody.content['application/json'].schema, spec);
     tools.push({
       name: 'open_secret',
@@ -297,6 +297,8 @@ export function mcpRouter({ api, spec, features, version, origin, bodyLimit, ver
       };
       // The route as the audit log shows it: /api/v1/...
       Object.assign(req, { method, url, body, baseUrl: '/api' });
+      // /v1/share and /v1/open check the MCP switches for these calls, not the API's.
+      res.locals.mcp = true;
       api(req, res, (/** @type {any} */ err) => {
         res.json = json;
         reject(err || new Error(`no API route for ${method} ${url}`));
