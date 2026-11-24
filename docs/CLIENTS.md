@@ -54,7 +54,7 @@ dependencies (Go, [download](#download-page)):
 export VANISHLY_URL=https://ots.example.com   # or --url
 export VANISHLY_TOKEN=vnly_...                # with sign-in, or --token
 
-printf '%s' 's3cret' | vanishly share --ttl 3600 --views 1   # prints the link
+vanishly share --ttl 3600 --views 1   # asks for the secret, prints the link
 vanishly share --passphrase-file pw.txt --recipient alice@example.com < secret.txt
 vanishly open 'https://ots.example.com/s/<id>#<key>'
 vanishly status 'https://ots.example.com/r/<receipt id>#<key>'

@@ -429,7 +429,7 @@
   "downloads.verifyHint": "De handtekeningbundels (.sigstore.json) staan in de GitHub-release van deze versie.",
   "downloads.release": "GitHub-release",
   "downloads.usage": "Gebruik",
-  "downloads.usageHint": "Zonder geheim op de opdrachtregel wordt het van standaardinvoer gelezen, zodat het niet in de shellgeschiedenis belandt. Een nieuwere versie is alleen nodig als deze pagina of de client dat zegt.",
+  "downloads.usageHint": "VANISHLY_URL (of --url) bepaalt met welke server de client praat; deze pagina vult haar eigen in. Zonder geheim op de opdrachtregel vraagt share erom (zonder het te tonen) of leest het van standaardinvoer, zodat het niet in de shellgeschiedenis belandt. Een nieuwere versie is alleen nodig als deze pagina of de client dat zegt.",
   "downloads.libraries": "Bibliotheken",
   "downloads.librariesText": "Dezelfde end-to-end-versleuteling en de hele API voor je eigen programma's:",
   "downloads.docs": "Documentatie van de clients",

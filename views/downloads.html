@@ -20,7 +20,9 @@ cosign verify-blob vanishly-linux-amd64 \
   <p class="hint">{{ t:downloads.verifyHint }} <a href="{{ release }}" rel="noopener">{{ t:downloads.release }}</a></p>
   <h2>{{ t:downloads.usage }}</h2>
   <pre class="code" tabindex="0"><code>chmod +x vanishly-linux-amd64 &amp;&amp; mv vanishly-linux-amd64 ~/bin/vanishly
-printf '%s' 's3cret' | vanishly --url {{ origin }} share --ttl 3600
+export VANISHLY_URL={{ origin }}
+vanishly share --ttl 3600 --views 1
+vanishly share --ttl 3600 &lt; secret.txt
 vanishly open '{{ origin }}/s/&lt;id&gt;#&lt;key&gt;'
 vanishly help</code></pre>
   <p class="hint">{{ t:downloads.usageHint }}</p>

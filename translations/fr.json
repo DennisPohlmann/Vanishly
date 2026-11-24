@@ -429,7 +429,7 @@
   "downloads.verifyHint": "Les paquets de signature (.sigstore.json) se trouvent dans la release GitHub de cette version.",
   "downloads.release": "Release GitHub",
   "downloads.usage": "Utilisation",
-  "downloads.usageHint": "Sans secret sur la ligne de commande, il est lu depuis l’entrée standard et n’apparaît donc pas dans l’historique du shell. Une version plus récente n’est nécessaire que si cette page ou le client l’indique.",
+  "downloads.usageHint": "VANISHLY_URL (ou --url) indique à quel serveur le client s’adresse ; cette page y met le sien. Sans secret sur la ligne de commande, share le demande (sans l’afficher) ou le lit depuis l’entrée standard, il n’apparaît donc pas dans l’historique du shell. Une version plus récente n’est nécessaire que si cette page ou le client l’indique.",
   "downloads.libraries": "Bibliothèques",
   "downloads.librariesText": "Le même chiffrement de bout en bout et toute l’API pour vos propres programmes :",
   "downloads.docs": "Documentation des clients",

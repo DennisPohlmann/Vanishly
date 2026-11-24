@@ -429,7 +429,7 @@
   "downloads.verifyHint": "Die Signatur-Bundles (.sigstore.json) liegen im GitHub-Release dieser Version.",
   "downloads.release": "GitHub-Release",
   "downloads.usage": "Benutzung",
-  "downloads.usageHint": "Ohne Secret auf der Kommandozeile wird es von der Standardeingabe gelesen und landet so nicht in der Shell-History. Eine neuere Version brauchst du nur, wenn diese Seite oder der Client das sagt.",
+  "downloads.usageHint": "VANISHLY_URL (oder --url) legt fest, mit welchem Server der Client spricht; diese Seite trägt ihren eigenen ein. Ohne Secret auf der Kommandozeile fragt share danach (ohne Anzeige) oder liest es von der Standardeingabe, so landet es nicht in der Shell-History. Eine neuere Version brauchst du nur, wenn diese Seite oder der Client das sagt.",
   "downloads.libraries": "Bibliotheken",
   "downloads.librariesText": "Dieselbe Ende-zu-Ende-Verschlüsselung und die ganze API für eigene Programme:",
   "downloads.docs": "Dokumentation der Clients",

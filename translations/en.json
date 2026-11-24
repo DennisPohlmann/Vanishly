@@ -429,7 +429,7 @@
   "downloads.verifyHint": "The signature bundles (.sigstore.json) are in the GitHub release of this version.",
   "downloads.release": "GitHub release",
   "downloads.usage": "Use",
-  "downloads.usageHint": "Without a secret on the command line it is read from standard input, so it does not end up in the shell history. A newer version is needed only when this page or the client says so.",
+  "downloads.usageHint": "VANISHLY_URL (or --url) says which server the client talks to; this page fills in its own. Without a secret on the command line, share asks for it (without echo) or reads it from standard input, so it does not end up in the shell history. A newer version is needed only when this page or the client says so.",
   "downloads.libraries": "Libraries",
   "downloads.librariesText": "The same end-to-end encryption and the whole API for your own programs:",
   "downloads.docs": "Documentation of the clients",
