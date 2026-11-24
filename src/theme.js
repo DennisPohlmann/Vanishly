@@ -13,6 +13,7 @@
 // It is looked up in TEMPLATES_DIR first (mounted, survives updates), then in
 // the built-in templates/ folder. Views it does not bring come from views/.
 
+import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -139,6 +140,12 @@ function safeUrl(url) {
  * @param {string} version
  */
 export function loadTheme(config, version) {
+  // ?v= of the own CSS and JS: a hash of their content, so a browser loads them again after
+  // every change, not only with a new version number (/static is cached for an hour).
+  const pub = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
+  const h = createHash('sha256');
+  for (const d of ['css', 'js']) for (const f of readdirSync(join(pub, d)).sort()) h.update(f).update(readFileSync(join(pub, d, f)));
+  const assets = h.digest('hex').slice(0, 12);
   const dir = findTemplate(config.template, config.templatesDir);
   /** @type {any} */
   let meta = {};
@@ -260,6 +267,7 @@ export function loadTheme(config, version) {
         lang,
         siteName,
         version,
+        assets,
         defaultMode: mode,
         logoHtml: logo ? `<img class="brand-logo" src="${escapeHtml(logo)}" alt="">` : '',
         favicon: asset(meta.favicon) || `/static/favicon.svg?v=${encodeURIComponent(version)}`,

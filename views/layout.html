@@ -8,8 +8,8 @@
   <meta name="color-scheme" content="light dark">
   <title>{{ title }}</title>
   <link rel="icon" href="{{ favicon }}">
-  <script src="/static/js/theme-mode.js?v={{ version }}"></script>
-  <link rel="stylesheet" href="/static/css/base.css?v={{ version }}">
+  <script src="/static/js/theme-mode.js?v={{ assets }}"></script>
+  <link rel="stylesheet" href="/static/css/base.css?v={{ assets }}">
   <link rel="stylesheet" href="{{ themeCss }}">
 </head>
 <body data-page="{{ page }}" class="{{ featureClasses }}">
@@ -38,6 +38,6 @@
   </footer>
   <div class="sr-only" id="sr-status" role="status" aria-live="polite"></div>
   <script type="application/json" id="i18n">{{{ i18n }}}</script>
-  <script type="module" src="/static/js/app.js?v={{ version }}"></script>
+  <script type="module" src="/static/js/app.js?v={{ assets }}"></script>
 </body>
 </html>

@@ -17,6 +17,8 @@ test('built-in default template loads with both languages', () => {
   assert.match(html, /<html lang="de"/);
   assert.match(html, /Geheimnis teilen/);
   assert.match(html, /\/theme\/assets\/logo\.svg\?v=1\.2\.3/);
+  // The own CSS and JS carry a hash of their content, not the version: a change loads at once.
+  assert.match(html, /\/static\/css\/base\.css\?v=[0-9a-f]{12}"/);
   assert.match(html, /id="mode-toggle"/);
   assert.ok(listTemplates('/nonexistent').includes('default'));
 });
