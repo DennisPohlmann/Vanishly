@@ -1,0 +1,16 @@
+{
+  "name": "vanishly",
+  "version": "4.0.0",
+  "description": "Client for Vanishly: end-to-end encrypted one-time secrets and the whole API (browsers, Node.js 20+, Deno, Bun)",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": { "types": "./index.d.ts", "default": "./index.js" },
+    "./crypto": { "types": "./index.d.ts", "default": "./crypto.js" }
+  },
+  "files": ["index.js", "client.js", "crypto.js", "index.d.ts", "README.md"],
+  "engines": { "node": ">=20" },
+  "keywords": ["secrets", "one-time", "end-to-end encryption", "vanishly"],
+  "repository": { "type": "git", "url": "git+https://github.com/DennisPohlmann/Vanishly.git", "directory": "clients/js" },
+  "scripts": { "test": "node --test test/*.test.js" }
+}

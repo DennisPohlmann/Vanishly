@@ -107,6 +107,12 @@ jobs:
       - name: Python
         working-directory: clients/python
         run: pip install . && python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - name: JavaScript
+        working-directory: clients/js
+        run: npm test
 
   # Builds the image without pushing it and scans it: HIGH or CRITICAL
   # vulnerabilities that have a fix fail, and so do HIGH or CRITICAL
@@ -383,6 +389,33 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: clients/python/dist
+
+  # The JavaScript package of the release to npm, through the trusted
+  # publisher of the npm package vanishly (workflow build.yml, environment
+  # npm): no token, npm checks this run's OIDC identity and adds provenance.
+  # npm allows a trusted publisher only for an existing package, so the very
+  # first publish uses the secret NPM_TOKEN; once it is gone, OIDC is used.
+  npm:
+    needs: [release, clients]
+    if: needs.release.outputs.version != ''
+    runs-on: ubuntu-26.04
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ needs.release.outputs.version }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+      - name: publish
+        working-directory: clients/js
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
   # The Helm chart of the release: chart.yml checks it, pushes it to
   # oci://ghcr.io/<owner>/charts/vanishly and adds the .tgz to the draft.

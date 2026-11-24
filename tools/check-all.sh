@@ -85,6 +85,7 @@ client() { # name, tool, folder, command
 }
 client Go go go 'go vet ./... && go test ./...'
 client Python python3 python 'PYTHONPATH=src python3 -m unittest discover -s tests'
+client JavaScript node js 'npm test'
 
 step "OpenAPI document"
 npx --yes @redocly/cli@2.82.0 lint --extends=minimal openapi/openapi.json

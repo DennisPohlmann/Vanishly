@@ -17,10 +17,11 @@ switches them on.
 | Command line (Go) | binaries for 14 platforms | `<your server>/downloads` or the GitHub release | [clients/go/cmd/vanishly](../clients/go/cmd/vanishly) |
 | Python 3.9+ | `vanishly` (PyPI), with the command line tool | `pip install vanishly` | [clients/python](../clients/python) |
 | Go | `github.com/DennisPohlmann/vanishly/clients/go/v4` | `go get github.com/DennisPohlmann/vanishly/clients/go/v4` | [clients/go](../clients/go) |
+| JavaScript / TypeScript | `vanishly` (npm), browsers, Node.js 20+, Deno, Bun | `npm install vanishly` | [clients/js](../clients/js) |
 
-The packages are prepared for these registries but are not published yet
-([Publishing](#publishing)); until then, install from the source folder
-(see the README of each package).
+Every release publishes them to these registries ([Publishing](#publishing)).
+Before a package's first release, install it from the source folder (see
+the README of each package).
 
 Every library has the same parts:
 
@@ -181,6 +182,7 @@ is the version of the app.
 ```bash
 cd clients/go && go test ./... && ./build.sh /tmp/out    # all 14 binaries
 cd clients/python && pip install -e . && python -m unittest discover -s tests
+cd clients/js && npm test
 ```
 
 `tools/check-all.sh` runs those whose toolchain is installed; the CI (job
@@ -193,12 +195,15 @@ major version suffix (`/v3`), and tags the Go module (`clients/go/vX.Y.Z`).
 
 A release publishes the Go module (its tag) and the binaries (GitHub
 release) itself.
-The Python package goes to PyPI in the same run (job `pypi`).
+The Python package goes to PyPI (job `pypi`) and the JavaScript package to
+npm (job `npm`) in the same run, both without a stored token (trusted
+publishing: the registry checks the run's OIDC identity).
 What each registry needs:
 
 | Registry | Once | Per release |
 |---|---|---|
-| PyPI | A [trusted publisher](https://docs.pypi.org/trusted-publishers/) for project `vanishly`: owner `DennisPohlmann`, repository `vanishly`, workflow `build.yml`, environment `pypi` (also create the environment `pypi` in the repository settings) | automatic: job `pypi` of the release run |
+| PyPI | A [trusted publisher](https://docs.pypi.org/trusted-publishers/) for project `vanishly`: owner `DennisPohlmann`, repository `Vanishly`, workflow `build.yml`, environment `pypi` | automatic: job `pypi` of the release run |
+| npm | npm can set up a [trusted publisher](https://docs.npmjs.com/trusted-publishers) only for a package that exists. The first release therefore uses a granular access token as the repository secret `NPM_TOKEN`; then, in the settings of the package `vanishly`: trusted publisher GitHub Actions, user `DennisPohlmann`, repository `Vanishly`, workflow `build.yml`, environment `npm`, and delete the secret | automatic: job `npm` of the release run (with provenance) |
 | Go | nothing | the release run pushes `clients/go/vX.Y.Z`; `proxy.golang.org` fetches it on the first `go get` |
 
 The names are not reserved: check each before the first upload.

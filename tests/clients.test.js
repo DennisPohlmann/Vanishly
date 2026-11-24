@@ -17,6 +17,7 @@ test('clients/testvectors.json is what clients/testvectors.mjs makes from the Ja
     const pk = v.passphrase ? await unlockKey(v.passphrase, v) : undefined;
     assert.equal(await decryptSecret(v, v.key, pk), v.plaintext, v.name);
   }
+  assert.equal(read('clients/js/crypto.js'), read('public/js/vanishly-crypto.js'), 'clients/js/crypto.js is a copy');
 });
 
 test('every client library has the version of the app', () => {
@@ -25,6 +26,8 @@ test('every client library has the version of the app', () => {
     python: /^version = "([^"]+)"/m.exec(read('clients/python/pyproject.toml'))?.[1],
     pythonModule: /^__version__ = "([^"]+)"/m.exec(read('clients/python/src/vanishly/__init__.py'))?.[1],
     go: /^var Version = "([^"]+)"/m.exec(read('clients/go/client.go'))?.[1],
+    js: JSON.parse(read('clients/js/package.json')).version,
+    jsModule: /^export const VERSION = '([^']+)'/m.exec(read('clients/js/client.js'))?.[1],
   };
   for (const [k, got] of Object.entries(found)) assert.equal(got, v, k);
   // Go: from v2 on, the module path ends in the major version.

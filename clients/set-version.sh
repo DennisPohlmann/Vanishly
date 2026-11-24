@@ -8,6 +8,8 @@ cd "$(dirname "$0")"
 sed -i -E "s/^version = \"[^\"]*\"/version = \"$v\"/" python/pyproject.toml
 sed -i -E "s/^__version__ = \"[^\"]*\"/__version__ = \"$v\"/" python/src/vanishly/__init__.py
 sed -i -E "s/^var Version = \"[^\"]*\"/var Version = \"$v\"/" go/client.go
+sed -i -E "0,/\"version\": \"[^\"]*\"/s//\"version\": \"$v\"/" js/package.json
+sed -i -E "s/^export const VERSION = '[^']*'/export const VERSION = '$v'/" js/client.js
 # Go: from v2 on the module path ends in /v<major> (go get refuses the tag otherwise).
 major=${v%%.*}
 suffix=; [ "$major" -ge 2 ] 2>/dev/null && suffix=/v$major
