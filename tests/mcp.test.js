@@ -435,7 +435,7 @@ after(async () => {
 /** @param {Record<string, string>} env */
 async function vanishly(env) {
   const { createApp } = await import('../src/app.js');
-  const { loadConfig } = await import('../src/config.js');
+  const { loadConfig } = await import('./defaults.js');
   const { Store } = await import('../src/store.js');
   const { loadTheme } = await import('../src/theme.js');
   const config = loadConfig({ REDIS_URL: redisUrl, REDIS_PREFIX: `mcp${process.pid}${servers.length}:`, ACCESS_LOG: 'false', ...env });

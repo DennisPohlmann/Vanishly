@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { after, before, test } from 'node:test';
 import { createApp } from '../src/app.js';
-import { loadConfig } from '../src/config.js';
+import { loadConfig } from './defaults.js';
 import { loopbackUri, redirectMatches, s256 } from '../src/oauth.js';
 import { Store } from '../src/store.js';
 import { loadTheme } from '../src/theme.js';

@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { Auth } from '../src/auth.js';
-import { loadConfig } from '../src/config.js';
+import { loadConfig } from './defaults.js';
 import { startMock } from './oidc-mock.js';
 
 const SECRET = 'client-secret-for-tests';

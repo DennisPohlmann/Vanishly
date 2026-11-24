@@ -97,6 +97,14 @@ docker run -d --name vanishly --network vanishly --restart unless-stopped \
   -e TRUST_PROXY=1 ghcr.io/dennispohlmann/vanishly:latest
 ```
 
+**Server-side encryption is off by default** since the release with the
+clients ([CLIENTS.md](CLIENTS.md)): `ENABLE_SHARE_API`, `ENABLE_OPEN_API`
+and `ENABLE_MCP` used to be on. Unset, `POST /api/v1/share`,
+`POST /api/v1/open` and `/mcp` now answer 404. If scripts (curl) or AI
+clients use them, set them to `true` in `.env`; better, move the scripts
+to a client, which encrypts on its own machine. The web pages are not
+affected.
+
 Image tags: `latest` (newest release), `<major>.<minor>`, `<version>`,
 `edge` (`main` at the last release run).
 

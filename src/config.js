@@ -1186,14 +1186,15 @@ export function loadConfig(env = process.env) {
     defaultLang,
     // ENABLE_API=false: no public API; only this server's own pages may call it.
     api: sw('ENABLE_API', true),
-    // ENABLE_MCP: the MCP server at /mcp (src/mcp.js); unset it follows ENABLE_API.
-    mcp: env.ENABLE_MCP ? sw('ENABLE_MCP', true) : sw('ENABLE_API', true),
+    // ENABLE_MCP: the MCP server at /mcp (src/mcp.js); off by default (its tools encrypt on the server).
+    mcp: sw('ENABLE_MCP', false),
     // MCP_OAUTH: MCP clients sign in through the browser (OAuth, src/oauth.js); needs sign-in, API_TOKENS and MCP (checked below).
     mcpOauth: sw('MCP_OAUTH', true),
     // MCP_PROTOCOL_VERSIONS: the MCP revisions /mcp serves (src/mcp.js), newest first.
     mcpVersions: named('MCP_PROTOCOL_VERSIONS', () => parseMcpVersions(env.MCP_PROTOCOL_VERSIONS)),
     apiDocs: env.ENABLE_API_DOCS ? sw('ENABLE_API_DOCS', true) : sw('API_DOCS', true),
-    // Features an operator can switch off (ENABLE_*=false); all on by default.
+    // Features an operator can switch off (ENABLE_*=false); on by default,
+    // except the two that let the server see a secret (ENABLE_SHARE_API, ENABLE_OPEN_API).
     features: {
       passphrase: sw('ENABLE_PASSPHRASE', true),
       views: sw('ENABLE_VIEWS', true),
@@ -1202,8 +1203,8 @@ export function loadConfig(env = process.env) {
       viewLog: sw('ENABLE_VIEW_LOG', true),
       receiptShareLink: sw('ENABLE_RECEIPT_SHARE_LINK', true),
       generator: sw('ENABLE_GENERATOR', true),
-      shareApi: sw('ENABLE_SHARE_API', true),
-      openApi: sw('ENABLE_OPEN_API', true),
+      shareApi: sw('ENABLE_SHARE_API', false),
+      openApi: sw('ENABLE_OPEN_API', false),
       // Single API endpoints the web pages do not need (create and reveal only).
       secretMetaApi: sw('ENABLE_SECRET_META_API', true),
       configApi: sw('ENABLE_CONFIG_API', true),

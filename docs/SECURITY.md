@@ -180,9 +180,13 @@ duration of the request:
   takes one view, decrypts and returns the text.
 
 Neither stores or logs the text, key or passphrase. They still mean you
-trust the server and the TLS connection to it. Switch them off with
-`ENABLE_SHARE_API=false` and `ENABLE_OPEN_API=false` if all your users work
-in the browser. The web pages never use them.
+trust the server and the TLS connection to it, so both are off by default:
+`ENABLE_SHARE_API=true` and `ENABLE_OPEN_API=true` switch them on for
+scripts that cannot encrypt themselves (curl). The web pages never use
+them, and neither do the [client
+libraries](CLIENTS.md), which encrypt and decrypt on their own machine like
+the browser. The MCP server (`ENABLE_MCP`, off by default) creates secrets
+through `POST /api/v1/share`.
 
 ## Quantum computers
 
@@ -419,8 +423,9 @@ those points are listed once as **Operator**. Status words as in the
 
 For the strictest API setup: `API_TOKEN_REQUIRED=true`,
 `API_TOKEN_IP_BINDING=required`, `API_TOKEN_MAX_EXPIRY` set,
-`API_TOKEN_RATE_LIMIT` set, `ENABLE_SHARE_API=false` and
-`ENABLE_OPEN_API=false` if no script needs them, `AUDIT_LOG=true` shipped
+`API_TOKEN_RATE_LIMIT` set, `ENABLE_SHARE_API`, `ENABLE_OPEN_API` and
+`ENABLE_MCP` left off (the default; scripts use a client),
+`AUDIT_LOG=true` shipped
 to a SIEM, TLS with `HSTS=true`, and an OIDC provider with MFA.
 
 ## What Vanishly cannot protect against

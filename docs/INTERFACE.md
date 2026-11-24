@@ -26,8 +26,8 @@ and `rule` give the rule of the form's checkbox in the language of the request:
 | `GET /api`, `GET /api/v1` | index: name, version, `api: "v1"`, docs and OpenAPI links and the endpoints switched on; a browser goes to `/api/docs` |
 | `GET /api/v1/config` | limits and options of this server (`ENABLE_CONFIG_API`) |
 | `POST /api/v1/secrets` | store a secret encrypted by the client |
-| `POST /api/v1/share` | encrypt on the server and store (for scripts) |
-| `POST /api/v1/open` | open a secret link, with its passphrase, on the server (for scripts) |
+| `POST /api/v1/share` | encrypt on the server and store (for scripts; off by default, `ENABLE_SHARE_API`) |
+| `POST /api/v1/open` | open a secret link, with its passphrase, on the server (for scripts; off by default, `ENABLE_OPEN_API`) |
 | `GET /api/v1/secrets/{id}` | check a secret without using a view; passphrase parameters (`ENABLE_SECRET_META_API`) |
 | `POST /api/v1/secrets/{id}/reveal` | take one view, get the ciphertext |
 | `GET /api/v1/receipts/{id}` | status for the sender (token scope `status`; `STATUS_ACCESS=signed-in`: creator, responsible, openers after sign-in; `ENABLE_RECEIPT_API`) |
@@ -59,6 +59,10 @@ Pages of the sign-in (not part of the API): `GET /auth/login?return=/s/<id>`,
 (`current`, `password`, `repeat`); both posts only from this origin.
 
 ### Examples
+
+The [clients](CLIENTS.md) do the encryption themselves. With curl only,
+the server has to encrypt: `/v1/share` and `/v1/open` need
+`ENABLE_SHARE_API=true` and `ENABLE_OPEN_API=true`.
 
 ```bash
 # Server-side encryption: returns shareUrl and receiptUrl with the key.

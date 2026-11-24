@@ -102,17 +102,22 @@ turns into minutes unnoticed.
 
 ### Switches (`ENABLE_*`)
 
-Everything is on by default; `false` (or `0`, `no`, `off`) switches it off.
+Everything is on by default, except the three that let the server see a
+plaintext secret: `ENABLE_SHARE_API`, `ENABLE_OPEN_API` and `ENABLE_MCP`
+are off and need `true`. `false` (or `0`, `no`, `off`) switches the others
+off. Up to version 3 these three were on: when you upgrade and scripts
+use `POST /api/v1/share`, `POST /api/v1/open` or `/mcp`, set them to
+`true` ([INSTALLATION.md](INSTALLATION.md#7-update)).
 
 | Variable | Off means |
 |---|---|
 | `ENABLE_API` | No public API: every API endpoint and `/api/openapi.json` answer 404, except the calls of this server's own pages; also switches off `ENABLE_API_DOCS`, `ENABLE_SHARE_API`, `ENABLE_OPEN_API`, `ENABLE_MCP` and the footer link ([details](#api-access)) |
-| `ENABLE_MCP` | No MCP server: `/mcp` answers 404, the API stays. Unset it follows `ENABLE_API`; `ENABLE_MCP=true` with `ENABLE_API=false` stops the start ([details](#mcp-server)) |
+| `ENABLE_MCP` | **Off by default.** `true`: the MCP server at `/mcp`; off it answers 404, the API stays. `ENABLE_MCP=true` with `ENABLE_API=false` stops the start; its tool `create_secret` also needs `ENABLE_SHARE_API=true` ([details](#mcp-server)) |
 | `MCP_OAUTH` | No browser sign-in for MCP clients: they need an API token made by hand, and `/mcp` works without one as far as the API does. On by default with sign-in, `API_TOKENS=true` and MCP; `MCP_OAUTH=true` without them stops the start ([details](#sign-in-of-mcp-clients-mcp_oauth)) |
 | `ENABLE_API_DOCS` | No API reference page at `/api/docs` (`API_DOCS` is the older name) |
 | `ENABLE_API_LINK` | No "API" link in the footer; the API itself stays |
-| `ENABLE_SHARE_API` | `POST /api/v1/share` (server-side encryption for scripts) answers 404 |
-| `ENABLE_OPEN_API` | `POST /api/v1/open` (scripts open a link with its passphrase on the server) answers 404 |
+| `ENABLE_SHARE_API` | **Off by default.** `true`: `POST /api/v1/share` (the server encrypts, for scripts that cannot, e.g. curl); off it answers 404. The [clients](CLIENTS.md) encrypt themselves and do not need it |
+| `ENABLE_OPEN_API` | **Off by default.** `true`: `POST /api/v1/open` (the server opens a link with its key and passphrase); off it answers 404. The clients decrypt themselves |
 | `ENABLE_SECRET_META_API` | `GET /api/v1/secrets/{id}` (a secret's state and passphrase parameters without using a view) answers 404; the reveal page gets what it needs with the page itself |
 | `ENABLE_CONFIG_API` | `GET /api/v1/config` (limits and options) answers 404; the pages do not use it |
 | `ENABLE_ME_API` | `GET /api/v1/me` (who is signed in) answers 404; the pages do not use it |
@@ -131,7 +136,8 @@ Everything is on by default; `false` (or `0`, `no`, `off`) switches it off.
 | `ENABLE_THEME_TOGGLE` | No light/dark button; the template's `defaultMode` or the system setting decides |
 | `ENABLE_GITHUB_LINK` | No "Powered by Vanishly" link to GitHub in the footer |
 
-**Every API endpoint and its switch.** All are on by default. A switched-off
+**Every API endpoint and its switch.** All are on by default, except
+`/api/v1/share`, `/api/v1/open` and `/mcp`. A switched-off
 endpoint answers `404 {"error": "endpoint_disabled", ...}` (a wrong path:
 `not_found`); the answer does not name the variable. The served
 `/api/openapi.json`, the API reference (`/api/docs`) and the index (`/api`)
@@ -145,23 +151,23 @@ switched off, still answered for this server's own pages (the browser's
 | `GET /api/openapi.json`, `/api/docs` | `ENABLE_API_DOCS` (docs page), `ENABLE_API` (everything) | 404 |
 | `GET /api/v1/config` | `ENABLE_CONFIG_API` | 404 |
 | `POST /api/v1/secrets` | `ENABLE_CREATE_API` | 404 for scripts, the form keeps working |
-| `POST /api/v1/share` | `ENABLE_SHARE_API` | 404 |
+| `POST /api/v1/share` | `ENABLE_SHARE_API` (off by default) | 404 |
 | `GET /api/v1/secrets/{id}` | `ENABLE_SECRET_META_API` | 404 (the reveal page does not need it) |
 | `POST /api/v1/secrets/{id}/reveal` | `ENABLE_REVEAL_API` | 404 for scripts, the reveal page keeps working |
-| `POST /api/v1/open` | `ENABLE_OPEN_API` | 404 |
+| `POST /api/v1/open` | `ENABLE_OPEN_API` (off by default) | 404 |
 | `GET /api/v1/receipts/{id}` | `ENABLE_RECEIPT_API` (`ENABLE_RECEIPTS` also removes the status page) | 404 for scripts, the status page keeps working |
 | `POST /api/v1/receipts/{id}/burn` | `ENABLE_RECEIPT_API`, `ENABLE_BURN` | as above; `ENABLE_BURN=false` removes it for all |
 | `GET /api/v1/me` | `ENABLE_ME_API` (only with sign-in) | 404 |
 | `GET /api/v1/groups` | `RECIPIENT_GROUPS` (only then) | 404 |
 | `GET /api/v1/people` | `RECIPIENT_USER_GROUP` (only then) | 404 |
-| `POST /mcp` (MCP server) | `ENABLE_MCP`, `ENABLE_API` | 404 |
+| `POST /mcp` (MCP server) | `ENABLE_MCP` (off by default), `ENABLE_API` | 404 |
 
 **Create and reveal only.** To offer nothing but creating a secret and
 revealing it, in the form and for scripts:
 
 ```bash
-ENABLE_SHARE_API=false        # no server-side encryption for scripts
-ENABLE_OPEN_API=false         # no server-side reveal for scripts
+ENABLE_SHARE_API=false        # no server-side encryption for scripts (the default)
+ENABLE_OPEN_API=false         # no server-side reveal for scripts (the default)
 ENABLE_SECRET_META_API=false  # no state lookup of a secret
 ENABLE_CONFIG_API=false       # no limits and options
 ENABLE_ME_API=false           # no "who is signed in"
@@ -413,8 +419,10 @@ for the recipients.
 
 AI clients that speak the [Model Context Protocol](https://modelcontextprotocol.io)
 (Claude, VS Code/Copilot, Cursor, ...) use Vanishly at `<BASE_URL>/mcp`
-(Streamable HTTP, one JSON answer per request, no sessions). On by default,
-`ENABLE_MCP=false` switches it off; it follows `ENABLE_API`.
+(Streamable HTTP, one JSON answer per request, no sessions). Off by default:
+its tool `create_secret` hands the plaintext to the server, so it needs
+`ENABLE_MCP=true` and `ENABLE_SHARE_API=true` (and `ENABLE_API`, on by
+default).
 
 Protocol versions (`MCP_PROTOCOL_VERSIONS`, all three by default):
 `2026-07-28` (stateless: no `initialize`, `server/discover`, the version and

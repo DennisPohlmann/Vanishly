@@ -6,7 +6,7 @@ import { createHash, X509Certificate } from 'node:crypto';
 import { createServer } from 'node:http';
 import { after, before, test } from 'node:test';
 import { createApp } from '../src/app.js';
-import { loadConfig } from '../src/config.js';
+import { loadConfig } from './defaults.js';
 import { Store } from '../src/store.js';
 import { loadTheme } from '../src/theme.js';
 import { encryptSecret, unlockKey, verifierFor, decryptSecret } from '../public/js/vanishly-crypto.js';

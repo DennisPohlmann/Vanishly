@@ -9,7 +9,7 @@ import { createRequire } from 'node:module';
 import { after, before, test } from 'node:test';
 import { chromium } from 'playwright';
 import { createApp } from '../src/app.js';
-import { loadConfig } from '../src/config.js';
+import { loadConfig } from './defaults.js';
 import { Store } from '../src/store.js';
 import { loadTheme } from '../src/theme.js';
 import { startMock } from './oidc-mock.js';
