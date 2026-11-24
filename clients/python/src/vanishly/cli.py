@@ -26,7 +26,7 @@ HELP = """examples:
   vanishly status 'https://ots.example.com/r/<receipt id>'
   vanishly api GET /v1/me/secrets --query limit=10
 
-environment: VANISHLY_URL, VANISHLY_TOKEN, VANISHLY_PASSPHRASE"""
+environment: VANISHLY_URL, VANISHLY_TOKEN, VANISHLY_SECRET, VANISHLY_PASSPHRASE"""
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -48,7 +48,8 @@ def _parser() -> argparse.ArgumentParser:
         g.add_argument("--ask", action="store_true", help="ask for the passphrase")
 
     s = sub.add_parser("share", help="encrypt here and store a secret; prints the link")
-    s.add_argument("secret", nargs="?", default="-", help="the secret; - or nothing: asked for on a terminal (no echo), else read from standard input")
+    s.add_argument("secret", nargs="?", default=None, help="the secret (visible in the shell history); without it: --secret-file, VANISHLY_SECRET, else asked for on a terminal (no echo), else standard input; -: typed in or standard input")
+    s.add_argument("--secret-file", help="read the secret from this file (without the line ending at the end)")
     passphrase(s)
     s.add_argument("--ttl", type=int, help="seconds until it expires")
     s.add_argument("--views", type=int, help="how often it can be opened")
@@ -123,8 +124,17 @@ def run(argv=None) -> int:
             return client
 
         if args.cmd == "share":
-            if args.secret != "-":
+            # The argument, --secret-file, VANISHLY_SECRET, else typed in or standard input.
+            if args.secret is not None and args.secret_file:
+                raise ValueError("give the secret or --secret-file, not both")
+            if args.secret not in (None, "-"):
                 secret = args.secret
+            elif args.secret is None and args.secret_file:
+                # Like --passphrase-file: without the line ending at the end.
+                with open(args.secret_file, encoding="utf-8", newline="") as f:
+                    secret = f.read().rstrip("\r\n")
+            elif args.secret is None and os.environ.get("VANISHLY_SECRET"):
+                secret = os.environ["VANISHLY_SECRET"]
             else:
                 # Typed in on a terminal: no echo, not in the shell history.
                 secret = getpass.getpass("Secret: ") if sys.stdin.isatty() else sys.stdin.read()

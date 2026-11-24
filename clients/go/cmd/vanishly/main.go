@@ -26,8 +26,9 @@ usage: vanishly [global flags] <command> [flags]
 
 commands:
   share [SECRET|-]   encrypt here and store a secret; prints the link
-                     (no SECRET or -: asks for it on a terminal, without
-                     echo, else reads standard input, e.g. < file)
+                     (no SECRET: --secret-file, else VANISHLY_SECRET, else
+                     asked for on a terminal without echo, else standard
+                     input, e.g. < file; -: typed in or standard input)
   open LINK          open a link: takes one view, decrypts here
   meta LINK|ID       state of a secret without using a view
   status LINK|ID     status of a secret for its sender (status link)
@@ -44,7 +45,7 @@ global flags (before the command):
   --json             print the whole answer as JSON
   --run-id ID, --audit-comment TEXT, --on-behalf-of WHO   for the audit log
 
-share flags: --ttl S --views N --recipient X --recipient-group G
+share flags: --secret-file F --ttl S --views N --recipient X --recipient-group G
   --responsible X --responsible-group G (all repeatable) --comment TEXT
   --confirm --server-side
 share/open flags: --passphrase P | --passphrase-file F | --ask
@@ -193,7 +194,9 @@ func run(args []string) error {
 		var rcp, rg, rs, rsg list
 		var p pass
 		var server bool
+		var secretFile string
 		p.add(sub)
+		sub.StringVar(&secretFile, "secret-file", "", "")
 		sub.IntVar(&o.TTL, "ttl", 0, "")
 		sub.IntVar(&o.Views, "views", 0, "")
 		sub.Var(&rcp, "recipient", "")
@@ -204,15 +207,25 @@ func run(args []string) error {
 		sub.BoolVar(&o.Confirmed, "confirm", false, "")
 		sub.BoolVar(&server, "server-side", false, "")
 		pos, err := parse(sub, rest)
-		if err != nil || len(pos) > 1 {
+		if err != nil || len(pos) > 1 || (len(pos) == 1 && secretFile != "") {
 			return errUsage
 		}
 		o.Recipients, o.RecipientGroups, o.Responsible, o.ResponsibleGroups = rcp, rg, rs, rsg
-		secret := "-"
-		if len(pos) == 1 {
+		// The argument, --secret-file, VANISHLY_SECRET, else typed in or standard input.
+		var secret string
+		switch {
+		case len(pos) == 1 && pos[0] != "-":
 			secret = pos[0]
-		}
-		if secret == "-" && term.IsTerminal(int(os.Stdin.Fd())) {
+		case len(pos) == 0 && secretFile != "":
+			// Like --passphrase-file: without the line ending at the end.
+			b, err := os.ReadFile(secretFile)
+			if err != nil {
+				return err
+			}
+			secret = strings.TrimRight(string(b), "\r\n")
+		case len(pos) == 0 && os.Getenv("VANISHLY_SECRET") != "":
+			secret = os.Getenv("VANISHLY_SECRET")
+		case term.IsTerminal(int(os.Stdin.Fd())):
 			// Typed in: no echo, and not in the shell history.
 			fmt.Fprint(os.Stderr, "Secret: ")
 			b, err := term.ReadPassword(int(os.Stdin.Fd()))
@@ -221,7 +234,7 @@ func run(args []string) error {
 				return err
 			}
 			secret = string(b)
-		} else if secret == "-" {
+		default:
 			b, err := io.ReadAll(os.Stdin)
 			if err != nil {
 				return err

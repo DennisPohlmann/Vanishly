@@ -55,7 +55,8 @@ export VANISHLY_URL=https://ots.example.com   # or --url
 export VANISHLY_TOKEN=vnly_...                # with sign-in, or --token
 
 vanishly share --ttl 3600 --views 1   # asks for the secret, prints the link
-vanishly share --passphrase-file pw.txt --recipient alice@example.com < secret.txt
+vanishly share --secret-file secret.txt --passphrase-file pw.txt --recipient alice@example.com
+vanishly open 'https://ots.example.com/s/<id>#<key>' --passphrase-file pw.txt
 vanishly open 'https://ots.example.com/s/<id>#<key>'
 vanishly status 'https://ots.example.com/r/<receipt id>#<key>'
 vanishly burn   'https://ots.example.com/r/<receipt id>#<key>'
@@ -71,10 +72,12 @@ vanishly help
 
 The Python package (`pip install vanishly`) installs the same `vanishly` command.
 
-The secret comes from the argument or, without one (or `-`), is asked
-for on a terminal (`Secret:`, without echo) or read from standard input
-(`< secret.txt`, a pipe); an argument is visible in the process list and
-the shell history. The passphrase: `--ask` (asked without echo), `--passphrase-file
+The secret comes from the argument (visible in the process list and the
+shell history) or, without one, from `--secret-file FILE` (without the
+line ending at the end), else from the environment variable
+`VANISHLY_SECRET`, else it is asked for on a terminal (`Secret:`, without
+echo) or read from standard input (`< secret.txt`, a pipe; also with the
+argument `-`). The passphrase: `--ask` (asked without echo), `--passphrase-file
 FILE`, the environment variable `VANISHLY_PASSPHRASE`, or `--passphrase`
 (visible in the process list). `--server-side` uses `/api/v1/share` and
 `/api/v1/open` instead. The status link goes to standard error, the
