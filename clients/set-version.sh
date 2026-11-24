@@ -5,6 +5,8 @@ set -eu
 v=$1
 case "$v" in *[!0-9A-Za-z.+-]*|'') echo "bad version: $v" >&2; exit 2 ;; esac
 cd "$(dirname "$0")"
+sed -i -E "s/^version = \"[^\"]*\"/version = \"$v\"/" python/pyproject.toml
+sed -i -E "s/^__version__ = \"[^\"]*\"/__version__ = \"$v\"/" python/src/vanishly/__init__.py
 sed -i -E "s/^var Version = \"[^\"]*\"/var Version = \"$v\"/" go/client.go
 # Go: from v2 on the module path ends in /v<major> (go get refuses the tag otherwise).
 major=${v%%.*}

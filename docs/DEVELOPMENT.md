@@ -141,6 +141,8 @@ image-scan:
   SBOM goes into the release. It checks that the clients in the image
   (`/app/downloads`) have the checksums of the signed ones (reproducible
   build).
+- **pypi:** builds `clients/python` from the tag and uploads it to PyPI
+  (trusted publisher, environment `pypi`, no token).
 - **chart:** pushes the chart (see below).
 - **publish-release:** after package, image and chart, publishes the draft
   release.

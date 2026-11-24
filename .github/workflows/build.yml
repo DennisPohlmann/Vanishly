@@ -101,6 +101,12 @@ jobs:
       - name: Go (library and command line client)
         working-directory: clients/go
         run: test -z "$(gofmt -l .)" && go vet ./... && go test ./...
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - name: Python
+        working-directory: clients/python
+        run: pip install . && python -m unittest discover -s tests -v
 
   # Builds the image without pushing it and scans it: HIGH or CRITICAL
   # vulnerabilities that have a fix fail, and so do HIGH or CRITICAL
@@ -352,6 +358,30 @@ jobs:
           mkdir -p dist
           trivy image --format spdx-json --output "$sbom" "${IMAGE,,}:$RELEASE"
           gh release upload "v$RELEASE" "$sbom" --repo "$GITHUB_REPOSITORY"
+
+  # The Python package of the release to PyPI, through the trusted
+  # publisher of the PyPI project vanishly (workflow build.yml, environment
+  # pypi): no token, PyPI checks this run's OIDC identity.
+  pypi:
+    needs: [release, clients]
+    if: needs.release.outputs.version != ''
+    runs-on: ubuntu-26.04
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ needs.release.outputs.version }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - name: build the package
+        run: python -m pip install build && python -m build clients/python
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: clients/python/dist
 
   # The Helm chart of the release: chart.yml checks it, pushes it to
   # oci://ghcr.io/<owner>/charts/vanishly and adds the .tgz to the draft.

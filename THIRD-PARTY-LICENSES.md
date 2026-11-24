@@ -29,6 +29,7 @@ texts ship with each package in `node_modules/<package>/LICENSE`.
 | [Go](https://go.dev) standard library and runtime | 1.27 | BSD-3-Clause | compiled into the command line binaries on `/downloads` |
 | [golang.org/x/term](https://pkg.go.dev/golang.org/x/term) | 0.48.0 | BSD-3-Clause | passphrase prompt without echo (`--ask`); compiled into the binaries |
 | [golang.org/x/sys](https://pkg.go.dev/golang.org/x/sys) | 0.50.0 | BSD-3-Clause | needed by x/term; compiled into the binaries |
+| [cryptography](https://cryptography.io) (Python package, not shipped) | >= 42 | Apache-2.0 or BSD-3-Clause | AES-GCM, PBKDF2, HKDF of the Python client |
 
 The other libraries use only their language's standard library.
 

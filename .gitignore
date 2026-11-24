@@ -12,3 +12,7 @@ vendor/
 .claude/
 CLAUDE.md
 /downloads/
+/clients/python/build/
+/clients/python/dist/
+/clients/python/src/*.egg-info/
+__pycache__/

@@ -39,6 +39,8 @@
           "package.json",
           "package-lock.json",
           "charts/vanishly/Chart.yaml",
+          "clients/python/pyproject.toml",
+          "clients/python/src/vanishly/__init__.py",
           "clients/go/client.go",
           "clients/go/go.mod",
           "clients/go/cmd/vanishly/main.go",

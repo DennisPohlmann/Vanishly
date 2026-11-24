@@ -12,3 +12,5 @@ Dockerfile
 docker-compose
 vendor
 downloads
+clients/python/build
+clients/python/dist

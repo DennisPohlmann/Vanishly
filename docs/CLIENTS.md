@@ -15,6 +15,7 @@ switches them on.
 | Language | Package | Install | Source |
 |---|---|---|---|
 | Command line (Go) | binaries for 14 platforms | `<your server>/downloads` or the GitHub release | [clients/go/cmd/vanishly](../clients/go/cmd/vanishly) |
+| Python 3.9+ | `vanishly` (PyPI), with the command line tool | `pip install vanishly` | [clients/python](../clients/python) |
 | Go | `github.com/DennisPohlmann/vanishly/clients/go/v3` | `go get github.com/DennisPohlmann/vanishly/clients/go/v3` | [clients/go](../clients/go) |
 
 The packages are prepared for these registries but are not published yet
@@ -68,6 +69,7 @@ vanishly --json share ...     # the whole answer as JSON
 vanishly help
 ```
 
+The Python package (`pip install vanishly`) installs the same `vanishly` command.
 
 The secret comes from the argument or, without one (or `-`), from
 standard input; an argument is visible in the process list and the shell
@@ -165,6 +167,7 @@ is the version of the app.
 
 ```bash
 cd clients/go && go test ./... && ./build.sh /tmp/out    # all 14 binaries
+cd clients/python && pip install -e . && python -m unittest discover -s tests
 ```
 
 `tools/check-all.sh` runs those whose toolchain is installed; the CI (job
@@ -177,10 +180,12 @@ major version suffix (`/v3`), and tags the Go module (`clients/go/vX.Y.Z`).
 
 A release publishes the Go module (its tag) and the binaries (GitHub
 release) itself.
+The Python package goes to PyPI in the same run (job `pypi`).
 What each registry needs:
 
 | Registry | Once | Per release |
 |---|---|---|
+| PyPI | A [trusted publisher](https://docs.pypi.org/trusted-publishers/) for project `vanishly`: owner `DennisPohlmann`, repository `vanishly`, workflow `build.yml`, environment `pypi` (also create the environment `pypi` in the repository settings) | automatic: job `pypi` of the release run |
 | Go | nothing | the release run pushes `clients/go/vX.Y.Z`; `proxy.golang.org` fetches it on the first `go get` |
 
 The names are not reserved: check each before the first upload.

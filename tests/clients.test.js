@@ -22,6 +22,8 @@ test('clients/testvectors.json is what clients/testvectors.mjs makes from the Ja
 test('every client library has the version of the app', () => {
   const v = read('VERSION').trim();
   const found = {
+    python: /^version = "([^"]+)"/m.exec(read('clients/python/pyproject.toml'))?.[1],
+    pythonModule: /^__version__ = "([^"]+)"/m.exec(read('clients/python/src/vanishly/__init__.py'))?.[1],
     go: /^var Version = "([^"]+)"/m.exec(read('clients/go/client.go'))?.[1],
   };
   for (const [k, got] of Object.entries(found)) assert.equal(got, v, k);
