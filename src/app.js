@@ -1817,8 +1817,9 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
 
   const spec = JSON.parse(readFileSync(join(ROOT, 'openapi', 'openapi.json'), 'utf8'));
   // ENABLE_MCP: the MCP server; its tools run the API endpoints above.
+  const mcpFeatures = { ...config.features, mySecrets: mySecretsOn, mySecretDetails: myDetailsOn };
   if (config.mcp) {
-    const mcpScopes = toolScopes(config.features);
+    const mcpScopes = toolScopes(mcpFeatures);
     const prmUrl = (/** @type {import('express').Request} */ req) => `${origin(req)}/.well-known/oauth-protected-resource/mcp`;
     // Per client IP, besides the limits of the API calls the tools make (CIS MCP 10.2).
     app.use(
@@ -1858,7 +1859,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
       mcpRouter({
         api,
         spec,
-        features: config.features,
+        features: mcpFeatures,
         version,
         origin,
         bodyLimit: Math.max(64 * 1024, config.maxSecretChars * 8),
@@ -2021,7 +2022,7 @@ export function createApp({ config, store, theme, version, auth: authIn, audit: 
         strings: (res) => theme.strings[lang(res)],
         limit: oauthLimit,
         csp: () => auth.csp(CSP),
-        scopes: toolScopes(config.features),
+        scopes: toolScopes(mcpFeatures),
       }),
     );
   }

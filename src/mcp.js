@@ -71,6 +71,7 @@ export function schemaError(v, s, at = 'arguments') {
   if (typeof v === 'string') {
     if (s.minLength !== undefined && v.length < s.minLength) return `${at} must have at least ${s.minLength} characters`;
     if (s.maxLength !== undefined && v.length > s.maxLength) return `${at} must have at most ${s.maxLength} characters`;
+    if (s.pattern !== undefined && !new RegExp(s.pattern).test(v)) return `${at} has characters it may not have`;
   }
   if (typeof v === 'number') {
     if (s.minimum !== undefined && v < s.minimum) return `${at} must be at least ${s.minimum}`;
@@ -97,6 +98,9 @@ export function schemaError(v, s, at = 'arguments') {
   }
   return '';
 }
+
+// A secret's ref from list_my_secrets (audit ref): a path segment, nothing else.
+const REF = { type: 'string', maxLength: 64, pattern: '^[A-Za-z0-9_-]+$', description: 'The ref of the secret, from list_my_secrets' };
 
 const RECEIPT = {
   type: 'string',
@@ -135,14 +139,25 @@ export function secretHints(v) {
 }
 
 /**
+ * @typedef {{ shareApi: boolean, openApi?: boolean, receipts: boolean, receiptApi: boolean, burn: boolean, mySecrets?: boolean, mySecretDetails?: boolean }} ToolFeatures
+ *   shareApi / openApi: ENABLE_SHARE_API / ENABLE_OPEN_API, the same switches as for the API;
+ *   mySecrets / mySecretDetails: MY_SECRETS / SECRET_DETAILS as the app has them on
+ */
+
+/**
  * The API token scopes the MCP tools of these features need: create
- * (create_secret), status (get_secret_status), burn (burn_secret). Never
- * read: no tool opens a secret.
- * @param {{ shareApi: boolean, receipts: boolean, receiptApi: boolean, burn: boolean }} f
+ * (create_secret), read (open_secret), status (get_secret_status,
+ * list_my_secrets), burn (burn_secret, burn_my_secret).
+ * @param {ToolFeatures} f
  */
 export function toolScopes(f) {
   const receipts = f.receipts && f.receiptApi;
-  return [...(f.shareApi ? ['create'] : []), ...(receipts ? ['status'] : []), ...(receipts && f.burn ? ['burn'] : [])];
+  return [
+    ...(f.shareApi ? ['create'] : []),
+    ...(f.openApi ? ['read'] : []),
+    ...(receipts || f.mySecrets ? ['status'] : []),
+    ...(f.burn && (receipts || f.mySecretDetails) ? ['burn'] : []),
+  ];
 }
 
 /**
@@ -160,7 +175,7 @@ export function headerValue(h) {
  * @param {{
  *   api: import('express').Router,
  *   spec: any,
- *   features: { shareApi: boolean, receipts: boolean, receiptApi: boolean, burn: boolean },
+ *   features: ToolFeatures,
  *   version: string,
  *   origin: (req: import('express').Request) => string,
  *   bodyLimit: number,
@@ -177,7 +192,8 @@ export function headerValue(h) {
 export function mcpRouter({ api, spec, features, version, origin, bodyLimit, versions = PROTOCOL_VERSIONS, ev = async () => {}, challenge, confirm }) {
   const legacy = versions.filter((v) => LEGACY.includes(v));
   const serverInfo = { name: 'vanishly', title: 'Vanishly', version };
-  const instructions = 'Share secrets as one-time links: create_secret returns shareUrl for the recipient and receiptUrl for you; check or burn a secret with its receipt.';
+  const instructions =
+    'Share secrets as one-time links: create_secret returns shareUrl for the recipient and receiptUrl for you; check or burn a secret with its receipt, or list your own secrets with list_my_secrets and burn one by its ref.';
 
   /** @type {{ name: string, description: string, inputSchema: any, scope: string, run: (a: any) => [string, string, any] }[]} */
   const tools = [];
@@ -192,6 +208,48 @@ export function mcpRouter({ api, spec, features, version, origin, bodyLimit, ver
       scope: 'create',
       run: (a) => ['POST', '/v1/share', a],
     });
+  }
+  if (features.openApi) {
+    const schema = flatSchema(spec.paths['/v1/open'].post.requestBody.content['application/json'].schema, spec);
+    tools.push({
+      name: 'open_secret',
+      description:
+        'Open a secret by its link (…/s/<id>#<key>) and return its text. Uses up one view: a one-time secret is gone afterwards. The secret is decrypted on the server and passes through this AI client.',
+      inputSchema: { ...schema, additionalProperties: false },
+      scope: 'read',
+      run: (a) => ['POST', '/v1/open', a],
+    });
+  }
+  if (features.mySecrets) {
+    tools.push({
+      name: 'list_my_secrets',
+      description:
+        'The secrets of the signed-in person: the ones they created and the ones for them or their groups, newest first, with state (open, opened, expired, burned), recipients, comment and expiry. Never the content. Each has a ref for burn_my_secret.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['open', 'partly_opened', 'opened', 'expired', 'burned'], description: 'Only secrets in this state' },
+          limit: { type: 'integer', minimum: 1, maximum: 500, description: 'At most this many' },
+        },
+        additionalProperties: false,
+      },
+      scope: 'status',
+      run: (a) => ['GET', `/v1/me/secrets${a.status || a.limit ? `?${new URLSearchParams({ ...(a.status ? { status: a.status } : {}), ...(a.limit ? { limit: String(a.limit) } : {}) })}` : ''}`, {}],
+    });
+    if (features.mySecretDetails && features.burn) {
+      tools.push({
+        name: 'burn_my_secret',
+        description: 'Destroy a secret the signed-in person created, by its ref from list_my_secrets, before it is opened. Cannot be undone.',
+        inputSchema: {
+          type: 'object',
+          properties: { ref: REF, comment: { type: 'string', maxLength: 2000, description: 'Why (goes into the audit log)' } },
+          required: ['ref'],
+          additionalProperties: false,
+        },
+        scope: 'burn',
+        run: (a) => ['POST', `/v1/me/secrets/${a.ref}/burn`, a.comment === undefined ? {} : { comment: a.comment }],
+      });
+    }
   }
   if (features.receipts && features.receiptApi) {
     tools.push({

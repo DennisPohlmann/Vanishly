@@ -118,8 +118,8 @@ use `POST /api/v1/share`, `POST /api/v1/open` or `/mcp`, set them to
 | `MCP_OAUTH` | No browser sign-in for MCP clients: they need an API token made by hand, and `/mcp` works without one as far as the API does. On by default with sign-in, `API_TOKENS=true` and MCP; `MCP_OAUTH=true` without them stops the start ([details](#sign-in-of-mcp-clients-mcp_oauth)) |
 | `ENABLE_API_DOCS` | No API reference page at `/api/docs` (`API_DOCS` is the older name) |
 | `ENABLE_API_LINK` | No "API" link in the footer; the API itself stays |
-| `ENABLE_SHARE_API` | **Off by default.** `true`: `POST /api/v1/share` (the server encrypts, for scripts that cannot, e.g. curl); off it answers 404. The [clients](CLIENTS.md) encrypt themselves and do not need it |
-| `ENABLE_OPEN_API` | **Off by default.** `true`: `POST /api/v1/open` (the server opens a link with its key and passphrase); off it answers 404. The clients decrypt themselves |
+| `ENABLE_SHARE_API` | **Off by default.** `true`: `POST /api/v1/share` (the server encrypts, for scripts that cannot, e.g. curl) and the MCP tool `create_secret`; off both are gone. The [clients](CLIENTS.md) encrypt themselves and do not need it |
+| `ENABLE_OPEN_API` | **Off by default.** `true`: `POST /api/v1/open` (the server opens a link with its key and passphrase) and the MCP tool `open_secret`; off both are gone. The clients decrypt themselves |
 | `ENABLE_DOWNLOADS_LINK` | No "Downloads" link in the footer (next to "API"); `/downloads` stays. The link is shown only when the server has binaries |
 | `ENABLE_DOWNLOADS` | No download page `/downloads` and no `GET /api/v1/downloads`; also no footer link. Without binaries in the app's `downloads/` folder (only the image has them) the page says so and the link is hidden ([details](#clients)) |
 | `ENABLE_SECRET_META_API` | `GET /api/v1/secrets/{id}` (a secret's state and passphrase parameters without using a view) answers 404; the reveal page gets what it needs with the page itself |
@@ -444,10 +444,16 @@ tool's input schema (unknown fields too) before the API is called.
 | Tool | Runs | Needs |
 |---|---|---|
 | `create_secret` | `POST /api/v1/share`: the secret is encrypted on the server, the answer has `shareUrl` (for the recipient) and `receiptUrl` | `ENABLE_SHARE_API` |
+| `open_secret` | `POST /api/v1/open`: opens a link (uses up a view), the server decrypts, the answer has the secret | `ENABLE_OPEN_API` |
+| `list_my_secrets` | `GET /api/v1/me/secrets`: the person's secrets (created by them or for them), metadata only, each with its `ref`; optional `status`, `limit` | sign-in, `MY_SECRETS` |
+| `burn_my_secret` | `POST /api/v1/me/secrets/{ref}/burn`: burns a secret the person created, by its `ref` | also `SECRET_DETAILS`, `ENABLE_BURN` |
 | `get_secret_status` | `GET /api/v1/receipts/{id}`, by receipt id or link | `ENABLE_RECEIPTS`, `ENABLE_RECEIPT_API` |
 | `burn_secret` | `POST /api/v1/receipts/{id}/burn` | also `ENABLE_BURN` |
 
-There is no tool to open a secret. Each tool is the API call itself: the
+Creating and opening secrets over MCP follow the same switches as the API:
+`ENABLE_SHARE_API` and `ENABLE_OPEN_API` (both off by default). With them
+off, MCP can only list the person's secrets, show their status and burn
+them. Each tool is the API call itself: the
 same limits, switches, rate limits and audit events (route `/api/v1/...`);
 a refusal comes back as a tool error with the API's `error` code.
 
@@ -456,7 +462,7 @@ a refusal comes back as a tool error with the API's `error` code.
   see or burn them.
 - **With sign-in** the client sends `Authorization: Bearer vnly_...` (an
   [API token](#api-tokens)) and acts as its owner, with the token's scopes
-  (`create`, `status`, `burn`); `API_TOKEN_REQUIRED` applies as on the API. With
+  (`create`, `read` for `open_secret`, `status`, `burn`); `API_TOKEN_REQUIRED` applies as on the API. With
   `API_TOKENS=true` the client gets that token itself by a sign-in in the
   browser ([below](#sign-in-of-mcp-clients-mcp_oauth)).
 - A browser `Origin` other than this server is refused (403).
@@ -465,8 +471,9 @@ a refusal comes back as a tool error with the API's `error` code.
   (other methods) and `mcp.request_denied` (reason, e.g.
   `origin_not_allowed`, `header_mismatch`, `unsupported_protocol_version`),
   besides the API's own events.
-- The plaintext of `create_secret` passes through the AI client and its
-  provider. Keep that in mind for what you let an assistant share.
+- The plaintext of `create_secret` and `open_secret` passes through the AI
+  client and its provider. Keep that in mind for what you let an assistant
+  share or open.
 
 ### Confirmation over MCP (`CONFIRM_CHECKBOX`)
 

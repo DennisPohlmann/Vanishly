@@ -5,7 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import express from 'express';
-import { flatSchema, headerValue, mcpRouter, PROTOCOL_VERSIONS, receiptId, schemaError, secretHints } from '../src/mcp.js';
+import { flatSchema, headerValue, mcpRouter, PROTOCOL_VERSIONS, receiptId, schemaError, secretHints, toolScopes } from '../src/mcp.js';
 
 const spec = JSON.parse(readFileSync(new URL('../openapi/openapi.json', import.meta.url), 'utf8'));
 const ID = 'A'.repeat(22);
@@ -52,6 +52,18 @@ async function fake(features = ON, more = {}) {
   });
   api.post('/v1/receipts/:id/burn', (req, res) => {
     seen.push({ body: req.body });
+    res.json({ state: 'burned' });
+  });
+  api.post('/v1/open', (req, res) => {
+    seen.push({ path: req.path, body: req.body });
+    res.json({ secret: 'hunter22', viewsLeft: 0 });
+  });
+  api.get('/v1/me/secrets', (req, res) => {
+    seen.push({ path: req.path, query: { ...req.query } });
+    res.json({ count: 1, secrets: [{ ref: 'r1', state: 'open' }] });
+  });
+  api.post('/v1/me/secrets/:ref/burn', (req, res) => {
+    seen.push({ path: req.path, body: req.body });
     res.json({ state: 'burned' });
   });
   /** @type {any[]} */
@@ -243,6 +255,33 @@ test('only the tools whose endpoints are on', async () => {
   }
 });
 
+test('ENABLE_OPEN_API gives open_secret, "My secrets" list_my_secrets and burn_my_secret; their scopes', async () => {
+  const all = { ...ON, openApi: true, mySecrets: true, mySecretDetails: true };
+  assert.deepEqual(toolScopes(all), ['create', 'read', 'status', 'burn']);
+  assert.deepEqual(toolScopes({ shareApi: false, receipts: false, receiptApi: false, burn: true, mySecrets: true, mySecretDetails: true }), ['status', 'burn']);
+  assert.deepEqual(toolScopes({ shareApi: false, receipts: true, receiptApi: true, burn: false }), ['status']);
+  const f = await fake(all);
+  try {
+    const names = (await rpc(f.base, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, LEGACY)).body.result.tools.map((/** @type {any} */ t) => t.name);
+    assert.deepEqual(names, ['create_secret', 'open_secret', 'list_my_secrets', 'burn_my_secret', 'get_secret_status', 'burn_secret']);
+    /** @param {string} name @param {any} args */
+    const run = async (name, args) => (await rpc(f.base, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args } }, LEGACY)).body.result;
+    assert.equal((await run('open_secret', { link: `http://x/s/${ID}#key`, passphrase: 'pw' })).structuredContent.secret, 'hunter22');
+    assert.deepEqual(f.seen[0], { path: '/v1/open', body: { link: `http://x/s/${ID}#key`, passphrase: 'pw' } });
+    assert.equal((await run('list_my_secrets', {})).structuredContent.secrets[0].ref, 'r1');
+    await run('list_my_secrets', { status: 'open', limit: 5 });
+    assert.deepEqual(f.seen[2], { path: '/v1/me/secrets', query: { status: 'open', limit: '5' } });
+    assert.equal((await run('burn_my_secret', { ref: 'r1', comment: 'leaked' })).structuredContent.state, 'burned');
+    assert.deepEqual(f.seen[3], { path: '/v1/me/secrets/r1/burn', body: { comment: 'leaked' } });
+    // A ref is one path segment; anything else never reaches the API.
+    assert.equal((await run('burn_my_secret', { ref: '../../v1/share' })).isError, true);
+    assert.equal((await run('list_my_secrets', { status: 'all' })).isError, true);
+    assert.equal(f.seen.length, 4);
+  } finally {
+    f.close();
+  }
+});
+
 test('tools/call runs the API endpoint and wraps its answer', async () => {
   const f = await fake();
   try {
@@ -371,6 +410,7 @@ test('schemaError covers the keywords of the tool schemas', () => {
   assert.match(schemaError({ n: 3 }, s), /at most 2/);
   assert.match(schemaError({ l: [1, 2] }, s), /at most 1 entries/);
   assert.match(schemaError(null, s), /must be an object/);
+  assert.match(schemaError('a/b', { type: 'string', pattern: '^[a-z]+$' }), /characters it may not have/);
 });
 
 test('MCP_OAUTH: a missing scope is a 403 with an insufficient_scope challenge (step-up, CIS 3.3.4)', async () => {
@@ -461,6 +501,18 @@ test('standalone: create, status and burn over MCP, like the open API', opts, as
   assert.equal(r.body.result.isError, true);
   // The answers of the API still work after MCP calls on the same app.
   assert.equal((await fetch(`${base}/api/v1/receipts/${made.receiptId}`)).status, 200);
+  // ENABLE_OPEN_API: open_secret takes one view.
+  const link = (await rpc(base, { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'create_secret', arguments: { secret: 'hunter22' } } }, LEGACY)).body.result.structuredContent.shareUrl;
+  r = await rpc(base, { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'open_secret', arguments: { link } } }, LEGACY);
+  assert.equal(r.body.result.structuredContent.secret, 'hunter22', JSON.stringify(r.body));
+  r = await rpc(base, { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'open_secret', arguments: { link } } }, LEGACY);
+  assert.equal(r.body.result.isError, true);
+});
+
+test('ENABLE_SHARE_API=false, ENABLE_OPEN_API=false: no create_secret, no open_secret over MCP either', opts, async () => {
+  const base = await vanishly({ ENABLE_SHARE_API: 'false', ENABLE_OPEN_API: 'false' });
+  const names = (await rpc(base, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, LEGACY)).body.result.tools.map((/** @type {any} */ t) => t.name);
+  assert.deepEqual(names, ['get_secret_status', 'burn_secret']);
 });
 
 test('CONFIRM_CHECKBOX over MCP: the rule of the form in the question, the API gets the yes', opts, async () => {
