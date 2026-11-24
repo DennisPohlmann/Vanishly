@@ -18,6 +18,15 @@ class GlobalFlags(unittest.TestCase):
         with mock.patch.dict(os.environ, {"VANISHLY_URL": "E"}):
             self.assertEqual(_parser().parse_args(["me"]).url, "E")
 
+    def test_help_and_version_commands(self):
+        import contextlib, io
+        from vanishly.cli import run
+        for cmd, text in (("help", "usage: vanishly <command>"), ("version", "(python)")):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(run([cmd]), 0)
+            self.assertIn(text, out.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

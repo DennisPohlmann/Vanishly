@@ -99,6 +99,8 @@ def _parser() -> argparse.ArgumentParser:
     a.add_argument("path", help="below /api, e.g. /v1/admin/audit")
     a.add_argument("--data", help="JSON body; @file reads it from a file, - from standard input")
     a.add_argument("--query", action="append", default=[], help="key=value, repeatable")
+    sub.add_parser("help", help="show this help")
+    sub.add_parser("version", help="print the version")
     return p
 
 
@@ -132,7 +134,15 @@ def _out(args, data, text=None):
 
 
 def run(argv=None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    # Like the Go binary: "vanishly help" and "vanishly version".
+    if args.cmd == "help":
+        parser.print_help()
+        return 0
+    if args.cmd == "version":
+        print(f"vanishly {__version__} (python)")
+        return 0
     client = None
     try:
         def make(url):
