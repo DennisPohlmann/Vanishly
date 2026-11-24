@@ -16,7 +16,7 @@ switches them on.
 |---|---|---|---|
 | Command line (Go) | binaries for 14 platforms | `<your server>/downloads` or the GitHub release | [clients/go/cmd/vanishly](../clients/go/cmd/vanishly) |
 | Python 3.9+ | `vanishly` (PyPI), with the command line tool | `pip install vanishly` | [clients/python](../clients/python) |
-| Go | `github.com/DennisPohlmann/vanishly/clients/go/v3` | `go get github.com/DennisPohlmann/vanishly/clients/go/v3` | [clients/go](../clients/go) |
+| Go | `github.com/DennisPohlmann/vanishly/clients/go/v4` | `go get github.com/DennisPohlmann/vanishly/clients/go/v4` | [clients/go](../clients/go) |
 
 The packages are prepared for these registries but are not published yet
 ([Publishing](#publishing)); until then, install from the source folder

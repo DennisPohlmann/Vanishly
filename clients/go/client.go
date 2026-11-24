@@ -14,7 +14,7 @@ import (
 )
 
 // Version of this client; the build sets it (-X ...vanishly.Version=).
-var Version = "3.0.0"
+var Version = "4.0.0"
 
 var linkRe = regexp.MustCompile(`^(https?://[^#]+?)/s/([A-Za-z0-9_-]{22})#([A-Za-z0-9_-]{43})$`)
 

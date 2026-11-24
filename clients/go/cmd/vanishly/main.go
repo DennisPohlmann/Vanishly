@@ -17,7 +17,7 @@ import (
 
 	"golang.org/x/term"
 
-	vanishly "github.com/DennisPohlmann/vanishly/clients/go/v3"
+	vanishly "github.com/DennisPohlmann/vanishly/clients/go/v4"
 )
 
 const usage = `vanishly - one-time secrets, end-to-end encrypted

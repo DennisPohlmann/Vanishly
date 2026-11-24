@@ -23,7 +23,7 @@ for t in linux/amd64 linux/386 linux/arm64 linux/arm/7 linux/arm/6 \
   [ "$os" = windows ] && name=$name.exe
   CGO_ENABLED=0 GOOS=$os GOARCH=${rest%%/*} GOARM=$arm \
     go build -trimpath -buildvcs=false \
-      -ldflags "-s -w -buildid= -X github.com/DennisPohlmann/vanishly/clients/go/v3.Version=$version" \
+      -ldflags "-s -w -buildid= -X github.com/DennisPohlmann/vanishly/clients/go/v4.Version=$version" \
       -o "$out/$name" ./cmd/vanishly
 done
 ls -l "$out"
