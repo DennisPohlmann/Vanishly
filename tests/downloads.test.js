@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -24,6 +24,7 @@ writeFileSync(join(dir, 'vanishly-linux-amd64'), 'linux binary');
 writeFileSync(join(dir, 'vanishly-windows-arm64.exe'), 'windows binary');
 writeFileSync(join(dir, 'notes.txt'), 'not offered');
 writeFileSync(join(dir, '.vanishly-linux-386'), 'hidden');
+mkdirSync(join(dir, 'vanishly-freebsd-arm64')); // a folder with a binary's name is no file
 
 before(async () => {
   if (!haveRedis) return;

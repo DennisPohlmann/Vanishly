@@ -7,7 +7,7 @@
 // start: name, platform, size and the checksums, so a request never touches
 // a path that came from the client.
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, openSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** The repository whose GitHub Actions build and sign the binaries. */
@@ -43,9 +43,16 @@ export function loadDownloads(dir) {
   if (existsSync(dir)) {
     for (const name of readdirSync(dir).sort()) {
       const m = NAME.exec(name);
-      const path = join(dir, name);
-      if (!m || !statSync(path).isFile()) continue;
-      const data = readFileSync(path);
+      if (!m) continue;
+      // Check and read through one descriptor, so the file cannot be swapped in between.
+      const fd = openSync(join(dir, name), 'r');
+      let data;
+      try {
+        if (!fstatSync(fd).isFile()) continue;
+        data = readFileSync(fd);
+      } finally {
+        closeSync(fd);
+      }
       const checksums = Object.fromEntries(ALGORITHMS.map(([key, algo]) => [key, createHash(algo).update(data).digest('hex')]));
       const [, os, arch] = m;
       files.push({ name, os, arch, platform: `${OS[/** @type {keyof typeof OS} */ (os)]} ${ARCH[/** @type {keyof typeof ARCH} */ (arch)]}`, size: data.length, checksums });
