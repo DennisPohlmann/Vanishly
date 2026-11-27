@@ -142,12 +142,12 @@ sha256sum -c --ignore-missing SHA256SUMS
 b2sum -c --ignore-missing B2SUMS
 
 # Built by this repository's GitHub Actions (needs the GitHub CLI):
-gh attestation verify vanishly-linux-amd64 --repo DennisPohlmann/vanishly
+gh attestation verify vanishly-linux-amd64 --repo DennisPohlmann/Vanishly
 
 # Or with cosign and the bundle from the GitHub release:
 cosign verify-blob vanishly-linux-amd64 \
   --bundle vanishly-linux-amd64.sigstore.json \
-  --certificate-identity-regexp '^https://github.com/DennisPohlmann/vanishly/\.github/workflows/build\.yml@' \
+  --certificate-identity-regexp '^https://github.com/DennisPohlmann/Vanishly/\.github/workflows/build\.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 

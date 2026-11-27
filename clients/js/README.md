@@ -1,10 +1,10 @@
 # vanishly (JavaScript / TypeScript)
 
-Client for [Vanishly](https://github.com/DennisPohlmann/vanishly), one-time
+Client for [Vanishly](https://github.com/DennisPohlmann/Vanishly), one-time
 secrets, for browsers, Node.js 20+, Deno and Bun (Web Crypto, `fetch`, no
 dependencies; types included).
 
-Full documentation: [docs/CLIENTS.md](https://github.com/DennisPohlmann/vanishly/blob/main/docs/CLIENTS.md). End-to-end encrypted (crypto format v1, the same as the web pages): the secret, the key and the passphrase never reach the server; the key is only in the link's `#` part.
+Full documentation: [docs/CLIENTS.md](https://github.com/DennisPohlmann/Vanishly/blob/main/docs/CLIENTS.md). End-to-end encrypted (crypto format v1, the same as the web pages): the secret, the key and the passphrase never reach the server; the key is only in the link's `#` part.
 
 ```bash
 npm install vanishly
