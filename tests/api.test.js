@@ -685,6 +685,7 @@ test('open a secret from a script with link and passphrase', opts, async () => {
   assert.equal((await call('/api/v1/open', { link, passphrase: 'Sunflower-42' })).status, 404);
 });
 
+// npm test runs this one alone afterwards: it makes the shared Redis read-only for a moment.
 test('Redis refuses writes: nothing is handed out, burn fails, health is 503', opts, async () => {
   const { key, payload } = await encryptSecret('still here', 'pass phrase');
   const c = await call('/api/v1/secrets', { ...payload, ttl: 600 });
