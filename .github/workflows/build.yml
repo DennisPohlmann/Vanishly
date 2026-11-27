@@ -271,7 +271,7 @@ jobs:
       # identity: this workflow) and GitHub artifact attestations (SLSA build
       # provenance), checked with cosign verify-blob or gh attestation verify
       # (docs/CLIENTS.md).
-      - uses: sigstore/cosign-installer@v4.1.3
+      - uses: sigstore/cosign-installer@v4.1.4
         if: env.RELEASE != ''
       - name: sign the command line clients
         if: env.RELEASE != ''
