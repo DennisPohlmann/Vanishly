@@ -11,7 +11,7 @@ import { closeSync, existsSync, fstatSync, openSync, readdirSync, readFileSync }
 import { join } from 'node:path';
 
 /** The repository whose GitHub Actions build and sign the binaries. */
-export const SIGNER_REPO = 'DennisPohlmann/vanishly';
+export const SIGNER_REPO = 'DennisPohlmann/Vanishly';
 
 /** Checksums per file: [key in the API, node:crypto name, checksum file, name shown]. MD5 and SHA-1 are broken and left out. */
 export const ALGORITHMS = /** @type {const} */ ([

@@ -89,7 +89,9 @@ test('download page, files, checksum files and the API', opts, async () => {
     assert.match(html, /data-page="downloads"/);
     assert.match(html, /vanishly-windows-arm64\.exe/);
     assert.ok(html.includes(createHash('blake2b512').update('linux binary').digest('hex')));
-    assert.match(html, /gh attestation verify vanishly-linux-amd64 --repo DennisPohlmann\/vanishly/);
+    assert.match(html, /gh attestation verify vanishly-linux-amd64 --repo DennisPohlmann\/Vanishly/);
+    // cosign compares the identity case-sensitively with the signing workflow's repository.
+    assert.match(html, /\^https:\/\/github\.com\/DennisPohlmann\/Vanishly\/\\\.github\/workflows\/build/);
     assert.match(html, /releases\/tag\/v3\.4\.5/);
     const de = await (await fetch(`${b}/downloads?lang=de`)).text();
     assert.match(de, /Prüfsummen/);
@@ -109,7 +111,7 @@ test('download page, files, checksum files and the API', opts, async () => {
     assert.equal(api.files[0].url, `${b}/downloads/vanishly-linux-amd64`);
     assert.equal(api.files[1].checksums.sha256, createHash('sha256').update('windows binary').digest('hex'));
     assert.equal(api.checksumFiles.sha3_512, `${b}/downloads/SHA3-512SUMS`);
-    assert.equal(api.signatures.release, 'https://github.com/DennisPohlmann/vanishly/releases/tag/v3.4.5');
+    assert.equal(api.signatures.release, 'https://github.com/DennisPohlmann/Vanishly/releases/tag/v3.4.5');
     const spec = await (await fetch(`${b}/api/openapi.json`)).json();
     assert.ok(spec.paths['/v1/downloads'] && spec.components.schemas.Downloads);
   });
